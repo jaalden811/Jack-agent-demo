@@ -1,0 +1,175 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --ink: #122033;
+  --muted: #617083;
+  --accent: #0b73bb;
+  --accent-dark: #075a95;
+  --border: #d9e2ec;
+  --warning: #8a5a00;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 32px 20px 64px;
+}
+
+.hero,
+.panel,
+.account-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(18, 32, 51, 0.07);
+}
+
+.hero {
+  padding: 32px;
+  margin-bottom: 22px;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1;
+  margin: 0 0 14px;
+}
+
+.hero p {
+  color: var(--muted);
+  font-size: 1.08rem;
+  max-width: 860px;
+}
+
+.panel {
+  padding: 24px;
+  margin-bottom: 22px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  font-weight: 700;
+  gap: 8px;
+}
+
+input,
+textarea,
+select {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--ink);
+  font: inherit;
+  padding: 12px 14px;
+}
+
+textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+button,
+.button {
+  align-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 700;
+  justify-content: center;
+  padding: 12px 16px;
+  text-decoration: none;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.button.secondary {
+  background: #e9f2fa;
+  color: var(--accent-dark);
+}
+
+.actions,
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.warning {
+  background: #fff8e6;
+  border: 1px solid #f1cf78;
+  border-radius: 12px;
+  color: var(--warning);
+  margin: 10px 0;
+  padding: 12px;
+}
+
+.account-card {
+  margin: 18px 0;
+  padding: 22px;
+}
+
+.score {
+  background: #e7f5ee;
+  border-radius: 999px;
+  color: #17643a;
+  display: inline-block;
+  font-weight: 800;
+  padding: 7px 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.evidence-list {
+  padding-left: 18px;
+}
+
+.role-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.role {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+@media (max-width: 800px) {
+  .grid,
+  .role-grid {
+    grid-template-columns: 1fr;
+  }
+}
