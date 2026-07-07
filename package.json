@@ -1,0 +1,56 @@
+{
+  "name": "cisco-market-buyer-intel-agent",
+  "version": "1.0.0",
+  "description": "Cisco Market + Buyer Intelligence Agent web app",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaalden811/Jack-agent-demo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jaalden811/Jack-agent-demo/issues"
+  },
+  "homepage": "https://github.com/jaalden811/Jack-agent-demo#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.1",
+    "csv-parse": "^7.0.1",
+    "mammoth": "^1.12.0",
+    "next": "^16.2.10",
+    "openai": "^6.45.0",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "uuid": "^14.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.10",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.16",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "postcss": "^8.5.16"
+  }
+}

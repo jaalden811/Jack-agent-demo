@@ -1,0 +1,15 @@
+---
+description: Source-backed sales intelligence integrity rules
+alwaysApply: true
+---
+
+# Sales Intelligence Integrity
+
+- Require source-backed claims for every account, person, pain point, and outreach angle.
+- Never invent emails, phone numbers, names, titles, LinkedIn URLs, or unsupported business pains.
+- Mark missing or unverifiable contact details with explicit "not verified" warnings.
+- Default to public-source-only research.
+- Use licensed contact enrichment APIs only when credentials are configured and the provider permits the use case.
+- Degrade gracefully when search, crawl, embedding, database, or contact enrichment APIs are unavailable.
+- Keep uploaded KB claims labeled as KB-derived; do not present them as public market evidence.
+- Store source URLs, titles, dates when available, snippets, retrieval timestamps, and confidence scores in exports.
