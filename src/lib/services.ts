@@ -21,6 +21,12 @@ import type {
 
 const now = () => new Date().toISOString();
 
+type EmbeddingRuntime = {
+  attemptedOpenAi: boolean;
+  usedFallback: boolean;
+  errors: string[];
+};
+
 function providerCheck(
   name: string,
   configured: boolean,
@@ -39,33 +45,41 @@ function providerCheck(
 
 export function getProviderDiagnostics(): ProviderStatusSnapshot {
   const config = getConfig();
+  const searchProviderConfigured = Boolean(config.SEARCH_PROVIDER);
   const checks = [
     providerCheck(
-      "OpenAI embeddings",
+      "OPENAI_API_KEY",
       Boolean(config.OPENAI_API_KEY),
       true,
-      "Ready: OPENAI_API_KEY is configured; production-quality embeddings will be requested.",
+      "Configured",
       "Missing required provider: OPENAI_API_KEY is not configured. Development fallback embeddings will be used and runs are unverified."
     ),
     providerCheck(
-      `${config.SEARCH_PROVIDER} search`,
+      "SEARCH_API_KEY",
       Boolean(config.SEARCH_API_KEY),
       true,
-      `Ready: SEARCH_API_KEY is configured for ${config.SEARCH_PROVIDER}.`,
+      `Configured for ${config.SEARCH_PROVIDER}`,
       "Missing required provider: SEARCH_API_KEY is not configured. Full verified research is blocked; seed/demo mode is fallback only."
     ),
     providerCheck(
-      "Firecrawl extraction",
+      "SEARCH_PROVIDER",
+      searchProviderConfigured,
+      true,
+      `Configured as ${config.SEARCH_PROVIDER}`,
+      "Missing required provider: SEARCH_PROVIDER is not set to a supported value."
+    ),
+    providerCheck(
+      "FIRECRAWL_API_KEY",
       Boolean(config.FIRECRAWL_API_KEY),
       false,
-      "Ready: FIRECRAWL_API_KEY is configured; page extraction will be attempted.",
+      "Configured (full-page evidence extraction available)",
       "Missing optional provider: FIRECRAWL_API_KEY is not configured. Evidence will be snippet-only and lower confidence."
     ),
     providerCheck(
-      "Licensed contact enrichment",
+      "Contact enrichment providers",
       config.hasContactEnrichment,
       false,
-      "Ready: at least one licensed contact enrichment key is configured.",
+      "Configured (at least one licensed provider key detected)",
       "Missing optional provider: no licensed contact enrichment key is configured. Contacts will remain role/persona-level unless public evidence verifies them."
     )
   ];
@@ -166,21 +180,49 @@ function deterministicEmbedding(text: string, dimensions = 128) {
 }
 
 export async function embedText(text: string) {
+  return embedTextWithRuntime(text);
+}
+
+function sanitizeProviderError(error: unknown) {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  return "Unknown provider error";
+}
+
+async function embedTextWithRuntime(text: string, runtime?: EmbeddingRuntime) {
   const config = getConfig();
   if (!config.OPENAI_API_KEY) {
+    if (runtime) {
+      runtime.usedFallback = true;
+    }
     return deterministicEmbedding(text);
   }
 
-  const client = new OpenAI({ apiKey: config.OPENAI_API_KEY });
-  const response = await withRetry(
-    () =>
-      client.embeddings.create({
-        model: "text-embedding-3-small",
-        input: text.slice(0, 8000)
-      }),
-    { label: "OpenAI embedding" }
-  );
-  return response.data[0]?.embedding ?? deterministicEmbedding(text);
+  if (runtime) {
+    runtime.attemptedOpenAi = true;
+  }
+
+  try {
+    const client = new OpenAI({ apiKey: config.OPENAI_API_KEY, timeout: 10000, maxRetries: 0 });
+    const response = await withRetry(
+      () =>
+        client.embeddings.create({
+          model: "text-embedding-3-small",
+          input: text.slice(0, 8000)
+        }),
+      { label: "OpenAI embedding", retries: 2, baseDelayMs: 300 }
+    );
+    return response.data[0]?.embedding ?? deterministicEmbedding(text);
+  } catch (error) {
+    const sanitized = sanitizeProviderError(error);
+    if (runtime) {
+      runtime.usedFallback = true;
+      runtime.errors.push(sanitized);
+    }
+    console.warn("OpenAI embedding failure metadata:", sanitized);
+    return deterministicEmbedding(text);
+  }
 }
 
 export function cosineSimilarity(a: number[], b: number[]) {
@@ -223,7 +265,7 @@ export async function extractTextFromUpload(file: File) {
   return buffer.toString("utf8");
 }
 
-export async function ingestKnowledgeBase(runId: string, files: File[]) {
+export async function ingestKnowledgeBase(runId: string, files: File[], embeddingRuntime?: EmbeddingRuntime) {
   const documents: KbDocument[] = [];
   const chunks: KbChunk[] = [];
 
@@ -248,7 +290,7 @@ export async function ingestKnowledgeBase(runId: string, files: File[]) {
         documentName: document.fileName,
         chunkIndex,
         content: textChunks[chunkIndex],
-        embedding: await embedText(textChunks[chunkIndex]),
+        embedding: await embedTextWithRuntime(textChunks[chunkIndex], embeddingRuntime),
         metadata: { sourceType: "uploaded_kb" }
       });
     }
@@ -257,8 +299,13 @@ export async function ingestKnowledgeBase(runId: string, files: File[]) {
   return { documents, chunks };
 }
 
-export async function retrieveKbContext(query: string, chunks: KbChunk[], limit = 5) {
-  const queryEmbedding = await embedText(query);
+export async function retrieveKbContext(
+  query: string,
+  chunks: KbChunk[],
+  limit = 5,
+  embeddingRuntime?: EmbeddingRuntime
+) {
+  const queryEmbedding = await embedTextWithRuntime(query, embeddingRuntime);
   return chunks
     .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
     .sort((a, b) => b.score - a.score)
@@ -268,10 +315,11 @@ export async function retrieveKbContext(query: string, chunks: KbChunk[], limit 
 
 export async function productCapabilityMapper(
   input: ResearchInput,
-  kbChunks: KbChunk[]
+  kbChunks: KbChunk[],
+  embeddingRuntime?: EmbeddingRuntime
 ): Promise<CapabilityMap> {
   const query = `${input.ciscoProduct} ${input.targetMarket} cybersecurity networking observability buyer pain`;
-  const relevantChunks = await retrieveKbContext(query, kbChunks, 4);
+  const relevantChunks = await retrieveKbContext(query, kbChunks, 4, embeddingRuntime);
   const product = input.ciscoProduct.toLowerCase();
   const baseCapabilities =
     product.includes("meraki")
@@ -758,12 +806,14 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   const createdAt = now();
   const warnings: string[] = [];
   const providerStatus = getProviderDiagnostics();
+  const embeddingRuntime: EmbeddingRuntime = {
+    attemptedOpenAi: false,
+    usedFallback: false,
+    errors: []
+  };
 
   if (!providerStatus.liveSearchAvailable) {
     warnings.push("SEARCH_API_KEY is not configured; results are limited to seed accounts and marked unverified.");
-  }
-  if (!providerStatus.openAiEmbeddingsAvailable) {
-    warnings.push("Development fallback embeddings used — not production-quality.");
   }
   if (!providerStatus.firecrawlAvailable) {
     warnings.push("FIRECRAWL_API_KEY is not configured; evidence uses search snippets only and is not full-page verified.");
@@ -775,12 +825,17 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     warnings.push("Unverified fallback run: add required provider keys and use Rerun with configured APIs for live evidence.");
   }
 
-  const { documents, chunks } = await ingestKnowledgeBase(runId, files);
-  const capabilityMap = await productCapabilityMapper(input, chunks);
+  const { documents, chunks } = await ingestKnowledgeBase(runId, files, embeddingRuntime);
+  const capabilityMap = await productCapabilityMapper(input, chunks, embeddingRuntime);
   const searchResults = await searchMarketAccounts(input, capabilityMap);
   const evidenceResults = await collectPageEvidence(searchResults);
   const grouped = groupSearchResults(evidenceResults);
-  const relevantKb = await retrieveKbContext(`${input.ciscoProduct} ${input.targetMarket}`, chunks, 5);
+  const relevantKb = await retrieveKbContext(
+    `${input.ciscoProduct} ${input.targetMarket}`,
+    chunks,
+    5,
+    embeddingRuntime
+  );
   const accounts = generateReport(input, capabilityMap, grouped, relevantKb, providerStatus);
 
   for (const account of accounts) {
@@ -792,6 +847,14 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   if (accounts.length === 0) {
     warnings.push("No source-backed accounts were found. Add seed accounts or configure a supported search provider.");
   }
+  if (embeddingRuntime.attemptedOpenAi && embeddingRuntime.usedFallback) {
+    warnings.push("OpenAI embeddings failed. Check network access, key validity, and provider status.");
+  }
+  if (embeddingRuntime.usedFallback) {
+    warnings.push("Development fallback embeddings used — not production-quality.");
+  }
+
+  const usedFallbackRun = providerStatus.fallbackModeActive || embeddingRuntime.usedFallback;
 
   return {
     id: runId,
@@ -799,13 +862,15 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     status: "completed",
     providerStatus,
     liveSearchUsed: providerStatus.liveSearchAvailable,
-    openAiEmbeddingsUsed: providerStatus.openAiEmbeddingsAvailable,
+    openAiEmbeddingsUsed: providerStatus.openAiEmbeddingsAvailable && !embeddingRuntime.usedFallback,
     firecrawlExtractionUsed: accounts.some((account) =>
       account.evidence.some((evidence) => evidence.verificationLevel === "full_page")
     ),
     contactEnrichmentUsed: providerStatus.contactEnrichmentAvailable,
-    isVerified: !providerStatus.fallbackModeActive && accounts.every((account) => account.evidence.some((evidence) => evidence.url.startsWith("http"))),
-    isFallback: providerStatus.fallbackModeActive,
+    isVerified:
+      !usedFallbackRun &&
+      accounts.every((account) => account.evidence.some((evidence) => evidence.url.startsWith("http"))),
+    isFallback: usedFallbackRun,
     warnings,
     accounts,
     kbDocuments: documents,

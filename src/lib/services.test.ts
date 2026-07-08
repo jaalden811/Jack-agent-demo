@@ -112,8 +112,8 @@ describe("report generation", () => {
     expect(diagnostics.fallbackModeActive).toBe(true);
     expect(diagnostics.checks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "OpenAI embeddings", status: "missing_required_provider" }),
-        expect.objectContaining({ name: "tavily search", status: "missing_required_provider" })
+        expect.objectContaining({ name: "OPENAI_API_KEY", status: "missing_required_provider" }),
+        expect.objectContaining({ name: "SEARCH_API_KEY", status: "missing_required_provider" })
       ])
     );
   });
