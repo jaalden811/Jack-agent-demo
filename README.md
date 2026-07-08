@@ -22,12 +22,24 @@ Open http://localhost:3000.
 
 ## Environment variables
 
-Required for live provider-backed runs:
+Required for verified live provider-backed runs:
 
 ```bash
 OPENAI_API_KEY=
 SEARCH_API_KEY=
 SEARCH_PROVIDER=tavily # tavily, brave, exa, or serpapi
+```
+
+Expected `.env.local` shape:
+
+```bash
+OPENAI_API_KEY=...
+SEARCH_API_KEY=...
+SEARCH_PROVIDER=tavily
+FIRECRAWL_API_KEY=...
+HUNTER_API_KEY=
+PEOPLE_DATA_LABS_API_KEY=
+CLEARBIT_API_KEY=
 ```
 
 Recommended:
@@ -55,6 +67,31 @@ NEXTAUTH_URL=http://localhost:3000
 ```
 
 Do not commit `.env.local`. Cursor MCP configurations should pass secrets with env interpolation such as `${env:SEARCH_API_KEY}` rather than hardcoded values.
+
+## Provider diagnostics and fallback runs
+
+The app shows provider diagnostics before research starts:
+
+- **Ready**: provider key is configured and the feature can run.
+- **Missing required provider**: verified live research cannot run without this key.
+- **Missing optional provider**: the app can run, but some evidence/contact fields will be lower confidence.
+- **Fallback mode active**: one or more required providers are missing; results are explicitly unverified.
+
+If `SEARCH_API_KEY` is missing, only seed/demo accounts can be returned and the run is labeled **Unverified fallback run**. If `OPENAI_API_KEY` is missing, deterministic local development embeddings are used and the run is not production-quality. If `FIRECRAWL_API_KEY` is missing, evidence remains snippet-only and the app does not claim full-page verification.
+
+After adding real API keys to `.env.local`, rerun old fallback results with the **Rerun with configured APIs** button. Reruns create a new research run using the current providers; old fallback evidence remains visible and is not silently overwritten.
+
+## Verified vs unverified results
+
+- Verified/live runs require configured search and OpenAI providers.
+- Full-page evidence requires Firecrawl extraction.
+- Snippet-only evidence is labeled and receives lower confidence.
+- Every account recommendation includes evidence URLs or clear low-confidence/fallback warnings.
+- Named people, emails, phone numbers, and profile URLs are never invented.
+
+## Contact enrichment compliance
+
+Contact enrichment is optional and must use licensed/compliant provider credentials. The app only displays verified business emails when a licensed provider or public source supports the claim. Without a configured provider, the app returns role/persona-level guidance and displays "No verified contact found."
 
 ## Data model
 
@@ -104,9 +141,11 @@ Manual happy path:
 4. Upload a `.txt`, `.md`, `.csv`, or `.docx` KB file.
 5. Run research.
 6. Confirm results include confidence scores, evidence, KB influence, exports, and missing-data warnings for unverifiable contacts.
+7. If the run is labeled fallback, add provider keys and use **Rerun with configured APIs**.
 
 ## Known limitations
 
 - PDF extraction is conservative in this serverless-compatible scaffold and should be replaced with a vetted production parser or extraction service.
 - Firecrawl and contact enrichment provider clients are behind capability checks; production implementations should only accept provider results that include verification evidence.
 - Supabase persistence is documented and schema-ready, while local JSON persistence is used for development.
+- The landing page references `/jack.jpg`; place the attached image at `public/jack.jpg`.

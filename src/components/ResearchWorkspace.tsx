@@ -1,7 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import type { AccountRecommendation, ResearchRun } from "@/lib/types";
+import { useEffect, useState } from "react";
+import type { AccountRecommendation, ProviderStatusSnapshot, ResearchRun } from "@/lib/types";
+
+function statusLabel(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapshot | null }) {
+  return (
+    <section className="panel provider-panel">
+      <div className="section-heading">
+        <div>
+          <h2>Provider diagnostics</h2>
+          <p className="muted">Checks run before research starts. Required providers control verified live research.</p>
+        </div>
+        <span className={`status-pill ${diagnostics?.overall ?? "fallback_mode_active"}`}>
+          {diagnostics ? statusLabel(diagnostics.overall) : "checking"}
+        </span>
+      </div>
+      {diagnostics ? (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>
+            SEARCH_PROVIDER current value: <strong>{diagnostics.searchProvider}</strong>
+          </p>
+          <div className="provider-grid">
+            {diagnostics.checks.map((check) => (
+              <div className="provider-check" key={check.name}>
+                <strong>{check.name}</strong>
+                <span className={`mini-pill ${check.status}`}>
+                  {check.configured ? "configured" : check.required ? "missing" : "missing optional"}
+                </span>
+                <p>{check.message}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="muted">Loading provider configuration...</p>
+      )}
+    </section>
+  );
+}
 
 function RoleCard({
   title,
@@ -25,11 +65,28 @@ function RoleCard({
 function AccountCard({ account }: { account: AccountRecommendation }) {
   return (
     <article className="account-card">
-      <header>
+      <header className="account-header">
+        <div>
+          <h3>{account.companyName}</h3>
+          <p className="muted url-wrap">{account.website ?? "Website not verified"}</p>
+        </div>
         <span className="score">Confidence {account.confidenceScore}</span>
-        <h3>{account.companyName}</h3>
       </header>
       <p>{account.fitReason}</p>
+      <div className="detail-grid">
+        <div>
+          <h4>Market / industry fit</h4>
+          <p>{account.marketFit}</p>
+        </div>
+        <div>
+          <h4>Cisco capability match</h4>
+          <ul className="compact-list">
+            {account.ciscoCapabilityMatch.map((capability) => (
+              <li key={capability}>{capability}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
       <div className="role-grid">
         <RoleCard title="Business champion" contact={account.champion} />
         <RoleCard title="Economic buyer" contact={account.economicBuyer} />
@@ -51,16 +108,33 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
 
       <h4>Evidence</h4>
       {account.evidence.length ? (
-        <ul className="evidence-list">
+        <div className="evidence-table-wrap">
+          <table className="evidence-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Type</th>
+                <th>Verification</th>
+                <th>Snippet</th>
+              </tr>
+            </thead>
+            <tbody>
           {account.evidence.map((item) => (
-            <li key={`${item.url}-${item.title}`}>
-              <a href={item.url.startsWith("http") ? item.url : undefined}>{item.title}</a>
-              <span className="muted"> — {item.sourceType}</span>
-              <br />
-              <small>{item.snippet}</small>
-            </li>
+                <tr key={`${item.url}-${item.title}`}>
+                  <td>
+                    <a className="url-wrap" href={item.url.startsWith("http") ? item.url : undefined}>
+                      {item.title}
+                    </a>
+                    <small className="muted url-wrap">{item.url}</small>
+                  </td>
+                  <td>{item.sourceType}</td>
+                  <td><span className={`mini-pill ${item.verificationLevel}`}>{item.verificationLevel.replaceAll("_", " ")}</span></td>
+                  <td>{item.snippet}</td>
+                </tr>
           ))}
-        </ul>
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="muted">No public source evidence stored for this account.</p>
       )}
@@ -93,8 +167,17 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
 
 export default function ResearchWorkspace() {
   const [run, setRun] = useState<ResearchRun | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ProviderStatusSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRerunning, setIsRerunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/providers/diagnostics")
+      .then((response) => response.json())
+      .then(setDiagnostics)
+      .catch(() => setDiagnostics(null));
+  }, []);
 
   async function submitResearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -119,8 +202,29 @@ export default function ResearchWorkspace() {
     }
   }
 
+  async function rerunWithConfiguredApis() {
+    if (!run) return;
+    setIsRerunning(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/research/${run.id}/rerun`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail ?? data.error ?? "Rerun failed");
+      }
+      setRun(data);
+      const nextDiagnostics = await fetch("/api/providers/diagnostics").then((response) => response.json());
+      setDiagnostics(nextDiagnostics);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Rerun failed");
+    } finally {
+      setIsRerunning(false);
+    }
+  }
+
   return (
     <>
+      <ProviderStatusCard diagnostics={diagnostics} />
       <section className="panel">
         <h2>Research inputs</h2>
         <form onSubmit={submitResearch}>
@@ -168,15 +272,33 @@ export default function ResearchWorkspace() {
 
       {run ? (
         <section className="panel">
-          <h2>Run status: {run.status}</h2>
-          <p className="muted">
-            Product: {run.input.ciscoProduct} | Market: {run.input.targetMarket} | Accounts: {run.accounts.length}
-          </p>
+          <div className="section-heading">
+            <div>
+              <h2>Run summary</h2>
+              <p className="muted">
+                Product: {run.input.ciscoProduct} | Market: {run.input.targetMarket} | Accounts: {run.accounts.length}
+              </p>
+            </div>
+            <span className={`status-pill ${run.isFallback ? "fallback_mode_active" : run.isVerified ? "ready" : "missing_optional_provider"}`}>
+              {run.isFallback ? "Unverified fallback run" : run.isVerified ? "Verified live run" : "Low-confidence live run"}
+            </span>
+          </div>
+          <div className="summary-grid">
+            <div><strong>Search</strong><span>{run.liveSearchUsed ? "Live API-backed" : "Seed/demo fallback"}</span></div>
+            <div><strong>Embeddings</strong><span>{run.openAiEmbeddingsUsed ? "OpenAI" : "Development fallback"}</span></div>
+            <div><strong>Extraction</strong><span>{run.firecrawlExtractionUsed ? "Firecrawl full-page" : "Snippet-only"}</span></div>
+            <div><strong>Contacts</strong><span>{run.contactEnrichmentUsed ? "Licensed provider configured" : "Role/persona only"}</span></div>
+          </div>
           {run.warnings.map((warning) => (
-            <div className="warning" key={warning}>
+            <div className="warning slim" key={warning}>
               {warning}
             </div>
           ))}
+          {run.isFallback ? (
+            <button className="rerun-button" disabled={isRerunning} onClick={rerunWithConfiguredApis}>
+              {isRerunning ? "Rerunning..." : "Rerun with configured APIs"}
+            </button>
+          ) : null}
           <div className="export-actions">
             <a className="button secondary" href={`/api/research/${run.id}/export?format=csv`}>
               Export CSV
@@ -187,6 +309,31 @@ export default function ResearchWorkspace() {
             <a className="button secondary" href={`/api/research/${run.id}/export?format=md`}>
               Export Markdown
             </a>
+          </div>
+          <h3>Ranked accounts</h3>
+          <div className="evidence-table-wrap">
+            <table className="ranked-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Company</th>
+                  <th>Confidence</th>
+                  <th>Evidence</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {run.accounts.map((account, index) => (
+                  <tr key={account.id}>
+                    <td>{index + 1}</td>
+                    <td>{account.companyName}</td>
+                    <td>{account.confidenceScore}</td>
+                    <td>{account.evidence.filter((item) => item.url.startsWith("http")).length} public source(s)</td>
+                    <td>{run.isFallback ? "Fallback" : account.evidence.some((item) => item.verificationLevel === "full_page") ? "Full-page evidence" : "Snippet-only"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           {run.accounts.map((account) => (
             <AccountCard key={account.id} account={account} />

@@ -1,9 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chunkText,
+  collectPageEvidence,
   cosineSimilarity,
   exportRun,
   generateReport,
+  getProviderDiagnostics,
   groupSearchResults,
   productCapabilityMapper,
   retrieveKbContext,
@@ -14,6 +16,16 @@ import type { KbChunk, ResearchInput, ResearchRun, SearchResult } from "@/lib/ty
 vi.mock("openai", () => ({
   default: vi.fn()
 }));
+
+beforeEach(() => {
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.SEARCH_API_KEY;
+  process.env.SEARCH_PROVIDER = "tavily";
+  delete process.env.FIRECRAWL_API_KEY;
+  delete process.env.HUNTER_API_KEY;
+  delete process.env.PEOPLE_DATA_LABS_API_KEY;
+  delete process.env.CLEARBIT_API_KEY;
+});
 
 const input: ResearchInput = {
   ciscoProduct: "Cisco XDR",
@@ -69,15 +81,17 @@ describe("retrieval and scoring helpers", () => {
 describe("report generation", () => {
   it("does not invent emails or named people", async () => {
     const capabilityMap = await productCapabilityMapper(input, []);
+    const providerStatus = getProviderDiagnostics();
     const results: SearchResult[] = [
       {
         title: "Regional Health System expands security operations",
         url: "https://example.com/news",
         snippet: "The hospital system is investing in cybersecurity operations.",
-        sourceType: "news"
+        sourceType: "news",
+        verificationLevel: "snippet_only"
       }
     ];
-    const accounts = generateReport(input, capabilityMap, groupSearchResults(results), []);
+    const accounts = generateReport(input, capabilityMap, groupSearchResults(results), [], providerStatus);
     expect(accounts[0].champion.name).toBeNull();
     expect(accounts[0].champion.businessEmail).toBeNull();
     expect(accounts[0].missingDataFlags.join(" ")).toMatch(/do not infer|not invented/i);
@@ -90,5 +104,42 @@ describe("report generation", () => {
     expect(csv).toContain("evidence_urls");
     const json = exportRun(run, "json");
     expect(json).toContain("confidenceScore");
+    expect(json).toContain("providerStatus");
+  });
+
+  it("labels missing required providers as fallback diagnostics", () => {
+    const diagnostics = getProviderDiagnostics();
+    expect(diagnostics.fallbackModeActive).toBe(true);
+    expect(diagnostics.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "OPENAI_API_KEY", status: "missing_required_provider" }),
+        expect.objectContaining({ name: "SEARCH_API_KEY", status: "missing_required_provider" })
+      ])
+    );
+  });
+
+  it("marks missing Firecrawl evidence as snippet-only", async () => {
+    const results = await collectPageEvidence([
+      {
+        title: "Example source",
+        url: "https://example.com/source",
+        snippet: "Search snippet",
+        sourceType: "news"
+      }
+    ]);
+    expect(results[0].verificationLevel).toBe("snippet_only");
+  });
+
+  it("marks runs as fallback/unverified when required providers are missing", async () => {
+    const run = await runResearch(input, []);
+    // No OPENAI_API_KEY configured → openAiEmbeddingsUsed must be false
+    expect(run.openAiEmbeddingsUsed).toBe(false);
+    // Missing required providers → isFallback via providerStatus.fallbackModeActive
+    expect(run.isFallback).toBe(true);
+    // When no KB files are uploaded, embeddings are skipped entirely (no embedding warning)
+    // but the run-level fallback warning IS present
+    expect(run.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("Unverified fallback run")])
+    );
   });
 });
