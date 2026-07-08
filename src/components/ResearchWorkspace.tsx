@@ -62,25 +62,29 @@ function DebugPanel({ stats, marketSignals }: { stats: RunDebugStats; marketSign
   return (
     <details className="debug-panel">
       <summary>
-        Search debug — {stats.validOrgCount} valid org{stats.validOrgCount !== 1 ? "s" : ""} found, {stats.rejectedCount} rejected, {stats.fallbackOrganizationsAdded} fallback
-        {stats.rejectedAsArticleTitle > 0 ? ` · ${stats.rejectedAsArticleTitle} article titles blocked` : ""}
+        Search debug — account base: {stats.selectedAccountBase} · {stats.validOrgCount} selected org{stats.validOrgCount !== 1 ? "s" : ""}
+        {stats.finalGuardReplacements > 0 ? ` · ${stats.finalGuardReplacements} final guard replacement${stats.finalGuardReplacements !== 1 ? "s" : ""}` : ""}
       </summary>
       <div className="debug-body">
+        <strong>Selected organizations</strong>
+        <ul className="compact-list" style={{ marginTop: 4, marginBottom: 10 }}>
+          {stats.selectedOrganizationNames.map((name) => <li key={name}>{name}</li>)}
+        </ul>
         <div className="debug-grid">
-          <span>Discovery queries</span><span>{stats.discoveryQueriesRun}</span>
+          <span>Account base</span><span>{stats.selectedAccountBase}</span>
+          <span>Broad market search results</span><span>{stats.broadSearchResultsForContext}</span>
           <span>Enrichment queries</span><span>{stats.enrichmentQueriesRun}</span>
-          <span>Raw results</span><span>{stats.rawResultCount}</span>
-          <span>Valid organizations</span><span>{stats.validOrgCount}</span>
-          <span>Fallback orgs added</span><span>{stats.fallbackOrganizationsAdded}</span>
+          <span>Account signals attached</span><span>{stats.accountSignalsAttached}</span>
+          <span>Market signals only</span><span>{stats.marketSignalsOnly}</span>
+          <span>Final guard replacements</span><span>{stats.finalGuardReplacements}</span>
           <span>OpenAI synthesis used</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
         </div>
-        <strong style={{ display: "block", marginTop: 10 }}>Rejection breakdown</strong>
+        <strong style={{ display: "block", marginTop: 10 }}>Broad search rejection breakdown</strong>
         <div className="debug-grid" style={{ marginTop: 4 }}>
           <span>Article / report titles</span><span>{stats.rejectedAsArticleTitle}</span>
           <span>Vendor / product pages</span><span>{stats.rejectedAsVendorProduct}</span>
           <span>Person results</span><span>{stats.rejectedAsPerson}</span>
           <span>Invalid org name</span><span>{stats.rejectedInvalidOrgName}</span>
-          <span>Market signals (context only)</span><span>{stats.marketSignalsOnly}</span>
         </div>
         {(marketSignals ?? []).length > 0 && (
           <>

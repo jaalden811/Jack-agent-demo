@@ -90,10 +90,14 @@ export type OrgSignal = {
 };
 
 export type RunDebugStats = {
+  // Account selection
+  selectedAccountBase: "seed_accounts" | "healthcare_default" | "market_default";
+  selectedOrganizationNames: string[];
+  // Broad market search (context only — not used for account name derivation)
   discoveryQueriesRun: number;
-  enrichmentQueriesRun: number;
+  broadSearchResultsForContext: number;
   rawResultCount: number;
-  // Granular rejection counters — makes it obvious why bad titles were rejected
+  // Rejection counters
   rejectedAsArticleTitle: number;
   rejectedAsGenericConcept: number;
   rejectedAsVendorProduct: number;
@@ -106,10 +110,13 @@ export type RunDebugStats = {
   verifiedOrganizations: number;
   validOrgCount: number;
   fallbackOrganizationsAdded: number;
-  // Evidence
+  // Enrichment
+  enrichmentQueriesRun: number;
   pageFetchAttempts: number;
   accountSignalsAttached: number;
   marketSignalsOnly: number;
+  // Final guard
+  finalGuardReplacements: number;
   openAiSynthesisUsed: boolean;
 };
 

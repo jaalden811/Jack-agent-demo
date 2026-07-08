@@ -647,8 +647,125 @@ export function buildDiscoveryQueries(input: ResearchInput): string[] {
 export function buildEnrichmentQueries(orgName: string): string[] {
   return [
     `"${orgName}" cybersecurity CISO "security operations" ransomware`,
-    `"${orgName}" "data breach" OR "cyber incident" OR "security leadership" OR "Chief Information Security Officer"`
+    `"${orgName}" "data breach" OR "cyber incident" OR "security leadership" OR "Chief Information Security Officer"`,
+    `"${orgName}" "information security" OR "incident response" OR "privacy breach"`
   ];
+}
+
+/**
+ * Select the target organizations upfront — BEFORE any search.
+ * Account names MUST come from seeds or the approved fallback list.
+ * They must never come from broad search result titles.
+ */
+export function selectOrganizations(input: ResearchInput): {
+  orgs: string[];
+  base: RunDebugStats["selectedAccountBase"];
+} {
+  if (input.seedAccounts.length > 0) {
+    const validSeeds = input.seedAccounts
+      .filter((s) => s.trim().length > 0)
+      .slice(0, input.maxResults);
+    return { orgs: validSeeds, base: "seed_accounts" };
+  }
+  const demoNames = getDemoNamesFor(input.targetMarket).slice(0, input.maxResults);
+  const lower = input.targetMarket.toLowerCase();
+  const base: RunDebugStats["selectedAccountBase"] =
+    lower.includes("healthcare") || lower.includes("health") ? "healthcare_default" : "market_default";
+  return { orgs: demoNames, base };
+}
+
+/**
+ * Filter search results to only those relevant to a specific organization.
+ * Broad market articles (e.g. "Healthcare Data Breach Statistics") are market context,
+ * not org-specific evidence.
+ */
+export function filterEvidenceForOrg(
+  results: SearchResult[],
+  orgName: string
+): { orgSpecific: SearchResult[]; marketContext: SearchResult[] } {
+  const orgLower = orgName.toLowerCase();
+  // Meaningful words (> 3 chars) in the org name for partial matching
+  const orgWords = orgLower.split(/\s+/).filter((w) => w.length > 3);
+
+  const orgSpecific: SearchResult[] = [];
+  const marketContext: SearchResult[] = [];
+
+  for (const result of results) {
+    const combined = `${result.title} ${result.snippet} ${result.url}`.toLowerCase();
+    const domain = extractDomain(result.url.toLowerCase());
+
+    const domainMatchesOrg = orgWords.length > 0 && orgWords.some((w) => domain.includes(w));
+    const fullNameMentioned = combined.includes(orgLower);
+    const allWordsPresent =
+      orgWords.length >= 2 && orgWords.every((w) => combined.includes(w));
+
+    if (domainMatchesOrg || fullNameMentioned || allWordsPresent) {
+      orgSpecific.push(result);
+    } else {
+      marketContext.push(result);
+    }
+  }
+
+  return { orgSpecific, marketContext };
+}
+
+/**
+ * Final safety net: remove any account whose name is not in the selected org list
+ * or fails name validation. Replace removed accounts with missing fallback orgs.
+ */
+export function sanitizeFinalAccounts(
+  accounts: AccountRecommendation[],
+  selectedOrgs: string[],
+  capabilityMap: CapabilityMap,
+  input: ResearchInput
+): { accounts: AccountRecommendation[]; replacements: number } {
+  const normalizedSelected = new Set(selectedOrgs.map((s) => s.toLowerCase()));
+  const valid: AccountRecommendation[] = [];
+  let replacements = 0;
+
+  for (const account of accounts) {
+    const nameIsValid =
+      isValidOrganizationName(account.companyName) &&
+      normalizedSelected.has(account.companyName.toLowerCase());
+    if (nameIsValid) {
+      valid.push(account);
+    } else {
+      replacements++;
+    }
+  }
+
+  // Backfill with any selected org that didn't make it in — create a minimal fallback card.
+  const existingNamesInValid = new Set(valid.map((a) => a.companyName.toLowerCase()));
+  for (const orgName of selectedOrgs) {
+    if (!existingNamesInValid.has(orgName.toLowerCase()) && valid.length < input.maxResults) {
+      const makeBuyer = (roleTitle: string, why: string): BuyerTarget => ({
+        roleTitle, department: "Security / IT", whyThisRole: why, contactStatus: "role_only"
+      });
+      valid.push({
+        id: randomUUID(),
+        companyName: orgName,
+        website: null,
+        verificationStatus: "fallback_unverified",
+        fitReason: `${orgName} is a major ${input.targetMarket} organization with security operations complexity aligning with ${capabilityMap.product} capabilities.`,
+        marketFit: `${orgName} selected from approved ${input.targetMarket} target list.`,
+        signals: [{ label: "Fallback selected", detail: `${orgName} selected from approved ${input.targetMarket} target list. No organization-specific source verified yet.`, implication: "Verify with direct outreach before claiming fit.", sourceType: "fallback", verification: "unverified" }],
+        painPoints: ["Alert volume and triage burden across security tools.", "Ransomware readiness and data protection obligations.", "Incident response speed and SOC efficiency."],
+        ciscoCapabilityMatch: capabilityMap.capabilities.slice(0, 4),
+        ciscoFitSummary: `${capabilityMap.product} correlates endpoint, network, email, and cloud telemetry to prioritize threats and accelerate incident response.`,
+        economicBuyer: makeBuyer(capabilityMap.buyerPersonas.economicBuyerTitles[0], `Owns budget and risk tradeoffs for ${capabilityMap.product} at ${orgName}.`),
+        businessChampion: makeBuyer(capabilityMap.buyerPersonas.championTitles[0], `Drives day-to-day SOC outcomes at ${orgName}.`),
+        technicalInfluencers: [makeBuyer(capabilityMap.buyerPersonas.influencerTitles[0], `Validates telemetry integrations for ${capabilityMap.capabilities[0]}.`)],
+        evidence: [], kbInfluence: [],
+        scores: { fit: 20, painEvidence: 0, buyerIdentification: 25, contactVerification: 0, overall: 20 },
+        confidenceScore: 20, confidenceLabel: "fallback",
+        nextStep: `Verify ${orgName}'s current security priorities from public sources before outreach.`,
+        missingDataFlags: [`${orgName} selected from approved healthcare target list. No organization-specific source verified in this run.`]
+      });
+      existingNamesInValid.add(orgName.toLowerCase());
+    }
+  }
+
+  return { accounts: valid.slice(0, input.maxResults), replacements };
 }
 
 type SearchOptions = { query: string; maxResults: number };
@@ -1241,7 +1358,10 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   const providerStatus = getProviderDiagnostics();
   const embeddingRuntime: EmbeddingRuntime = { attemptedOpenAi: false, usedFallback: false, errors: [] };
   const debugStats: RunDebugStats = {
+    selectedAccountBase: "market_default",
+    selectedOrganizationNames: [],
     discoveryQueriesRun: 0,
+    broadSearchResultsForContext: 0,
     enrichmentQueriesRun: 0,
     rawResultCount: 0,
     rejectedAsArticleTitle: 0,
@@ -1258,6 +1378,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     pageFetchAttempts: 0,
     accountSignalsAttached: 0,
     marketSignalsOnly: 0,
+    finalGuardReplacements: 0,
     openAiSynthesisUsed: false
   };
 
@@ -1281,81 +1402,70 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     snippet: chunk.content.slice(0, 240)
   }));
 
-  // ─ Stage 1: Discovery ─────────────────────────────────────────────────────
+  // ─ Stage 1: Select organizations FIRST ────────────────────────────────────
+  // Account names ALWAYS come from seeds or approved fallback list.
+  // They NEVER come from broad search result titles.
+  const { orgs: selectedOrgs, base: selectedAccountBase } = selectOrganizations(input);
+  debugStats.selectedAccountBase = selectedAccountBase;
+  debugStats.selectedOrganizationNames = [...selectedOrgs];
+  debugStats.validOrgCount = selectedOrgs.length;
+  debugStats.fallbackOrganizationsAdded = selectedAccountBase !== "seed_accounts" ? selectedOrgs.length : 0;
+
+  // ─ Stage 2: Broad discovery for MARKET CONTEXT only ───────────────────────
+  // These results become marketSignals. They must NOT create account names.
   const discoveryQueries = buildDiscoveryQueries(input);
   debugStats.discoveryQueriesRun = discoveryQueries.length;
-  let allDiscoveryResults: SearchResult[] = [];
+  const allBroadResults: SearchResult[] = [];
   let searchFellBack = false;
 
   if (searchProvider) {
     for (const query of discoveryQueries) {
       try {
-        const results = await searchProvider.search({ query, maxResults: 10 });
-        allDiscoveryResults.push(...results);
+        const results = await searchProvider.search({ query, maxResults: 8 });
+        allBroadResults.push(...results);
         await new Promise((resolve) => setTimeout(resolve, 150));
       } catch (error) {
         if (error instanceof Error && (error.message.includes("HTTP 4") || error.message.includes("rate_limited"))) {
           searchFellBack = true;
-          warnings.push(`Live search unavailable (${error.message}); using seed/demo candidates. Check SEARCH_API_KEY and SEARCH_PROVIDER.`);
+          warnings.push(`Live search unavailable (${error.message}); proceeding with selected organizations only. Check SEARCH_API_KEY and SEARCH_PROVIDER.`);
           break;
         }
       }
     }
   } else {
-    searchFellBack = true;
+    searchFellBack = !providerStatus.liveSearchAvailable;
   }
 
-  // Add seed accounts as direct org candidates
-  const seedResults: SearchResult[] = input.seedAccounts.map((name) => ({
-    title: name, url: "", snippet: "Seed account supplied by user.",
-    sourceType: "search_result", verificationLevel: "unverified"
-  }));
-  allDiscoveryResults = [...seedResults, ...allDiscoveryResults];
+  // All broad results are market context — run classification for debug stats
+  debugStats.broadSearchResultsForContext = allBroadResults.length;
+  const { stats: broadStats } = groupSearchResultsWithStats(allBroadResults);
+  debugStats.rawResultCount = broadStats.total;
+  debugStats.rejectedCount = broadStats.rejected;
+  debugStats.rejectedAsArticleTitle = broadStats.rejectedAsArticleTitle;
+  debugStats.rejectedAsVendorProduct = broadStats.rejectedAsVendorProduct;
+  debugStats.rejectedAsPerson = broadStats.rejectedAsPerson;
+  debugStats.rejectedInvalidOrgName = broadStats.rejectedInvalidOrgName;
+  debugStats.rejectionReasons = broadStats.rejectionReasons;
+  // All broad results go to market signals, regardless of classification
+  const runMarketSignals: import("@/lib/types").MarketSignal[] = allBroadResults
+    .filter((r) => r.title && r.snippet)
+    .map((r) => ({
+      title: r.title,
+      url: r.url || undefined,
+      snippet: r.snippet.slice(0, 200),
+      reason: "broad_market_context"
+    }));
+  debugStats.marketSignalsOnly = runMarketSignals.length;
 
-  // ─ Stage 2: Group valid orgs ──────────────────────────────────────────────
-  const { grouped, stats } = groupSearchResultsWithStats(allDiscoveryResults);
-  debugStats.rawResultCount = stats.total;
-  debugStats.rejectedCount = stats.rejected;
-  debugStats.rejectedAsArticleTitle = stats.rejectedAsArticleTitle;
-  debugStats.rejectedAsVendorProduct = stats.rejectedAsVendorProduct;
-  debugStats.rejectedAsPerson = stats.rejectedAsPerson;
-  debugStats.rejectedInvalidOrgName = stats.rejectedInvalidOrgName;
-  debugStats.marketSignalsOnly = stats.marketSignals.length;
-  debugStats.rejectionReasons = stats.rejectionReasons;
-
-  const validOrgEntries = Array.from(grouped.entries()).slice(0, input.maxResults);
-  debugStats.validOrgCount = validOrgEntries.length;
-  debugStats.extractedOrgMentions = validOrgEntries.length;
-  debugStats.verifiedOrganizations = validOrgEntries.length;
-
-  // Fill with fallback names if needed
-  const existingOrgNames = new Set(validOrgEntries.map(([name]) => name.toLowerCase()));
-  const fallbackNames = getDemoNamesFor(input.targetMarket)
-    .filter((name) => !existingOrgNames.has(name.toLowerCase()))
-    .slice(0, Math.max(0, input.maxResults - validOrgEntries.length));
-  debugStats.fallbackOrganizationsAdded = fallbackNames.length;
-
-  if (fallbackNames.length > 0) {
-    warnings.push(
-      `Live search returned ${validOrgEntries.length} valid organization${validOrgEntries.length !== 1 ? "s" : ""}; filled ${fallbackNames.length} slot${fallbackNames.length !== 1 ? "s" : ""} with ${input.targetMarket} demo candidates. These will still be enriched if SEARCH_API_KEY is configured.`
-    );
-  }
-
-  // ─ Stage 3: Per-org enrichment (including fallback orgs) ─────────────────
+  // ─ Stage 3: Per-org enrichment for every selected org ─────────────────────
   const enrichmentJobs: Array<Promise<OrgEnrichmentResult>> = [];
-
-  for (const [orgName, group] of validOrgEntries) {
+  for (const orgName of selectedOrgs) {
     enrichmentJobs.push(
-      enrichOneOrganization(orgName, group.results, group.persons, true, searchProvider, debugStats)
-    );
-  }
-  for (const name of fallbackNames) {
-    enrichmentJobs.push(
-      enrichOneOrganization(name, [], [], false, searchProvider, debugStats)
+      enrichOneOrganization(orgName, [], [], selectedAccountBase === "seed_accounts", searchProvider, debugStats)
     );
   }
 
-  // Run enrichment in parallel (all orgs at once)
+  // Run enrichment in parallel
   const enriched = await Promise.all(enrichmentJobs);
 
   // ─ Stage 4: Build accounts ────────────────────────────────────────────────
@@ -1364,8 +1474,18 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   for (const org of enriched) {
     const { orgName, fromLiveSearch, enrichmentResults, pageDetails, persons } = org;
 
-    const evidence = collectEvidence(enrichmentResults);
-    const signals = buildOrgSignals(orgName, enrichmentResults, pageDetails);
+    // Only attach evidence that actually mentions this organization
+    const { orgSpecific, marketContext } = filterEvidenceForOrg(enrichmentResults, orgName);
+    // Spill non-org evidence into run-level market signals
+    for (const r of marketContext) {
+      if (r.title && r.snippet) {
+        runMarketSignals.push({ title: r.title, url: r.url || undefined, snippet: r.snippet.slice(0, 200), reason: `enrichment_spillover_from_${orgName}` });
+      }
+    }
+
+    const evidence = collectEvidence(orgSpecific);
+    const signals = buildOrgSignals(orgName, orgSpecific, pageDetails);
+    debugStats.accountSignalsAttached += signals.filter((s) => s.verification !== "unverified").length;
     const confidence = computeOrgConfidence({ orgName, signals, pageDetails, fromLiveSearch, persons });
     const { economicBuyer, businessChampion, technicalInfluencers } = buildBuyerMap(orgName, capabilityMap, persons);
 
@@ -1376,9 +1496,21 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
       ? (() => { try { return new URL(enrichmentResults.find((r) => r.url.startsWith("http") && extractDomain(r.url).includes(orgName.split(" ")[0].toLowerCase()))!.url).origin; } catch { return null; } })()
       : null;
 
+    const hasOrgSpecificEvidence = evidence.some((e) => e.url.startsWith("http"));
+    const accountStatus: AccountRecommendation["verificationStatus"] =
+      selectedAccountBase === "seed_accounts" && hasOrgSpecificEvidence
+        ? "candidate_unverified"
+        : hasOrgSpecificEvidence
+          ? "candidate_unverified"
+          : "fallback_unverified";
+
     const missingDataFlags = [
-      ...(!fromLiveSearch ? ["Fallback / demo candidate — not sourced from live search."] : []),
-      ...(evidence.filter((e) => e.url.startsWith("http")).length === 0 ? ["No public web citation available. Verify before outreach."] : []),
+      ...(selectedAccountBase !== "seed_accounts"
+        ? [`${orgName} was selected as a ${input.targetMarket} target (${selectedAccountBase === "healthcare_default" ? "approved healthcare target list" : "market default list"}).`]
+        : []),
+      ...(!hasOrgSpecificEvidence
+        ? [`No organization-specific source verified for ${orgName} in this run. Market-level healthcare signals applied.`]
+        : []),
       ...(providerStatus.fallbackModeActive ? ["Unverified fallback run: required provider key(s) missing."] : [])
     ];
 
@@ -1386,11 +1518,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
       id: randomUUID(),
       companyName: orgName,
       website,
-      verificationStatus: fromLiveSearch && evidence.some((e) => e.url.startsWith("http"))
-        ? "candidate_unverified"
-        : !fromLiveSearch && evidence.some((e) => e.url.startsWith("http"))
-          ? "candidate_unverified"
-          : fromLiveSearch ? "candidate_unverified" : "fallback_unverified",
+      verificationStatus: accountStatus,
       fitReason: synthesis.fitReason,
       marketFit: `${orgName} appears in the ${input.targetMarket} market${input.geography ? ` for ${input.geography}` : ""}. Confirm qualification from cited source URLs before outreach.`,
       signals,
@@ -1424,6 +1552,23 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   // Sort by confidence
   accounts.sort((a, b) => b.confidenceScore - a.confidenceScore);
 
+  // ─ Stage 5: Final guard ────────────────────────────────────────────────────
+  // Remove any account whose name is not in the selected org list (safety net).
+  const { accounts: sanitized, replacements } = sanitizeFinalAccounts(
+    accounts,
+    selectedOrgs,
+    capabilityMap,
+    input
+  );
+  accounts.length = 0;
+  accounts.push(...sanitized);
+  debugStats.finalGuardReplacements = replacements;
+  if (replacements > 0) {
+    warnings.push(
+      `Final guard removed ${replacements} result${replacements !== 1 ? "s" : ""} that did not match selected organizations and replaced with approved targets.`
+    );
+  }
+
   if (accounts.length === 0) {
     warnings.push("No target accounts produced. Add seed accounts or configure a valid search provider.");
   }
@@ -1454,7 +1599,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     createdAt,
     updatedAt: now(),
     debugStats,
-    marketSignals: stats.marketSignals
+    marketSignals: runMarketSignals
   };
 }
 

@@ -7,12 +7,15 @@ import {
   cosineSimilarity,
   computeOrgConfidence,
   exportRun,
+  filterEvidenceForOrg,
   groupSearchResults,
   groupSearchResultsWithStats,
   isValidOrganizationName,
   productCapabilityMapper,
   retrieveKbContext,
   runResearch,
+  sanitizeFinalAccounts,
+  selectOrganizations,
   synthesizeOrgFit
 } from "@/lib/services";
 import type { KbChunk, ResearchInput, ResearchRun, RunDebugStats, SearchResult } from "@/lib/types";
@@ -185,6 +188,99 @@ describe("groupSearchResults", () => {
   });
 });
 
+// ─── selectOrganizations ─────────────────────────────────────────────────────
+describe("selectOrganizations", () => {
+  it("returns seed accounts when provided", () => {
+    const { orgs, base } = selectOrganizations({ ...input, seedAccounts: ["ACME Health", "BetaCare"] });
+    expect(orgs).toEqual(["ACME Health", "BetaCare"]);
+    expect(base).toBe("seed_accounts");
+  });
+
+  it("returns approved healthcare fallback when no seeds and market is healthcare", () => {
+    const { orgs, base } = selectOrganizations(input); // input.seedAccounts = []
+    expect(orgs).toContain("Mayo Clinic");
+    expect(orgs).toContain("Cleveland Clinic");
+    expect(orgs).toContain("HCA Healthcare");
+    expect(base).toBe("healthcare_default");
+  });
+
+  it("never returns article titles as selected orgs", () => {
+    const { orgs } = selectOrganizations(input);
+    for (const org of orgs) {
+      expect(org).not.toMatch(/what is|narrative review|ransomware attacks|data breach statistics/i);
+      expect(isValidOrganizationName(org)).toBe(true);
+    }
+  });
+});
+
+// ─── filterEvidenceForOrg ─────────────────────────────────────────────────────
+describe("filterEvidenceForOrg", () => {
+  it("keeps results that mention the org name, discards generic articles", () => {
+    const results: SearchResult[] = [
+      { title: "Cleveland Clinic CISO cybersecurity", url: "https://news.example.com/cleveland-clinic", snippet: "Cleveland Clinic invests in security operations.", verificationLevel: "snippet_only" },
+      { title: "Healthcare Data Breach Statistics – Updated for 2026", url: "https://healthcaredive.com/stats", snippet: "Healthcare data breaches increased.", verificationLevel: "snippet_only" },
+      { title: "Ransomware Attacks on Hospitals Have Changed", url: "https://news.example.com/ransomware", snippet: "Hospitals face ransomware.", verificationLevel: "snippet_only" },
+    ];
+    const { orgSpecific, marketContext } = filterEvidenceForOrg(results, "Cleveland Clinic");
+    expect(orgSpecific.length).toBe(1);
+    expect(orgSpecific[0].title).toContain("Cleveland Clinic");
+    expect(marketContext.length).toBe(2);
+  });
+
+  it("attaches org domain evidence to the org", () => {
+    const results: SearchResult[] = [
+      { title: "Mayo Clinic - Official Site", url: "https://www.mayoclinic.org/about-mayo-clinic", snippet: "Mayo Clinic is a nonprofit medical center.", verificationLevel: "snippet_only" },
+    ];
+    const { orgSpecific } = filterEvidenceForOrg(results, "Mayo Clinic");
+    expect(orgSpecific.length).toBe(1);
+  });
+
+  it("does not attach generic healthcare articles to a specific org", () => {
+    const results: SearchResult[] = [
+      { title: "Healthcare Incident Response Services for Cybersecurity", url: "https://vendor.com/services", snippet: "Generic incident response services.", verificationLevel: "snippet_only" },
+      { title: "Security Incidents and Data Breaches", url: "https://news.example.com/breach", snippet: "Generic breach statistics.", verificationLevel: "snippet_only" },
+    ];
+    const { orgSpecific } = filterEvidenceForOrg(results, "HCA Healthcare");
+    expect(orgSpecific.length).toBe(0);
+  });
+});
+
+// ─── sanitizeFinalAccounts ────────────────────────────────────────────────────
+describe("sanitizeFinalAccounts", () => {
+  it("removes accounts not in selectedOrgs and backfills with approved orgs", async () => {
+    const cap = await productCapabilityMapper(input, []);
+    const badAccount = {
+      id: "bad-1",
+      companyName: "Healthcare Data Breach Statistics",
+      website: null,
+      verificationStatus: "fallback_unverified" as const,
+      fitReason: "",
+      marketFit: "",
+      signals: [],
+      painPoints: [],
+      ciscoCapabilityMatch: [],
+      ciscoFitSummary: "",
+      economicBuyer: { roleTitle: "CIO", department: "", whyThisRole: "", contactStatus: "role_only" as const },
+      businessChampion: { roleTitle: "Director IT", department: "", whyThisRole: "", contactStatus: "role_only" as const },
+      technicalInfluencers: [],
+      evidence: [],
+      kbInfluence: [],
+      scores: { fit: 0, painEvidence: 0, buyerIdentification: 0, contactVerification: 0, overall: 0 },
+      confidenceScore: 0,
+      confidenceLabel: "fallback" as const,
+      nextStep: "",
+      missingDataFlags: []
+    };
+    const selectedOrgs = ["Mayo Clinic", "Cleveland Clinic"];
+    const { accounts, replacements } = sanitizeFinalAccounts([badAccount], selectedOrgs, cap, input);
+    expect(replacements).toBe(1);
+    const names = accounts.map((a) => a.companyName);
+    expect(names).not.toContain("Healthcare Data Breach Statistics");
+    expect(names).toContain("Mayo Clinic");
+    expect(names).toContain("Cleveland Clinic");
+  });
+});
+
 // ─── buildDiscoveryQueries ────────────────────────────────────────────────────
 describe("buildDiscoveryQueries", () => {
   it("produces healthcare-specific queries that do NOT include the product name", () => {
@@ -299,12 +395,14 @@ describe("KB retrieval helpers", () => {
 // ─── synthesizeOrgFit ─────────────────────────────────────────────────────────
 describe("synthesizeOrgFit", () => {
   const makeDebugStats = (): RunDebugStats => ({
-    discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0,
+    selectedAccountBase: "healthcare_default", selectedOrganizationNames: [],
+    discoveryQueriesRun: 0, broadSearchResultsForContext: 0,
+    enrichmentQueriesRun: 0, rawResultCount: 0,
     rejectedAsArticleTitle: 0, rejectedAsGenericConcept: 0, rejectedAsVendorProduct: 0,
     rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
     extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
     fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
-    marketSignalsOnly: 0, openAiSynthesisUsed: false
+    marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false
   });
 
   it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
@@ -330,19 +428,34 @@ describe("synthesizeOrgFit", () => {
 
 // ─── runResearch (integration) ────────────────────────────────────────────────
 describe("runResearch", () => {
-  it("uses approved fallback orgs when all discovery results are article titles", async () => {
-    // Even if every search result is a generic article title, we must get the right fallback orgs
+  it("uses EXACTLY the approved fallback orgs for healthcare when no seeds provided", async () => {
     const run = await runResearch(input, []);
     const names = run.accounts.map((a) => a.companyName);
     const approvedFallbacks = ["Mayo Clinic", "Cleveland Clinic", "HCA Healthcare", "CommonSpirit Health", "Tenet Healthcare"];
+    // Every account MUST be from the approved fallback list
     for (const name of names) {
-      // Every account must be a valid org name — never an article title
+      expect(approvedFallbacks).toContain(name);
       expect(isValidOrganizationName(name)).toBe(true);
-      expect(name).not.toMatch(/what is|how to|narrative review|ransomware attacks in|cybersecurity challenges|security operations center/i);
     }
-    // At least some approved fallback names should be present
+    // At least 3 of the 5 approved fallbacks must be present
     const matched = names.filter((n) => approvedFallbacks.includes(n));
-    expect(matched.length).toBeGreaterThan(0);
+    expect(matched.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("uses seed accounts when provided instead of fallback list", async () => {
+    const seedInput = { ...input, seedAccounts: ["Northwell Health", "Kaiser Permanente"], maxResults: 2 };
+    const run = await runResearch(seedInput, []);
+    const names = run.accounts.map((a) => a.companyName);
+    expect(names).toContain("Northwell Health");
+    expect(names).toContain("Kaiser Permanente");
+    // Should NOT include generic healthcare fallback when seeds are provided
+    expect(names).not.toContain("Mayo Clinic");
+  });
+
+  it("debug stats show selectedAccountBase and selectedOrganizationNames", async () => {
+    const run = await runResearch(input, []);
+    expect(run.debugStats?.selectedAccountBase).toBe("healthcare_default");
+    expect(run.debugStats?.selectedOrganizationNames).toContain("Mayo Clinic");
   });
 
   it("fills healthcare fallback candidates when live results are insufficient", async () => {
