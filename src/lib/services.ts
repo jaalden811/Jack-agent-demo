@@ -11,12 +11,89 @@ import type {
   EvidenceSourceType,
   KbChunk,
   KbDocument,
+  ProviderCheck,
+  ProviderReadiness,
+  ProviderStatusSnapshot,
   ResearchInput,
   ResearchRun,
   SearchResult
 } from "@/lib/types";
 
 const now = () => new Date().toISOString();
+
+function providerCheck(
+  name: string,
+  configured: boolean,
+  required: boolean,
+  readyMessage: string,
+  missingMessage: string
+): ProviderCheck {
+  return {
+    name,
+    configured,
+    required,
+    status: configured ? "ready" : required ? "missing_required_provider" : "missing_optional_provider",
+    message: configured ? readyMessage : missingMessage
+  };
+}
+
+export function getProviderDiagnostics(): ProviderStatusSnapshot {
+  const config = getConfig();
+  const checks = [
+    providerCheck(
+      "OpenAI embeddings",
+      Boolean(config.OPENAI_API_KEY),
+      true,
+      "Ready: OPENAI_API_KEY is configured; production-quality embeddings will be requested.",
+      "Missing required provider: OPENAI_API_KEY is not configured. Development fallback embeddings will be used and runs are unverified."
+    ),
+    providerCheck(
+      `${config.SEARCH_PROVIDER} search`,
+      Boolean(config.SEARCH_API_KEY),
+      true,
+      `Ready: SEARCH_API_KEY is configured for ${config.SEARCH_PROVIDER}.`,
+      "Missing required provider: SEARCH_API_KEY is not configured. Full verified research is blocked; seed/demo mode is fallback only."
+    ),
+    providerCheck(
+      "Firecrawl extraction",
+      Boolean(config.FIRECRAWL_API_KEY),
+      false,
+      "Ready: FIRECRAWL_API_KEY is configured; page extraction will be attempted.",
+      "Missing optional provider: FIRECRAWL_API_KEY is not configured. Evidence will be snippet-only and lower confidence."
+    ),
+    providerCheck(
+      "Licensed contact enrichment",
+      config.hasContactEnrichment,
+      false,
+      "Ready: at least one licensed contact enrichment key is configured.",
+      "Missing optional provider: no licensed contact enrichment key is configured. Contacts will remain role/persona-level unless public evidence verifies them."
+    )
+  ];
+  const missingRequired = checks.some((check) => check.required && !check.configured);
+  const missingOptional = checks.some((check) => !check.required && !check.configured);
+  const fallbackModeActive = missingRequired;
+  const overall: ProviderReadiness = fallbackModeActive
+    ? "fallback_mode_active"
+    : missingOptional
+      ? "missing_optional_provider"
+      : "ready";
+
+  return {
+    overall,
+    searchProvider: config.SEARCH_PROVIDER,
+    checks,
+    liveSearchAvailable: Boolean(config.SEARCH_API_KEY),
+    openAiEmbeddingsAvailable: Boolean(config.OPENAI_API_KEY),
+    firecrawlAvailable: Boolean(config.FIRECRAWL_API_KEY),
+    contactEnrichmentAvailable: config.hasContactEnrichment,
+    fallbackModeActive,
+    summary: fallbackModeActive
+      ? "Fallback mode active: missing required provider(s). Results must be treated as unverified."
+      : missingOptional
+        ? "Ready for live search with missing optional provider(s). Some evidence/contact fields may be lower confidence."
+        : "Ready: all configured provider checks passed."
+  };
+}
 
 export async function withRetry<T>(
   operation: () => Promise<T>,
@@ -212,6 +289,7 @@ export async function productCapabilityMapper(
     title: chunk.documentName,
     snippet: chunk.content.slice(0, 260),
     sourceType: "uploaded_kb",
+    verificationLevel: "kb",
     retrievedAt: now()
   }));
 
@@ -252,68 +330,151 @@ function keywordHints(text: string) {
     .map(([, hint]) => hint);
 }
 
-export async function searchMarketAccounts(input: ResearchInput, capabilityMap: CapabilityMap) {
+type SearchOptions = {
+  query: string;
+  maxResults: number;
+};
+
+type SearchProviderClient = {
+  search(options: SearchOptions): Promise<SearchResult[]>;
+};
+
+function buildMarketQuery(input: ResearchInput, capabilityMap: CapabilityMap) {
+  return [
+    `"${input.ciscoProduct}"`,
+    input.targetMarket,
+    input.geography,
+    input.companySize,
+    capabilityMap.painCategories.slice(0, 3).join(" OR "),
+    "company press release job posting annual report cybersecurity networking operations"
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function createSearchProviderClient(): SearchProviderClient | null {
   const config = getConfig();
-  if (!config.SEARCH_API_KEY) {
+  if (!config.SEARCH_API_KEY) return null;
+
+  if (config.SEARCH_PROVIDER === "brave") {
+    return {
+      async search(options) {
+        type BraveResponse = { web?: { results?: Array<{ title: string; url: string; description?: string; age?: string }> } };
+        const data = await withRetry(
+          () =>
+            fetchJsonWithTimeout<BraveResponse>(
+              `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(options.query)}&count=${options.maxResults}`,
+              { headers: { Accept: "application/json", "X-Subscription-Token": config.SEARCH_API_KEY! } }
+            ),
+          { label: "Brave search" }
+        );
+        return (data.web?.results ?? []).map((item) => ({
+          title: item.title,
+          url: item.url,
+          snippet: item.description ?? "",
+          publishedDate: item.age,
+          sourceType: classifySource(item.url, item.title),
+          verificationLevel: "snippet_only"
+        }));
+      }
+    };
+  }
+
+  if (config.SEARCH_PROVIDER === "exa") {
+    return {
+      async search(options) {
+        type ExaResponse = { results?: Array<{ title?: string; url: string; text?: string; publishedDate?: string }> };
+        const data = await withRetry(
+          () =>
+            fetchJsonWithTimeout<ExaResponse>("https://api.exa.ai/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-api-key": config.SEARCH_API_KEY! },
+              body: JSON.stringify({ query: options.query, numResults: options.maxResults, contents: { text: true } })
+            }),
+          { label: "Exa search" }
+        );
+        return (data.results ?? []).map((item) => ({
+          title: item.title ?? item.url,
+          url: item.url,
+          snippet: item.text ?? "",
+          publishedDate: item.publishedDate,
+          sourceType: classifySource(item.url, item.title ?? ""),
+          verificationLevel: "snippet_only"
+        }));
+      }
+    };
+  }
+
+  if (config.SEARCH_PROVIDER === "serpapi") {
+    return {
+      async search(options) {
+        type SerpResponse = { organic_results?: Array<{ title: string; link: string; snippet?: string; date?: string }> };
+        const data = await withRetry(
+          () =>
+            fetchJsonWithTimeout<SerpResponse>(
+              `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(options.query)}&num=${options.maxResults}&api_key=${encodeURIComponent(config.SEARCH_API_KEY!)}`,
+              { headers: { Accept: "application/json" } }
+            ),
+          { label: "SerpAPI search" }
+        );
+        return (data.organic_results ?? []).map((item) => ({
+          title: item.title,
+          url: item.link,
+          snippet: item.snippet ?? "",
+          publishedDate: item.date,
+          sourceType: classifySource(item.link, item.title),
+          verificationLevel: "snippet_only"
+        }));
+      }
+    };
+  }
+
+  return {
+    async search(options) {
+      type TavilyResponse = { results?: Array<{ title: string; url: string; content?: string; published_date?: string }> };
+      const data = await withRetry(
+        () =>
+          fetchJsonWithTimeout<TavilyResponse>("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              api_key: config.SEARCH_API_KEY,
+              query: options.query,
+              max_results: options.maxResults,
+              search_depth: "advanced",
+              include_answer: false
+            })
+          }),
+        { label: "Tavily search" }
+      );
+      return (data.results ?? []).map((item) => ({
+        title: item.title,
+        url: item.url,
+        snippet: item.content ?? "",
+        publishedDate: item.published_date,
+        sourceType: classifySource(item.url, item.title),
+        verificationLevel: "snippet_only"
+      }));
+    }
+  };
+}
+
+export async function searchMarketAccounts(input: ResearchInput, capabilityMap: CapabilityMap) {
+  const provider = createSearchProviderClient();
+  if (!provider) {
     return input.seedAccounts.map<SearchResult>((name) => ({
       title: name,
       url: "",
       snippet: "Seed account supplied by user. Public evidence search was not run because SEARCH_API_KEY is not configured.",
-      sourceType: "search_result"
+      sourceType: "search_result",
+      verificationLevel: "unverified"
     }));
   }
 
-  const query = [
-    input.targetMarket,
-    input.geography,
-    capabilityMap.painCategories.slice(0, 3).join(" OR "),
-    "company press release job posting annual report"
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (config.SEARCH_PROVIDER === "brave") {
-    type BraveResponse = { web?: { results?: Array<{ title: string; url: string; description?: string; age?: string }> } };
-    const data = await withRetry(
-      () =>
-        fetchJsonWithTimeout<BraveResponse>(
-          `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${input.maxResults * 3}`,
-          { headers: { Accept: "application/json", "X-Subscription-Token": config.SEARCH_API_KEY! } }
-        ),
-      { label: "Brave search" }
-    );
-    return (data.web?.results ?? []).map((item) => ({
-      title: item.title,
-      url: item.url,
-      snippet: item.description ?? "",
-      publishedDate: item.age,
-      sourceType: classifySource(item.url, item.title)
-    }));
-  }
-
-  type TavilyResponse = { results?: Array<{ title: string; url: string; content?: string; published_date?: string }> };
-  const data = await withRetry(
-    () =>
-      fetchJsonWithTimeout<TavilyResponse>("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: config.SEARCH_API_KEY,
-          query,
-          max_results: input.maxResults * 3,
-          search_depth: "advanced",
-          include_answer: false
-        })
-      }),
-    { label: `${config.SEARCH_PROVIDER} search` }
-  );
-  return (data.results ?? []).map((item) => ({
-    title: item.title,
-    url: item.url,
-    snippet: item.content ?? "",
-    publishedDate: item.published_date,
-    sourceType: classifySource(item.url, item.title)
-  }));
+  return provider.search({
+    query: buildMarketQuery(input, capabilityMap),
+    maxResults: input.maxResults * 4
+  });
 }
 
 function classifySource(url: string, title: string): EvidenceSourceType {
@@ -333,10 +494,77 @@ export function collectEvidence(results: SearchResult[]) {
       url: result.url || "unverified://seed-account",
       title: result.title,
       date: result.publishedDate,
-      snippet: result.snippet.slice(0, 500),
+      snippet: (result.extractedContent ?? result.snippet).slice(0, 700),
       sourceType: result.sourceType ?? "search_result",
+      verificationLevel:
+        result.sourceType === "uploaded_kb"
+          ? "kb"
+          : (result.verificationLevel ?? (result.url ? "snippet_only" : "unverified")),
       retrievedAt: now()
     }));
+}
+
+export async function collectPageEvidence(results: SearchResult[]) {
+  const config = getConfig();
+  if (!config.FIRECRAWL_API_KEY) {
+    return results.map((result) => ({
+      ...result,
+      verificationLevel: result.verificationLevel ?? (result.url ? "snippet_only" : "unverified")
+    }));
+  }
+
+  type FirecrawlResponse = {
+    success?: boolean;
+    data?: {
+      markdown?: string;
+      metadata?: {
+        title?: string;
+        sourceURL?: string;
+        statusCode?: number;
+      };
+    };
+  };
+
+  const enhanced: SearchResult[] = [];
+  for (const result of results) {
+    if (!result.url.startsWith("http")) {
+      enhanced.push({ ...result, verificationLevel: "unverified" });
+      continue;
+    }
+
+    try {
+      const data = await withRetry(
+        () =>
+          fetchJsonWithTimeout<FirecrawlResponse>(
+            "https://api.firecrawl.dev/v1/scrape",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${config.FIRECRAWL_API_KEY}`
+              },
+              body: JSON.stringify({ url: result.url, formats: ["markdown"], onlyMainContent: true })
+            },
+            15000
+          ),
+        { label: "Firecrawl scrape", retries: 1 }
+      );
+      const markdown = data.data?.markdown?.replace(/\s+/g, " ").trim();
+      enhanced.push({
+        ...result,
+        title: data.data?.metadata?.title ?? result.title,
+        extractedContent: markdown || result.snippet,
+        verificationLevel: markdown ? "full_page" : "snippet_only"
+      });
+    } catch {
+      enhanced.push({
+        ...result,
+        verificationLevel: "snippet_only",
+        snippet: `${result.snippet} Firecrawl extraction failed; using search snippet only.`
+      });
+    }
+  }
+  return enhanced;
 }
 
 export function identifyCompanyName(result: SearchResult) {
@@ -379,6 +607,7 @@ export function personRoleIdentifier(
     citations: citationEvidence,
     missingDataFlags: [
       "No verified public person record found.",
+      "No verified contact found.",
       "No verified business email available; do not infer or pattern-match an email."
     ]
   });
@@ -407,14 +636,17 @@ export function personRoleIdentifier(
 export async function contactEnricher(contact: ContactRecommendation) {
   const config = getConfig();
   if (!config.hasContactEnrichment) {
-    return contact;
+    return {
+      ...contact,
+      missingDataFlags: Array.from(new Set([...contact.missingDataFlags, "No licensed contact enrichment provider configured."]))
+    };
   }
 
   return {
     ...contact,
     missingDataFlags: [
       ...contact.missingDataFlags,
-      "Licensed contact enrichment is configured, but this implementation only accepts provider responses with explicit verification evidence."
+      "Licensed contact enrichment is configured, but no provider response with explicit verification evidence was available for this role."
     ]
   };
 }
@@ -425,8 +657,10 @@ export function confidenceScorer(params: {
   hasVerifiedContact: boolean;
 }) {
   const publicEvidence = params.evidence.filter((item) => item.url.startsWith("http"));
-  const fit = Math.min(100, 45 + params.kbInfluenceCount * 8 + publicEvidence.length * 4);
-  const painEvidence = Math.min(100, publicEvidence.length * 12);
+  const fullPageEvidence = publicEvidence.filter((item) => item.verificationLevel === "full_page");
+  const snippetEvidence = publicEvidence.filter((item) => item.verificationLevel === "snippet_only");
+  const fit = Math.min(100, 30 + params.kbInfluenceCount * 8 + fullPageEvidence.length * 8 + snippetEvidence.length * 4);
+  const painEvidence = Math.min(100, fullPageEvidence.length * 18 + snippetEvidence.length * 9);
   const buyerIdentification = publicEvidence.length > 0 ? 55 : 25;
   const contactVerification = params.hasVerifiedContact ? 100 : 0;
   const overall = Math.round(fit * 0.35 + painEvidence * 0.3 + buyerIdentification * 0.2 + contactVerification * 0.15);
@@ -438,7 +672,8 @@ export function generateReport(
   input: ResearchInput,
   capabilityMap: CapabilityMap,
   groupedResults: Map<string, SearchResult[]>,
-  kbChunks: KbChunk[]
+  kbChunks: KbChunk[],
+  providerStatus: ProviderStatusSnapshot
 ) {
   const accounts: AccountRecommendation[] = [];
   for (const [companyName, results] of groupedResults.entries()) {
@@ -458,14 +693,24 @@ export function generateReport(
     const publicEvidence = evidence.filter((item) => item.url.startsWith("http"));
     const missingDataFlags = [
       ...(publicEvidence.length === 0 ? ["No public web citation available for this account yet."] : []),
+      ...(publicEvidence.every((item) => item.verificationLevel !== "full_page")
+        ? ["Evidence is snippet-only; full-page verification was not available for this account."]
+        : []),
+      ...(providerStatus.fallbackModeActive
+        ? ["Unverified fallback run: missing required provider(s) when this recommendation was generated."]
+        : []),
       "Business email unavailable unless a licensed source verifies it.",
       "Named people are not invented; role/persona recommendations are used when person evidence is missing."
     ];
+    const website = publicEvidence[0]?.url ? originFromUrl(publicEvidence[0].url) : null;
 
     accounts.push({
       id: randomUUID(),
       companyName,
+      website,
       fitReason: `${companyName} matches ${input.targetMarket} signals relevant to ${capabilityMap.product}: ${capabilityMap.capabilities.slice(0, 3).join(", ")}.`,
+      marketFit: `${companyName} appears in the ${input.targetMarket} research set${input.geography ? ` for ${input.geography}` : ""}. Confirm account qualification from the cited source URLs before outreach.`,
+      ciscoCapabilityMatch: capabilityMap.capabilities.slice(0, 5),
       champion: roles.champion,
       economicBuyer: roles.economicBuyer,
       otherInfluencers: roles.influencers,
@@ -489,6 +734,14 @@ export function generateReport(
   return accounts.sort((a, b) => b.confidenceScore - a.confidenceScore);
 }
 
+function originFromUrl(url: string) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 export function groupSearchResults(results: SearchResult[]) {
   const grouped = new Map<string, SearchResult[]>();
   for (const result of results) {
@@ -504,27 +757,31 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   const runId = randomUUID();
   const createdAt = now();
   const warnings: string[] = [];
-  const config = getConfig();
+  const providerStatus = getProviderDiagnostics();
 
-  if (!config.SEARCH_API_KEY) {
+  if (!providerStatus.liveSearchAvailable) {
     warnings.push("SEARCH_API_KEY is not configured; results are limited to seed accounts and marked unverified.");
   }
-  if (!config.OPENAI_API_KEY) {
-    warnings.push("OPENAI_API_KEY is not configured; deterministic local embeddings are used for development.");
+  if (!providerStatus.openAiEmbeddingsAvailable) {
+    warnings.push("Development fallback embeddings used — not production-quality.");
   }
-  if (!config.FIRECRAWL_API_KEY) {
-    warnings.push("FIRECRAWL_API_KEY is not configured; evidence uses public search result metadata/snippets only.");
+  if (!providerStatus.firecrawlAvailable) {
+    warnings.push("FIRECRAWL_API_KEY is not configured; evidence uses search snippets only and is not full-page verified.");
   }
-  if (!config.hasContactEnrichment) {
+  if (!providerStatus.contactEnrichmentAvailable) {
     warnings.push("No licensed contact enrichment key configured; contacts degrade to role/persona-level recommendations.");
+  }
+  if (providerStatus.fallbackModeActive) {
+    warnings.push("Unverified fallback run: add required provider keys and use Rerun with configured APIs for live evidence.");
   }
 
   const { documents, chunks } = await ingestKnowledgeBase(runId, files);
   const capabilityMap = await productCapabilityMapper(input, chunks);
   const searchResults = await searchMarketAccounts(input, capabilityMap);
-  const grouped = groupSearchResults(searchResults);
+  const evidenceResults = await collectPageEvidence(searchResults);
+  const grouped = groupSearchResults(evidenceResults);
   const relevantKb = await retrieveKbContext(`${input.ciscoProduct} ${input.targetMarket}`, chunks, 5);
-  const accounts = generateReport(input, capabilityMap, grouped, relevantKb);
+  const accounts = generateReport(input, capabilityMap, grouped, relevantKb, providerStatus);
 
   for (const account of accounts) {
     account.champion = await contactEnricher(account.champion);
@@ -540,6 +797,15 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     id: runId,
     input,
     status: "completed",
+    providerStatus,
+    liveSearchUsed: providerStatus.liveSearchAvailable,
+    openAiEmbeddingsUsed: providerStatus.openAiEmbeddingsAvailable,
+    firecrawlExtractionUsed: accounts.some((account) =>
+      account.evidence.some((evidence) => evidence.verificationLevel === "full_page")
+    ),
+    contactEnrichmentUsed: providerStatus.contactEnrichmentAvailable,
+    isVerified: !providerStatus.fallbackModeActive && accounts.every((account) => account.evidence.some((evidence) => evidence.url.startsWith("http"))),
+    isFallback: providerStatus.fallbackModeActive,
     warnings,
     accounts,
     kbDocuments: documents,
@@ -557,24 +823,36 @@ export function exportRun(run: ResearchRun, format: "json" | "csv" | "md") {
   if (format === "csv") {
     const header = [
       "company",
+      "website",
       "confidence",
+      "verified_run",
+      "fallback_run",
       "fit_reason",
+      "market_fit",
+      "capability_match",
       "champion_title",
       "economic_buyer_title",
       "verified_email",
       "evidence_urls",
+      "evidence_verification",
       "missing_data_flags",
       "outreach_angle"
     ];
     const rows = run.accounts.map((account) =>
       [
         account.companyName,
+        account.website ?? "",
         account.confidenceScore,
+        run.isVerified,
+        run.isFallback,
         account.fitReason,
+        account.marketFit,
+        account.ciscoCapabilityMatch.join(" | "),
         account.champion.title,
         account.economicBuyer.title,
         account.champion.businessEmail ?? "",
         account.evidence.map((item) => item.url).join(" | "),
+        account.evidence.map((item) => `${item.title}: ${item.verificationLevel}`).join(" | "),
         account.missingDataFlags.join(" | "),
         account.suggestedOutreachAngle
       ]
@@ -589,10 +867,15 @@ export function exportRun(run: ResearchRun, format: "json" | "csv" | "md") {
     ``,
     `Product: ${run.input.ciscoProduct}`,
     `Market: ${run.input.targetMarket}`,
+    `Run status: ${run.isFallback ? "Unverified fallback run" : run.isVerified ? "Verified live-provider run" : "Low-confidence run"}`,
+    `Provider summary: ${run.providerStatus.summary}`,
     ``,
     ...run.accounts.flatMap((account) => [
       `## ${account.companyName} (${account.confidenceScore})`,
+      `Website: ${account.website ?? "Not verified"}`,
       account.fitReason,
+      `Market fit: ${account.marketFit}`,
+      `Cisco capability match: ${account.ciscoCapabilityMatch.join(", ")}`,
       ``,
       `- Champion: ${account.champion.name ?? "Not verified"} / ${account.champion.title}`,
       `- Economic buyer: ${account.economicBuyer.name ?? "Not verified"} / ${account.economicBuyer.title}`,

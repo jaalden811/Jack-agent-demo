@@ -1,13 +1,40 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getConfig } from "@/lib/config";
-import type { ResearchRun } from "@/lib/types";
+import type { ProviderStatusSnapshot, ResearchRun } from "@/lib/types";
 
 type ResearchIndex = {
   runs: ResearchRun[];
 };
 
 const emptyIndex: ResearchIndex = { runs: [] };
+
+function legacyFallbackStatus(): ProviderStatusSnapshot {
+  return {
+    overall: "fallback_mode_active",
+    searchProvider: "tavily",
+    checks: [],
+    liveSearchAvailable: false,
+    openAiEmbeddingsAvailable: false,
+    firecrawlAvailable: false,
+    contactEnrichmentAvailable: false,
+    fallbackModeActive: true,
+    summary: "Legacy run without provider snapshot; treat as unverified fallback."
+  };
+}
+
+function normalizeRun(run: ResearchRun) {
+  return {
+    ...run,
+    providerStatus: run.providerStatus ?? legacyFallbackStatus(),
+    liveSearchUsed: run.liveSearchUsed ?? false,
+    openAiEmbeddingsUsed: run.openAiEmbeddingsUsed ?? false,
+    firecrawlExtractionUsed: run.firecrawlExtractionUsed ?? false,
+    contactEnrichmentUsed: run.contactEnrichmentUsed ?? false,
+    isVerified: run.isVerified ?? false,
+    isFallback: run.isFallback ?? true
+  };
+}
 
 function dataFilePath() {
   const config = getConfig();
@@ -47,10 +74,11 @@ export async function saveRun(run: ResearchRun) {
 
 export async function getRun(runId: string) {
   const index = await readIndex();
-  return index.runs.find((run) => run.id === runId) ?? null;
+  const run = index.runs.find((item) => item.id === runId);
+  return run ? normalizeRun(run) : null;
 }
 
 export async function listRuns() {
   const index = await readIndex();
-  return index.runs;
+  return index.runs.map(normalizeRun);
 }
