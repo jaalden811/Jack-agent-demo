@@ -8,10 +8,12 @@ import type {
   BuyerTarget,
   CapabilityMap,
   Citation,
+  ContactCandidate,
   EvidenceSourceType,
   KbChunk,
   KbDocument,
   OrgSignal,
+  PriorityLevel,
   ProviderCheck,
   ProviderReadiness,
   ProviderStatusSnapshot,
@@ -652,6 +654,231 @@ export function buildEnrichmentQueries(orgName: string): string[] {
   ];
 }
 
+// ─── Source quality scoring ───────────────────────────────────────────────────
+
+/** Parse a year from snippet/title for recency scoring. */
+function extractYearFromText(text: string): number | null {
+  const match = text.match(/\b(20[1-9][0-9])\b/);
+  return match ? parseInt(match[1]) : null;
+}
+
+/** Score a search result for quality/relevance to an org. Higher = better. */
+export function computeSourceQualityScore(result: SearchResult, orgName: string): number {
+  let score = 0;
+  const combined = `${result.title} ${result.snippet}`.toLowerCase();
+  const orgLower = orgName.toLowerCase();
+  const orgWords = orgLower.split(/\s+/).filter((w) => w.length > 3);
+  const domain = extractDomain(result.url.toLowerCase());
+
+  const domainMatchesOrg = orgWords.length > 0 && orgWords.some((w) => domain.includes(w));
+  const mentionsOrg = combined.includes(orgLower) || (orgWords.length >= 2 && orgWords.every((w) => combined.includes(w)));
+
+  if (domainMatchesOrg) score += 30;
+  if (result.url.includes("linkedin.com") && mentionsOrg) score += 25;
+  if (/annual.report|10-k|investor.relations|sec\.gov|cms\.gov/i.test(combined + domain)) score += 20;
+  if (/healthcaredive|beckershospital|healthcareitnews|modernhealthcare|fiercehealthcare|hhs\.gov/i.test(domain)) score += 20;
+  if (result.sourceType === "job_post" && mentionsOrg) score += 15;
+  if (mentionsOrg) score += 10;
+  if (/cyber|ransomware|soc|ciso|security operations|data breach|incident response/i.test(combined)) score += 10;
+
+  // Recency bonus
+  const year = extractYearFromText(`${result.title} ${result.snippet} ${result.publishedDate ?? ""}`);
+  if (year) {
+    const currentYear = new Date().getFullYear();
+    if (currentYear - year <= 1) score += 15;
+    else if (currentYear - year <= 3) score += 10;
+  }
+
+  // Penalties for generic content
+  if (!mentionsOrg && !domainMatchesOrg) {
+    score -= 40;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
+// ─── Dynamic discovery queries ────────────────────────────────────────────────
+
+/** Queries designed to discover real organizations in the target market — not Cisco product queries. */
+export function buildDynamicDiscoveryQueries(input: ResearchInput): string[] {
+  const geo = input.geography || "North America";
+  const lower = input.targetMarket.toLowerCase();
+
+  if (lower.includes("healthcare") || lower.includes("health")) {
+    return [
+      `${geo} hospital system CISO cybersecurity security operations`,
+      `healthcare organization ransomware data breach incident response`,
+      `health system cybersecurity leadership security program`,
+      `hospital network security operations center endpoint security`,
+      `healthcare provider data breach HIPAA security leadership`
+    ];
+  }
+  if (lower.includes("retail")) {
+    return [
+      `${geo} retail company cybersecurity CISO security operations`,
+      `retailer data breach security program leadership`
+    ];
+  }
+  if (lower.includes("government") || lower.includes("sled")) {
+    return [
+      `${geo} state government agency cybersecurity security operations`,
+      `local government county CISO cybersecurity program`
+    ];
+  }
+  return [
+    `${geo} "${input.targetMarket}" company cybersecurity CISO security operations`,
+    `"${input.targetMarket}" organization cybersecurity security incident response`
+  ];
+}
+
+/** Use OpenAI to extract verified org names from search results snippets. */
+async function extractOrgsWithOpenAI(
+  results: SearchResult[],
+  input: ResearchInput,
+  apiKey: string,
+  debugStats: RunDebugStats
+): Promise<string[]> {
+  const snippets = results
+    .slice(0, 15)
+    .map((r, i) => `[${i}] Title: ${r.title}\nURL: ${r.url}\nSnippet: ${r.snippet.slice(0, 200)}`)
+    .join("\n\n");
+
+  const prompt = `You are classifying web search results to find real ${input.targetMarket} organizations.
+
+Results:
+${snippets}
+
+Target market: ${input.targetMarket}
+Geography: ${input.geography || "North America"}
+
+Return a JSON object with a "organizations" array of real organization names (not article titles, report names, vendor names, or generic concepts).
+Only include actual ${input.targetMarket} organizations clearly identifiable from the snippets/titles.
+{"organizations": ["Org Name 1", "Org Name 2"]}`;
+
+  try {
+    const client = new OpenAI({ apiKey, timeout: 15000, maxRetries: 0 });
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 400,
+      temperature: 0.1
+    });
+    debugStats.openAiEntityExtractionRan = true;
+    const text = response.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(text) as { organizations?: string[] };
+    return (parsed.organizations ?? []).filter(isValidOrganizationName).slice(0, 10);
+  } catch (error) {
+    console.warn("OpenAI entity extraction failed (non-fatal):", sanitizeProviderError(error));
+    return [];
+  }
+}
+
+// ─── LinkedIn / contact discovery ─────────────────────────────────────────────
+
+/** Public search queries targeting LinkedIn and public profiles for buyer roles. No login required. */
+export function buildLinkedInBuyerQueries(orgName: string): string[] {
+  return [
+    `site:linkedin.com/in "${orgName}" CISO`,
+    `site:linkedin.com/in "${orgName}" "Chief Information Security Officer"`,
+    `site:linkedin.com/in "${orgName}" "VP Information Security"`,
+    `site:linkedin.com/in "${orgName}" "Director Security Operations"`,
+    `"${orgName}" CISO "information security" cybersecurity`,
+    `"${orgName}" "Chief Information Officer" cybersecurity security`
+  ];
+}
+
+/** Classify a buyer role title into a buyer category. */
+export function categorizeContact(titleText: string): ContactCandidate["roleCategory"] {
+  const t = titleText;
+  // C-suite / Chief titles → economic buyer (budget owner)
+  if (/\b(cio|chief information officer|chief digital officer|chief technology officer|cto)\b/i.test(t)) return "economic_buyer";
+  if (/\b(ciso|chief information security officer|chief security officer)\b/i.test(t)) return "economic_buyer";
+  // VP-level and Director security → business champion (initiative driver)
+  if (/\b(vp.*(?:information\s+)?security|vice president.*security|director.*(security|it security|information security|infrastructure|soc)|head of security)\b/i.test(t)) return "business_champion";
+  // Technical practitioners → technical influencer
+  if (/\b(security architect|soc manager|network security architect|detection engineer|incident response|it security manager)\b/i.test(t)) return "technical_influencer";
+  return "unknown";
+}
+
+/** Extract a person name from a LinkedIn-style search result title. */
+function extractNameFromLinkedInResult(title: string): string | null {
+  // LinkedIn titles: "Name - Title at Company | LinkedIn" or "Name | Title | Company | LinkedIn"
+  const match = title.match(/^([A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,3})\s*[-|]/);
+  if (match?.[1]) {
+    const candidate = match[1].trim();
+    if (looksLikePersonName(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** Extract title from LinkedIn result title/snippet. */
+function extractTitleFromLinkedInResult(title: string, snippet: string): string | null {
+  // "Name - TITLE at Company | LinkedIn"
+  const dashMatch = title.match(/[-–]\s*([^|-]{4,80}?)\s*(?:at|@|\|)\s/);
+  if (dashMatch?.[1]) return dashMatch[1].trim();
+  // Title keywords in snippet
+  const kwMatch = snippet.match(
+    /\b(CISO|CIO|CTO|Chief Information Security Officer|Chief Information Officer|Director[^,|\n]{0,50}Security|VP[^,|\n]{0,50}Security|Security Architect|SOC Manager|Head of Security)\b/i
+  );
+  if (kwMatch) return kwMatch[0].trim();
+  return null;
+}
+
+/**
+ * Extract public ContactCandidates from search results.
+ * Only attaches contacts clearly tied to the organization via public snippet/title/URL.
+ * Never invents people, emails, or profile URLs.
+ */
+export function extractContactCandidates(results: SearchResult[], orgName: string): ContactCandidate[] {
+  const orgLower = orgName.toLowerCase();
+  const orgWords = orgLower.split(/\s+/).filter((w) => w.length > 3);
+  const candidates: ContactCandidate[] = [];
+
+  for (const result of results) {
+    const isLinkedIn = result.url.includes("linkedin.com");
+    const combined = `${result.title} ${result.snippet}`.toLowerCase();
+
+    // Must be a LinkedIn or public profile result
+    if (!isLinkedIn) continue;
+
+    // Must clearly mention the org
+    const mentionsOrg =
+      combined.includes(orgLower) || (orgWords.length >= 2 && orgWords.every((w) => combined.includes(w)));
+    if (!mentionsOrg) {
+      continue;
+    }
+
+    // Extract person name
+    const name = extractNameFromLinkedInResult(result.title);
+    if (!name || !looksLikePersonName(name)) continue;
+
+    const title = extractTitleFromLinkedInResult(result.title, result.snippet);
+    const roleCategory = title ? categorizeContact(title) : "unknown";
+    if (roleCategory === "unknown") continue;
+
+    candidates.push({
+      name,
+      title: title ?? undefined,
+      organization: orgName,
+      sourceUrl: result.url,
+      sourceTitle: result.title,
+      snippet: result.snippet.slice(0, 300),
+      roleCategory,
+      confidence: title ? 70 : 40,
+      verification: "public_snippet"
+    });
+  }
+
+  // Deduplicate by name
+  const seen = new Set<string>();
+  return candidates.filter((c) => {
+    if (seen.has(c.name.toLowerCase())) return false;
+    seen.add(c.name.toLowerCase());
+    return true;
+  }).slice(0, 4);
+}
+
 /**
  * Select the target organizations upfront — BEFORE any search.
  * Account names MUST come from seeds or the approved fallback list.
@@ -672,6 +899,85 @@ export function selectOrganizations(input: ResearchInput): {
   const base: RunDebugStats["selectedAccountBase"] =
     lower.includes("healthcare") || lower.includes("health") ? "healthcare_default" : "market_default";
   return { orgs: demoNames, base };
+}
+
+/**
+ * Async version of selectOrganizations that tries live dynamic discovery first.
+ * Seeds always take absolute priority. If no seeds, runs discovery queries,
+ * uses OpenAI to extract org names, validates them, and falls back to the
+ * approved fallback list for any missing slots.
+ */
+export async function selectOrganizationsWithDiscovery(
+  input: ResearchInput,
+  provider: SearchProviderClient | null,
+  debugStats: RunDebugStats
+): Promise<{ orgs: string[]; base: RunDebugStats["selectedAccountBase"] }> {
+  // Seeds always win
+  if (input.seedAccounts.length > 0) {
+    const validSeeds = input.seedAccounts.filter((s) => s.trim().length > 0).slice(0, input.maxResults);
+    return { orgs: validSeeds, base: "seed_accounts" };
+  }
+
+  // If no search provider, fall back immediately
+  if (!provider) {
+    return selectOrganizations(input);
+  }
+
+  // Dynamic discovery: run targeted queries and extract org names
+  const discoveryQueries = buildDynamicDiscoveryQueries(input);
+  const discoveryResults: SearchResult[] = [];
+  for (const query of discoveryQueries.slice(0, 3)) {
+    try {
+      const results = await provider.search({ query, maxResults: 10 });
+      discoveryResults.push(...results);
+      await new Promise((r) => setTimeout(r, 150));
+    } catch {
+      // Non-fatal — continue with fewer results
+    }
+  }
+
+  debugStats.dynamicOrgsDiscovered = 0;
+
+  // Try OpenAI entity extraction first, fall back to deterministic
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  let dynamicOrgs: string[] = [];
+
+  if (apiKey && discoveryResults.length > 0) {
+    dynamicOrgs = await extractOrgsWithOpenAI(discoveryResults, input, apiKey, debugStats);
+  }
+
+  if (dynamicOrgs.length === 0) {
+    // Deterministic fallback: classify results and extract valid org names
+    for (const result of discoveryResults) {
+      const classification = classifySearchResult(result);
+      if (classification === "organization_candidate") {
+        const name = identifyCompanyName(result);
+        if (isValidOrganizationName(name) && !dynamicOrgs.includes(name)) {
+          dynamicOrgs.push(name);
+        }
+      }
+    }
+  }
+
+  debugStats.dynamicOrgsDiscovered = dynamicOrgs.length;
+
+  // Fill remaining slots with approved fallback orgs
+  const fallbackOrgs = getDemoNamesFor(input.targetMarket);
+  const selectedSet = new Set(dynamicOrgs.map((o) => o.toLowerCase()));
+  for (const fb of fallbackOrgs) {
+    if (dynamicOrgs.length >= input.maxResults) break;
+    if (!selectedSet.has(fb.toLowerCase())) {
+      dynamicOrgs.push(fb);
+      selectedSet.add(fb.toLowerCase());
+    }
+  }
+
+  const finalOrgs = dynamicOrgs.slice(0, input.maxResults);
+  const lower = input.targetMarket.toLowerCase();
+  const base: RunDebugStats["selectedAccountBase"] =
+    lower.includes("healthcare") || lower.includes("health") ? "healthcare_default" : "market_default";
+
+  return { orgs: finalOrgs, base };
 }
 
 /**
@@ -758,6 +1064,9 @@ export function sanitizeFinalAccounts(
         evidence: [], kbInfluence: [],
         scores: { fit: 20, painEvidence: 0, buyerIdentification: 25, contactVerification: 0, overall: 20 },
         confidenceScore: 20, confidenceLabel: "fallback",
+        priority: "C" as PriorityLevel,
+        priorityReason: "Default priority — fallback account with no verified source.",
+        contactCandidates: [],
         nextStep: `Verify ${orgName}'s current security priorities from public sources before outreach.`,
         missingDataFlags: [`${orgName} selected from approved healthcare target list. No organization-specific source verified in this run.`]
       });
@@ -1218,32 +1527,14 @@ function deterministicOrgFit(
   };
 }
 
-function parseOrgFitResponse(
-  text: string, orgName: string, capabilityMap: CapabilityMap, input: ResearchInput
-): { fitReason: string; ciscoFitSummary: string; nextStep: string } | null {
-  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const fitLine = lines.find((l) => /fitReason|fit reason/i.test(l));
-  const ciscoLine = lines.find((l) => /ciscoFitSummary|cisco fit/i.test(l));
-  const stepLine = lines.find((l) => /nextStep|next step/i.test(l));
-
-  const extract = (line: string | undefined) => line?.replace(/^[^:]+:\s*/, "").trim() || "";
-
-  const fitReason = extract(fitLine);
-  const ciscoFitSummary = extract(ciscoLine);
-  const nextStep = extract(stepLine);
-
-  if (fitReason && ciscoFitSummary && nextStep) return { fitReason, ciscoFitSummary, nextStep };
-  // If structured parsing fails, use the whole text as fitReason
-  if (text.length > 30) return { fitReason: text.slice(0, 300), ciscoFitSummary: deterministicOrgFit(orgName, [], capabilityMap, input).ciscoFitSummary, nextStep: deterministicOrgFit(orgName, [], capabilityMap, input).nextStep };
-  return null;
-}
 
 export async function synthesizeOrgFit(
   orgName: string,
   signals: OrgSignal[],
   capabilityMap: CapabilityMap,
   input: ResearchInput,
-  debugStats: RunDebugStats
+  debugStats: RunDebugStats,
+  contactCandidates?: ContactCandidate[]
 ): Promise<{ fitReason: string; ciscoFitSummary: string; nextStep: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return deterministicOrgFit(orgName, signals, capabilityMap, input);
@@ -1251,36 +1542,137 @@ export async function synthesizeOrgFit(
   const liveSignals = signals.filter((s) => s.sourceUrl?.startsWith("http") && s.verification !== "unverified");
   if (liveSignals.length === 0) return deterministicOrgFit(orgName, signals, capabilityMap, input);
 
-  const signalText = liveSignals.slice(0, 4)
-    .map((s) => `- ${s.label}: ${s.detail.slice(0, 180)}${s.sourceTitle ? ` (Source: ${s.sourceTitle})` : ""}`)
+  const signalText = liveSignals
+    .slice(0, 5)
+    .map((s) => `- ${s.label}: ${s.detail.slice(0, 200)}${s.sourceTitle ? ` (Source: ${s.sourceTitle})` : ""}`)
     .join("\n");
 
-  const prompt = `You are a Cisco security field analyst. Based ONLY on the evidence below, write account intelligence for ${orgName} targeting ${capabilityMap.product}.
+  const contactNote =
+    contactCandidates && contactCandidates.length > 0
+      ? `\nPublic contacts found: ${contactCandidates.map((c) => `${c.name}, ${c.title ?? "unknown title"}`).join("; ")}`
+      : "";
+
+  const prompt = `You are a Cisco security field analyst. Based ONLY on the evidence below, write source-grounded account intelligence for ${orgName} targeting ${capabilityMap.product}.
 
 Evidence:
-${signalText}
+${signalText}${contactNote}
 
-Write exactly 3 labeled lines:
-1. fitReason: Why ${orgName} fits ${capabilityMap.product} (1-2 sentences, reference evidence)
-2. ciscoFitSummary: Which specific capabilities match (1-2 sentences)
-3. nextStep: One specific action for the seller
+Return a JSON object:
+{
+  "fitReason": "1-2 sentences: why ${orgName} fits ${capabilityMap.product}, referencing evidence",
+  "ciscoFitSummary": "1-2 sentences: which specific capabilities match the signals",
+  "nextStep": "1 org-specific action for the seller mentioning ${orgName}"
+}
 
-Rules: Be specific to ${orgName}. Only reference evidence above. Do not invent.`;
+Rules: Be specific to ${orgName}. Only reference evidence provided above. Do not invent facts or contacts. If evidence is thin, say so explicitly.`;
 
   try {
     const client = new OpenAI({ apiKey, timeout: 15000, maxRetries: 0 });
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
-      max_tokens: 320,
+      response_format: { type: "json_object" },
+      max_tokens: 400,
       temperature: 0.2
     });
     debugStats.openAiSynthesisUsed = true;
-    const text = response.choices[0]?.message?.content ?? "";
-    return parseOrgFitResponse(text, orgName, capabilityMap, input) ?? deterministicOrgFit(orgName, signals, capabilityMap, input);
+    const text = response.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(text) as { fitReason?: string; ciscoFitSummary?: string; nextStep?: string };
+    if (parsed.fitReason && parsed.ciscoFitSummary && parsed.nextStep) {
+      return {
+        fitReason: parsed.fitReason,
+        ciscoFitSummary: parsed.ciscoFitSummary,
+        nextStep: parsed.nextStep
+      };
+    }
+    return deterministicOrgFit(orgName, signals, capabilityMap, input);
   } catch (error) {
     console.warn("OpenAI synthesis failed (non-fatal):", sanitizeProviderError(error));
     return deterministicOrgFit(orgName, signals, capabilityMap, input);
+  }
+}
+
+/**
+ * Use OpenAI to assign A/B/C priority and re-order accounts by opportunity strength.
+ * Hard validation (org name validity) cannot be overridden.
+ */
+export async function reRankAccounts(
+  accounts: AccountRecommendation[],
+  capabilityMap: CapabilityMap,
+  input: ResearchInput,
+  debugStats: RunDebugStats
+): Promise<AccountRecommendation[]> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey || accounts.length === 0) {
+    return accounts.map((a) => ({ ...a, priority: "C" as PriorityLevel, priorityReason: "Priority not assessed — OPENAI_API_KEY not configured." }));
+  }
+
+  const summaries = accounts.map((a) => ({
+    name: a.companyName,
+    signals: a.signals.filter((s) => s.verification !== "unverified").map((s) => `${s.label}: ${s.detail.slice(0, 100)}`).join("; "),
+    evidenceCount: a.evidence.filter((e) => e.url.startsWith("http")).length,
+    hasNamedContact: a.contactCandidates.length > 0,
+    confidenceScore: a.confidenceScore,
+    verificationStatus: a.verificationStatus
+  }));
+
+  const prompt = `You are prioritizing ${input.targetMarket} accounts for Cisco ${capabilityMap.product} opportunity.
+
+Accounts:
+${JSON.stringify(summaries, null, 2)}
+
+Cisco ${capabilityMap.product} capabilities: ${capabilityMap.capabilities.slice(0, 5).join(", ")}
+Target market: ${input.targetMarket}
+Geography: ${input.geography || "North America"}
+
+Assign each account a priority:
+- A = strong signals, named contact, recent evidence, clear fit
+- B = moderate signals, role-level contact, some evidence
+- C = weak signals, fallback only, no evidence
+
+Return JSON array with one entry per account:
+{"rankings": [{"name": "...", "priority": "A", "rankReason": "...", "scoreAdjustment": 5}]}
+
+scoreAdjustment: -10 to +10 modification. Be org-specific in rankReason.`;
+
+  try {
+    const client = new OpenAI({ apiKey, timeout: 20000, maxRetries: 0 });
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 800,
+      temperature: 0.2
+    });
+    debugStats.openAiRerankingRan = true;
+    const text = response.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(text) as {
+      rankings?: Array<{ name: string; priority: string; rankReason: string; scoreAdjustment: number }>;
+    };
+    const rankings = parsed.rankings ?? [];
+
+    const ranked = accounts.map((account) => {
+      const r = rankings.find((x) => x.name?.toLowerCase() === account.companyName.toLowerCase());
+      const priority = (["A", "B", "C"].includes(r?.priority ?? "") ? r!.priority : "C") as PriorityLevel;
+      const priorityReason = r?.rankReason ?? "Priority not assigned for this account.";
+      const adjustment = Math.max(-10, Math.min(10, r?.scoreAdjustment ?? 0));
+      return {
+        ...account,
+        priority,
+        priorityReason,
+        confidenceScore: Math.max(0, Math.min(95, account.confidenceScore + adjustment))
+      };
+    });
+
+    // Sort: A > B > C, then by confidenceScore
+    const order: Record<string, number> = { A: 0, B: 1, C: 2 };
+    return ranked.sort((a, b) => {
+      const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+      return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
+    });
+  } catch (error) {
+    console.warn("OpenAI reranking failed (non-fatal):", sanitizeProviderError(error));
+    return accounts.map((a) => ({ ...a, priority: "C" as PriorityLevel, priorityReason: "Reranking failed; default priority assigned." }));
   }
 }
 
@@ -1292,6 +1684,7 @@ type OrgEnrichmentResult = {
   enrichmentResults: SearchResult[];
   pageDetails: SourceDetail[];
   persons: Array<{ name: string; url: string; snippet: string }>;
+  contactCandidates: ContactCandidate[];
 };
 
 async function enrichOneOrganization(
@@ -1304,15 +1697,16 @@ async function enrichOneOrganization(
 ): Promise<OrgEnrichmentResult> {
   let enrichmentResults = [...existingResults];
   const persons = [...existingPersons];
+  const linkedInResults: SearchResult[] = [];
 
   if (provider) {
-    const queries = buildEnrichmentQueries(orgName);
-    for (const query of queries) {
+    // Phase 1: org-specific enrichment (cybersecurity/breach/SOC signals)
+    const enrichQueries = buildEnrichmentQueries(orgName);
+    for (const query of enrichQueries) {
       try {
         const results = await provider.search({ query, maxResults: 5 });
         enrichmentResults.push(...results);
         debugStats.enrichmentQueriesRun++;
-        // Extract persons from enrichment results
         for (const r of results) {
           if (classifySearchResult(r) === "person_candidate") {
             const orgMatch = extractOrgFromPersonSnippet(r);
@@ -1321,13 +1715,30 @@ async function enrichOneOrganization(
             }
           }
         }
-        // Small delay to be kind to rate limits
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    // Phase 2: LinkedIn/public profile buyer search (public search snippets only)
+    const liQueries = buildLinkedInBuyerQueries(orgName);
+    for (const query of liQueries.slice(0, 3)) {
+      try {
+        const results = await provider.search({ query, maxResults: 5 });
+        linkedInResults.push(...results);
+        debugStats.enrichmentQueriesRun++;
+        debugStats.linkedInQueriesRun++;
         await new Promise((resolve) => setTimeout(resolve, 150));
       } catch {
         // Non-fatal
       }
     }
   }
+
+  // Extract public contact candidates from LinkedIn results
+  const contactCandidates = extractContactCandidates(linkedInResults, orgName);
+  debugStats.contactCandidatesFound = (debugStats.contactCandidatesFound ?? 0) + contactCandidates.length;
 
   // Deduplicate results by URL
   const seen = new Set<string>();
@@ -1346,7 +1757,7 @@ async function enrichOneOrganization(
     pageDetails.push(detail);
   }
 
-  return { orgName, fromLiveSearch, enrichmentResults, pageDetails, persons };
+  return { orgName, fromLiveSearch, enrichmentResults, pageDetails, persons, contactCandidates };
 }
 
 // ─── Main research runner ─────────────────────────────────────────────────────
@@ -1379,7 +1790,12 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     accountSignalsAttached: 0,
     marketSignalsOnly: 0,
     finalGuardReplacements: 0,
-    openAiSynthesisUsed: false
+    openAiSynthesisUsed: false,
+    openAiEntityExtractionRan: false,
+    openAiRerankingRan: false,
+    linkedInQueriesRun: 0,
+    contactCandidatesFound: 0,
+    dynamicOrgsDiscovered: 0
   };
 
   if (!providerStatus.liveSearchAvailable) {
@@ -1402,10 +1818,13 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     snippet: chunk.content.slice(0, 240)
   }));
 
-  // ─ Stage 1: Select organizations FIRST ────────────────────────────────────
-  // Account names ALWAYS come from seeds or approved fallback list.
-  // They NEVER come from broad search result titles.
-  const { orgs: selectedOrgs, base: selectedAccountBase } = selectOrganizations(input);
+  // ─ Stage 1: Select organizations with dynamic discovery ───────────────────
+  // Seeds win. If no seeds, try dynamic discovery from live search, then fallback.
+  const { orgs: selectedOrgs, base: selectedAccountBase } = await selectOrganizationsWithDiscovery(
+    input,
+    searchProvider,
+    debugStats
+  );
   debugStats.selectedAccountBase = selectedAccountBase;
   debugStats.selectedOrganizationNames = [...selectedOrgs];
   debugStats.validOrgCount = selectedOrgs.length;
@@ -1484,13 +1903,45 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     }
 
     const evidence = collectEvidence(orgSpecific);
+    // Sort evidence by source quality (highest quality first)
+    evidence.sort(
+      (a, b) =>
+        computeSourceQualityScore({ title: b.title, url: b.url, snippet: b.snippet }, orgName) -
+        computeSourceQualityScore({ title: a.title, url: a.url, snippet: a.snippet }, orgName)
+    );
+
     const signals = buildOrgSignals(orgName, orgSpecific, pageDetails);
     debugStats.accountSignalsAttached += signals.filter((s) => s.verification !== "unverified").length;
     const confidence = computeOrgConfidence({ orgName, signals, pageDetails, fromLiveSearch, persons });
-    const { economicBuyer, businessChampion, technicalInfluencers } = buildBuyerMap(orgName, capabilityMap, persons);
+
+    // Merge person contacts with LinkedIn contact candidates
+    const allPersons = [...persons];
+    for (const cc of org.contactCandidates) {
+      if (!allPersons.some((p) => p.name.toLowerCase() === cc.name.toLowerCase())) {
+        allPersons.push({ name: cc.name, url: cc.sourceUrl, snippet: cc.snippet ?? "" });
+      }
+    }
+    const { economicBuyer, businessChampion, technicalInfluencers } = buildBuyerMap(orgName, capabilityMap, allPersons);
+
+    // Upgrade buyer targets with contact candidate data where available
+    const ecBuyerCandidate = org.contactCandidates.find((c) => c.roleCategory === "economic_buyer");
+    const champCandidate = org.contactCandidates.find((c) => c.roleCategory === "business_champion");
+    const infCandidate = org.contactCandidates.find((c) => c.roleCategory === "technical_influencer");
+    if (ecBuyerCandidate) {
+      economicBuyer.namedPerson = { name: ecBuyerCandidate.name, title: ecBuyerCandidate.title, sourceUrl: ecBuyerCandidate.sourceUrl };
+      economicBuyer.contactStatus = "named_public_profile";
+    }
+    if (champCandidate) {
+      businessChampion.namedPerson = { name: champCandidate.name, title: champCandidate.title, sourceUrl: champCandidate.sourceUrl };
+      businessChampion.contactStatus = "named_public_profile";
+    }
+    if (infCandidate && technicalInfluencers[0]) {
+      technicalInfluencers[0].namedPerson = { name: infCandidate.name, title: infCandidate.title, sourceUrl: infCandidate.sourceUrl };
+      technicalInfluencers[0].contactStatus = "named_public_profile";
+    }
 
     // ─ Stage 4a: OpenAI synthesis per org ──────────────────────────────────
-    const synthesis = await synthesizeOrgFit(orgName, signals, capabilityMap, input, debugStats);
+    const synthesis = await synthesizeOrgFit(orgName, signals, capabilityMap, input, debugStats, org.contactCandidates);
 
     const website = enrichmentResults.find((r) => r.url.startsWith("http") && extractDomain(r.url).includes(orgName.split(" ")[0].toLowerCase()))
       ? (() => { try { return new URL(enrichmentResults.find((r) => r.url.startsWith("http") && extractDomain(r.url).includes(orgName.split(" ")[0].toLowerCase()))!.url).origin; } catch { return null; } })()
@@ -1544,13 +1995,21 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
       },
       confidenceScore: confidence.score,
       confidenceLabel: confidence.label,
+      priority: "C", // Will be set by reRankAccounts
+      priorityReason: "",
+      contactCandidates: org.contactCandidates,
       nextStep: synthesis.nextStep,
       missingDataFlags
     });
   }
 
-  // Sort by confidence
+  // Sort by confidence before reranking
   accounts.sort((a, b) => b.confidenceScore - a.confidenceScore);
+
+  // ─ Stage 4b: OpenAI reranking ─────────────────────────────────────────────
+  const rerankedAccounts = await reRankAccounts(accounts, capabilityMap, input, debugStats);
+  accounts.length = 0;
+  accounts.push(...rerankedAccounts);
 
   // ─ Stage 5: Final guard ────────────────────────────────────────────────────
   // Remove any account whose name is not in the selected org list (safety net).

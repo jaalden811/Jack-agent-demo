@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AccountRecommendation, BuyerTarget, ProviderStatusSnapshot, ResearchRun, RunDebugStats } from "@/lib/types";
+import type { AccountRecommendation, BuyerTarget, ContactCandidate, ProviderStatusSnapshot, ResearchRun, RunDebugStats } from "@/lib/types";
 
 function statusLabel(status: string) {
   return status.replaceAll("_", " ");
@@ -77,7 +77,12 @@ function DebugPanel({ stats, marketSignals }: { stats: RunDebugStats; marketSign
           <span>Account signals attached</span><span>{stats.accountSignalsAttached}</span>
           <span>Market signals only</span><span>{stats.marketSignalsOnly}</span>
           <span>Final guard replacements</span><span>{stats.finalGuardReplacements}</span>
-          <span>OpenAI synthesis used</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
+          <span>OpenAI synthesis</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
+          <span>OpenAI entity extraction</span><span>{stats.openAiEntityExtractionRan ? "yes" : "no"}</span>
+          <span>OpenAI reranking</span><span>{stats.openAiRerankingRan ? "yes" : "no"}</span>
+          <span>LinkedIn queries</span><span>{stats.linkedInQueriesRun}</span>
+          <span>Contact candidates found</span><span>{stats.contactCandidatesFound}</span>
+          <span>Dynamic orgs discovered</span><span>{stats.dynamicOrgsDiscovered}</span>
         </div>
         <strong style={{ display: "block", marginTop: 10 }}>Broad search rejection breakdown</strong>
         <div className="debug-grid" style={{ marginTop: 4 }}>
@@ -129,6 +134,31 @@ function BuyerRow({ label, buyer }: { label: string; buyer: BuyerTarget }) {
   );
 }
 
+function ContactRow({ contact }: { contact: ContactCandidate }) {
+  return (
+    <div style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+      <strong>{contact.name}</strong>
+      {contact.title && <span className="muted"> · {contact.title}</span>}
+      <span className={`mini-pill ${contact.confidence >= 60 ? "ready" : "missing_optional_provider"}`} style={{ marginLeft: 8, fontSize: "0.78rem" }}>
+        {contact.verification.replaceAll("_", " ")}
+      </span>
+      <br />
+      <a className="url-wrap" href={contact.sourceUrl} style={{ fontSize: "0.82rem" }}>
+        {contact.sourceTitle ?? contact.sourceUrl}
+      </a>
+      {contact.snippet && (
+        <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.8rem" }}>{contact.snippet.slice(0, 160)}</p>
+      )}
+    </div>
+  );
+}
+
+const PRIORITY_STYLE: Record<string, string> = {
+  A: "#17643a",
+  B: "#8a5a00",
+  C: "#9b1c1c"
+};
+
 function AccountCard({ account }: { account: AccountRecommendation }) {
   const isDemoCard = account.verificationStatus === "fallback_unverified";
   const publicEvidence = account.evidence.filter((e) => e.url.startsWith("http"));
@@ -137,11 +167,27 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
     <article className="account-card">
       <div className="account-header">
         <div>
-          <h3 style={{ margin: "0 0 4px" }}>{account.companyName}</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h3 style={{ margin: 0 }}>{account.companyName}</h3>
+            {account.priority && (
+              <span style={{
+                background: PRIORITY_STYLE[account.priority] ? `${PRIORITY_STYLE[account.priority]}22` : "#f0f4f8",
+                border: `1px solid ${PRIORITY_STYLE[account.priority] ?? "#c0cdd8"}`,
+                borderRadius: 8,
+                color: PRIORITY_STYLE[account.priority] ?? "#3a4f62",
+                fontSize: "0.8rem", fontWeight: 800, padding: "3px 8px"
+              }}>
+                Priority {account.priority}
+              </span>
+            )}
+          </div>
           {account.website && (
-            <a className="url-wrap muted" href={account.website} style={{ fontSize: "0.88rem" }}>
+            <a className="url-wrap muted" href={account.website} style={{ fontSize: "0.88rem", marginTop: 4, display: "block" }}>
               {account.website}
             </a>
+          )}
+          {account.priorityReason && (
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.82rem" }}>{account.priorityReason}</p>
           )}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
@@ -212,13 +258,22 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
         <div>
           <strong>Contacts / buyer map</strong>
           <p className="muted" style={{ margin: "4px 0 8px", fontSize: "0.82rem" }}>
-            No named contacts or emails unless publicly verified.
+            Named contacts only appear when publicly verified and clearly tied to this organization. No invented emails or profile URLs.
           </p>
           <div className="buyer-map">
             <BuyerRow label="Economic buyer" buyer={account.economicBuyer} />
             <BuyerRow label="Business champion" buyer={account.businessChampion} />
             {account.technicalInfluencers.slice(0, 1).map((b, i) => <BuyerRow key={i} label="Technical influencer" buyer={b} />)}
           </div>
+          {account.contactCandidates.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <strong>Public contact candidates</strong>
+              <p className="muted" style={{ margin: "4px 0 6px", fontSize: "0.8rem" }}>
+                Found via public search results. Verify before outreach.
+              </p>
+              {account.contactCandidates.map((c, i) => <ContactRow key={i} contact={c} />)}
+            </div>
+          )}
         </div>
 
         {/* Source evidence */}

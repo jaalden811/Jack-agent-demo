@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDiscoveryQueries,
+  buildDynamicDiscoveryQueries,
   buildEnrichmentQueries,
+  buildLinkedInBuyerQueries,
+  categorizeContact,
   chunkText,
   classifySearchResult,
-  cosineSimilarity,
   computeOrgConfidence,
+  computeSourceQualityScore,
+  cosineSimilarity,
   exportRun,
+  extractContactCandidates,
   filterEvidenceForOrg,
   groupSearchResults,
   groupSearchResultsWithStats,
@@ -268,6 +273,9 @@ describe("sanitizeFinalAccounts", () => {
       scores: { fit: 0, painEvidence: 0, buyerIdentification: 0, contactVerification: 0, overall: 0 },
       confidenceScore: 0,
       confidenceLabel: "fallback" as const,
+      priority: "C" as const,
+      priorityReason: "",
+      contactCandidates: [],
       nextStep: "",
       missingDataFlags: []
     };
@@ -278,6 +286,129 @@ describe("sanitizeFinalAccounts", () => {
     expect(names).not.toContain("Healthcare Data Breach Statistics");
     expect(names).toContain("Mayo Clinic");
     expect(names).toContain("Cleveland Clinic");
+  });
+});
+
+// ─── buildLinkedInBuyerQueries ────────────────────────────────────────────────
+describe("buildLinkedInBuyerQueries", () => {
+  it("generates LinkedIn queries including site:linkedin.com/in for CISO/CIO roles", () => {
+    const queries = buildLinkedInBuyerQueries("HCA Healthcare");
+    const combined = queries.join(" ");
+    expect(combined).toMatch(/site:linkedin\.com\/in/i);
+    expect(combined).toMatch(/HCA Healthcare/);
+    expect(combined).toMatch(/CISO|Chief Information Security|VP Information Security/i);
+  });
+
+  it("generates different queries for different orgs", () => {
+    const q1 = buildLinkedInBuyerQueries("Mayo Clinic");
+    const q2 = buildLinkedInBuyerQueries("Tenet Healthcare");
+    expect(q1.join(" ")).toMatch(/Mayo Clinic/);
+    expect(q2.join(" ")).toMatch(/Tenet Healthcare/);
+    expect(q1[0]).not.toBe(q2[0]);
+  });
+});
+
+// ─── categorizeContact ────────────────────────────────────────────────────────
+describe("categorizeContact", () => {
+  it("categorizes CISO and CIO as economic_buyer", () => {
+    expect(categorizeContact("CISO")).toBe("economic_buyer");
+    expect(categorizeContact("Chief Information Security Officer")).toBe("economic_buyer");
+    expect(categorizeContact("Chief Information Officer")).toBe("economic_buyer");
+    expect(categorizeContact("CIO")).toBe("economic_buyer");
+  });
+
+  it("categorizes Director of Security Operations as business_champion", () => {
+    expect(categorizeContact("Director of Security Operations")).toBe("business_champion");
+    expect(categorizeContact("VP Information Security")).toBe("business_champion");
+  });
+
+  it("categorizes Security Architect as technical_influencer", () => {
+    expect(categorizeContact("Security Architect")).toBe("technical_influencer");
+    expect(categorizeContact("SOC Manager")).toBe("technical_influencer");
+  });
+
+  it("returns unknown for unrecognized titles", () => {
+    expect(categorizeContact("Marketing Manager")).toBe("unknown");
+    expect(categorizeContact("Software Engineer")).toBe("unknown");
+  });
+});
+
+// ─── extractContactCandidates ─────────────────────────────────────────────────
+describe("extractContactCandidates", () => {
+  it("attaches LinkedIn contact clearly tied to org", () => {
+    const results: SearchResult[] = [
+      {
+        title: "Jane Smith - CISO at Cleveland Clinic | LinkedIn",
+        url: "https://www.linkedin.com/in/jane-smith-ciso-cc-12345",
+        snippet: "Jane Smith is Chief Information Security Officer at Cleveland Clinic. Security operations leadership.",
+        verificationLevel: "snippet_only"
+      }
+    ];
+    const candidates = extractContactCandidates(results, "Cleveland Clinic");
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].name).toBe("Jane Smith");
+    expect(candidates[0].roleCategory).toBe("economic_buyer");
+    expect(candidates[0].organization).toBe("Cleveland Clinic");
+    expect(candidates[0].verification).toBe("public_snippet");
+  });
+
+  it("rejects LinkedIn contact not tied to org", () => {
+    const results: SearchResult[] = [
+      {
+        title: "Bob Jones - CISO at Acme Corp | LinkedIn",
+        url: "https://www.linkedin.com/in/bob-jones-12345",
+        snippet: "Bob Jones is CISO at Acme Corp, specializing in cybersecurity.",
+        verificationLevel: "snippet_only"
+      }
+    ];
+    const candidates = extractContactCandidates(results, "Mayo Clinic");
+    expect(candidates.length).toBe(0);
+  });
+
+  it("never invents contacts from non-LinkedIn results", () => {
+    const results: SearchResult[] = [
+      {
+        title: "Healthcare Cybersecurity: Top CISOs in 2025",
+        url: "https://healthcareitnews.com/article/top-cisos",
+        snippet: "Leading CISOs discuss ransomware readiness.",
+        verificationLevel: "snippet_only"
+      }
+    ];
+    const candidates = extractContactCandidates(results, "HCA Healthcare");
+    expect(candidates.length).toBe(0);
+  });
+});
+
+// ─── computeSourceQualityScore ────────────────────────────────────────────────
+describe("computeSourceQualityScore", () => {
+  it("scores official org domain higher than generic article", () => {
+    const orgResult = { title: "HCA Healthcare - Cybersecurity", url: "https://hcahealthcare.com/security", snippet: "HCA Healthcare security program." };
+    const genericResult = { title: "Healthcare Data Breach Statistics", url: "https://blog.vendor.com/healthcare-stats", snippet: "General healthcare breach data." };
+    expect(computeSourceQualityScore(orgResult, "HCA Healthcare")).toBeGreaterThan(computeSourceQualityScore(genericResult, "HCA Healthcare"));
+  });
+
+  it("gives recency bonus for 2025/2026 dates", () => {
+    const recentResult = { title: "Mayo Clinic cybersecurity 2026", url: "https://mayoclinic.org/news", snippet: "Mayo Clinic 2026 security update." };
+    const oldResult = { title: "Mayo Clinic cybersecurity 2018", url: "https://mayoclinic.org/old-news", snippet: "Old security news from 2018." };
+    expect(computeSourceQualityScore(recentResult, "Mayo Clinic")).toBeGreaterThan(computeSourceQualityScore(oldResult, "Mayo Clinic"));
+  });
+
+  it("penalizes generic content not mentioning the org", () => {
+    const generic = { title: "Ransomware Attacks in Healthcare 2025", url: "https://vendor.com/healthcare", snippet: "Generic ransomware in healthcare." };
+    const score = computeSourceQualityScore(generic, "Tenet Healthcare");
+    expect(score).toBeLessThan(30);
+  });
+});
+
+// ─── buildDynamicDiscoveryQueries ─────────────────────────────────────────────
+describe("buildDynamicDiscoveryQueries", () => {
+  it("returns healthcare-specific queries without Cisco product name", () => {
+    const queries = buildDynamicDiscoveryQueries(input);
+    expect(queries.length).toBeGreaterThan(0);
+    for (const q of queries) {
+      expect(q).not.toMatch(/Cisco XDR/i);
+    }
+    expect(queries.join(" ")).toMatch(/hospital|health|ransomware|CISO/i);
   });
 });
 
@@ -402,7 +533,9 @@ describe("synthesizeOrgFit", () => {
     rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
     extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
     fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
-    marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false
+    marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false,
+    openAiEntityExtractionRan: false, openAiRerankingRan: false,
+    linkedInQueriesRun: 0, contactCandidatesFound: 0, dynamicOrgsDiscovered: 0
   });
 
   it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
@@ -473,12 +606,13 @@ describe("runResearch", () => {
     }
   });
 
-  it("accounts use BuyerTarget shape — no email field", async () => {
+  it("accounts use BuyerTarget shape — no email field; have priority and contactCandidates", async () => {
     const run = await runResearch(input, []);
-    const champion = run.accounts[0]?.businessChampion;
-    expect(champion?.roleTitle).toBeTruthy();
-    expect("businessEmail" in champion).toBe(false);
-    expect("emailVerified" in champion).toBe(false);
+    const account = run.accounts[0];
+    expect(account?.businessChampion?.roleTitle).toBeTruthy();
+    expect("businessEmail" in account.businessChampion).toBe(false);
+    expect(account.priority).toMatch(/^[ABC]$/);
+    expect(Array.isArray(account.contactCandidates)).toBe(true);
   });
 
   it("confidence scores vary across fallback orgs based on signals", async () => {

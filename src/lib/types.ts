@@ -117,7 +117,14 @@ export type RunDebugStats = {
   marketSignalsOnly: number;
   // Final guard
   finalGuardReplacements: number;
+  // OpenAI steps
   openAiSynthesisUsed: boolean;
+  openAiEntityExtractionRan: boolean;
+  openAiRerankingRan: boolean;
+  // LinkedIn / contact discovery
+  linkedInQueriesRun: number;
+  contactCandidatesFound: number;
+  dynamicOrgsDiscovered: number;
 };
 
 export type MarketSignal = {
@@ -125,6 +132,22 @@ export type MarketSignal = {
   url?: string;
   snippet?: string;
   reason: string;
+};
+
+export type PriorityLevel = "A" | "B" | "C";
+
+/** Public contact candidate found via public search (e.g. LinkedIn snippets). Never invented. */
+export type ContactCandidate = {
+  name: string;
+  title?: string;
+  organization: string;
+  sourceUrl: string;
+  sourceTitle?: string;
+  snippet?: string;
+  roleCategory: "economic_buyer" | "business_champion" | "technical_influencer" | "unknown";
+  confidence: number;
+  verification: "public_snippet" | "public_page" | "unverified";
+  rejectionReason?: string;
 };
 
 /** Buyer persona recommendation under an organization. Never contains invented people or emails. */
@@ -205,6 +228,13 @@ export type AccountRecommendation = {
   };
   confidenceScore: number;
   confidenceLabel: "high" | "medium" | "low" | "fallback";
+
+  /** OpenAI-assigned priority: A = high, B = medium, C = low/fallback */
+  priority: PriorityLevel;
+  priorityReason: string;
+
+  /** Public contacts discovered via search/LinkedIn snippets. Never invented. */
+  contactCandidates: ContactCandidate[];
 
   nextStep: string;
   missingDataFlags: string[];
