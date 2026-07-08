@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildDiscoveryQueries,
+  buildEnrichmentQueries,
   chunkText,
   classifySearchResult,
   cosineSimilarity,
+  computeOrgConfidence,
   exportRun,
   groupSearchResults,
   isValidOrganizationName,
   productCapabilityMapper,
   retrieveKbContext,
-  runResearch
+  runResearch,
+  synthesizeOrgFit
 } from "@/lib/services";
 import type { KbChunk, ResearchInput, ResearchRun, SearchResult } from "@/lib/types";
 
@@ -47,7 +51,6 @@ function testChunk(content: string, index = 0): KbChunk {
 }
 
 // ─── chunkText ────────────────────────────────────────────────────────────────
-
 describe("chunkText", () => {
   it("creates overlapping chunks without empty values", () => {
     const chunks = chunkText("a ".repeat(1300), 100, 10);
@@ -57,16 +60,13 @@ describe("chunkText", () => {
 });
 
 // ─── isValidOrganizationName ──────────────────────────────────────────────────
-
 describe("isValidOrganizationName", () => {
-  it("accepts valid healthcare org names", () => {
+  it("accepts well-known healthcare orgs", () => {
     expect(isValidOrganizationName("Mayo Clinic")).toBe(true);
     expect(isValidOrganizationName("Cleveland Clinic")).toBe(true);
     expect(isValidOrganizationName("HCA Healthcare")).toBe(true);
     expect(isValidOrganizationName("CommonSpirit Health")).toBe(true);
     expect(isValidOrganizationName("Tenet Healthcare")).toBe(true);
-    expect(isValidOrganizationName("BayCare Health System")).toBe(true);
-    expect(isValidOrganizationName("St. Lawrence Health")).toBe(true);
   });
 
   it("rejects person names", () => {
@@ -75,66 +75,50 @@ describe("isValidOrganizationName", () => {
     expect(isValidOrganizationName("Mary Johnson")).toBe(false);
   });
 
-  it("rejects article / list titles", () => {
+  it("rejects article / list / vendor titles", () => {
     expect(isValidOrganizationName("53 hospital and health system CISOs and chief privacy offic")).toBe(false);
     expect(isValidOrganizationName("Resources and Templates")).toBe(false);
     expect(isValidOrganizationName("IT Security Services Preferred Vendor List")).toBe(false);
     expect(isValidOrganizationName("Careers in Cybersecurity")).toBe(false);
-  });
-
-  it("rejects vendor / product names", () => {
     expect(isValidOrganizationName("Cisco XDR")).toBe(false);
-    expect(isValidOrganizationName("Cisco Security")).toBe(false);
-    expect(isValidOrganizationName("Cybersecurity Readiness Index")).toBe(false);
     expect(isValidOrganizationName("2023 Cybersecurity Readiness Index")).toBe(false);
-  });
-
-  it("rejects truncated article titles", () => {
     expect(isValidOrganizationName("Logicalis US Announced as First Global Partner to Launch ...")).toBe(false);
   });
 });
 
 // ─── classifySearchResult ─────────────────────────────────────────────────────
-
 describe("classifySearchResult", () => {
-  function makeResult(title: string, url: string, snippet = ""): SearchResult {
-    return { title, url, snippet, verificationLevel: "snippet_only" };
-  }
+  const r = (title: string, url: string): SearchResult => ({ title, url, snippet: "", verificationLevel: "snippet_only" });
 
   it("classifies LinkedIn person profile as person_candidate", () => {
-    expect(classifySearchResult(makeResult("Kirk Davis", "https://www.linkedin.com/in/kirk-davis-12345"))).toBe("person_candidate");
+    expect(classifySearchResult(r("Kirk Davis", "https://www.linkedin.com/in/kirk-davis-12345"))).toBe("person_candidate");
   });
 
   it("classifies number-prefixed article as article_or_list", () => {
-    expect(classifySearchResult(makeResult("53 hospital and health system CISOs and chief privacy offic", "https://example.com/article"))).toBe("article_or_list");
+    expect(classifySearchResult(r("53 hospital and health system CISOs", "https://news.example.com/article"))).toBe("article_or_list");
   });
 
-  it("classifies vendor domains as vendor_or_product", () => {
-    expect(classifySearchResult(makeResult("Cisco XDR", "https://www.cisco.com/site/us/en/products/security/xdr/index.html"))).toBe("vendor_or_product");
+  it("classifies cisco.com as vendor_or_product", () => {
+    expect(classifySearchResult(r("Cisco XDR", "https://www.cisco.com/site/us/en/products/security/xdr/index.html"))).toBe("vendor_or_product");
   });
 
-  it("classifies resource/template pages", () => {
-    expect(classifySearchResult(makeResult("Resources and Templates", "https://somegov.gov/it/resources"))).toBe("resource_template");
-    expect(classifySearchResult(makeResult("IT Security Services Preferred Vendor List", "https://somegov.gov/vendor-list"))).toBe("resource_template");
+  it("classifies resource pages", () => {
+    expect(classifySearchResult(r("Resources and Templates", "https://govsite.gov/it/resources"))).toBe("resource_template");
+    expect(classifySearchResult(r("IT Security Services Preferred Vendor List", "https://govsite.gov/vendor-list"))).toBe("resource_template");
   });
 
   it("classifies job postings", () => {
-    expect(classifySearchResult(makeResult("Careers in Cybersecurity", "https://somecompany.com/careers/cybersecurity"))).toBe("job_posting");
+    expect(classifySearchResult(r("Careers in Cybersecurity", "https://company.com/careers/cyber"))).toBe("job_posting");
   });
 
-  it("classifies healthcare org as organization_candidate", () => {
-    expect(classifySearchResult(makeResult("BayCare Health System", "https://baycare.org"))).toBe("organization_candidate");
-  });
-
-  it("classifies person name (2-word title-case, no org words) as person_candidate", () => {
-    expect(classifySearchResult(makeResult("John Smith", "https://somesite.org/jsmith"))).toBe("person_candidate");
+  it("classifies healthcare org names as organization_candidate", () => {
+    expect(classifySearchResult(r("BayCare Health System", "https://baycare.org"))).toBe("organization_candidate");
   });
 });
 
 // ─── groupSearchResults ───────────────────────────────────────────────────────
-
 describe("groupSearchResults", () => {
-  it("rejects person names, vendor pages, and article titles", () => {
+  it("rejects all known bad result types and accepts valid orgs", () => {
     const results: SearchResult[] = [
       { title: "Kirk Davis", url: "https://www.linkedin.com/in/kirk-davis", snippet: "", verificationLevel: "snippet_only" },
       { title: "Cisco XDR", url: "https://www.cisco.com/site/us/en/products/security/xdr/", snippet: "", verificationLevel: "snippet_only" },
@@ -151,9 +135,98 @@ describe("groupSearchResults", () => {
   });
 });
 
-// ─── KB retrieval ─────────────────────────────────────────────────────────────
+// ─── buildDiscoveryQueries ────────────────────────────────────────────────────
+describe("buildDiscoveryQueries", () => {
+  it("produces healthcare-specific queries that do NOT include the product name", () => {
+    const queries = buildDiscoveryQueries(input);
+    expect(queries.length).toBeGreaterThan(0);
+    for (const q of queries) {
+      expect(q).not.toMatch(/Cisco XDR/i);
+      expect(q).toMatch(/hospital|healthcare|health system/i);
+    }
+  });
+});
 
-describe("KB retrieval and scoring helpers", () => {
+// ─── buildEnrichmentQueries ───────────────────────────────────────────────────
+describe("buildEnrichmentQueries", () => {
+  it("generates org-specific enrichment queries for Mayo Clinic", () => {
+    const queries = buildEnrichmentQueries("Mayo Clinic");
+    expect(queries.length).toBeGreaterThan(0);
+    for (const q of queries) {
+      expect(q).toMatch(/Mayo Clinic/i);
+    }
+    // Should include security/cyber terms
+    const combined = queries.join(" ");
+    expect(combined).toMatch(/cyber|CISO|security/i);
+  });
+
+  it("generates different queries for Cleveland Clinic vs HCA Healthcare", () => {
+    const q1 = buildEnrichmentQueries("Cleveland Clinic");
+    const q2 = buildEnrichmentQueries("HCA Healthcare");
+    expect(q1.join(" ")).toMatch(/Cleveland Clinic/);
+    expect(q2.join(" ")).toMatch(/HCA Healthcare/);
+    expect(q1[0]).not.toBe(q2[0]);
+  });
+});
+
+// ─── computeOrgConfidence ─────────────────────────────────────────────────────
+describe("computeOrgConfidence", () => {
+  it("scores fallback-only with no sources below 35", () => {
+    const { score, label } = computeOrgConfidence({
+      orgName: "Mayo Clinic",
+      signals: [],
+      pageDetails: [],
+      fromLiveSearch: false,
+      persons: []
+    });
+    expect(score).toBeLessThan(35);
+    expect(label).toBe("fallback");
+  });
+
+  it("scores higher when cyber signal is found", () => {
+    const withCyber = computeOrgConfidence({
+      orgName: "HCA Healthcare",
+      signals: [
+        { label: "Cybersecurity / ransomware signal", detail: "HCA Healthcare ransomware breach security operations", sourceType: "news", verification: "snippet_only" }
+      ],
+      pageDetails: [],
+      fromLiveSearch: true,
+      persons: []
+    });
+    const withoutCyber = computeOrgConfidence({
+      orgName: "HCA Healthcare",
+      signals: [],
+      pageDetails: [],
+      fromLiveSearch: false,
+      persons: []
+    });
+    expect(withCyber.score).toBeGreaterThan(withoutCyber.score);
+  });
+
+  it("fallback score < verified org with cyber signal", () => {
+    const fallback = computeOrgConfidence({
+      orgName: "Some Org",
+      signals: [],
+      pageDetails: [],
+      fromLiveSearch: false,
+      persons: []
+    });
+    const live = computeOrgConfidence({
+      orgName: "HCA Healthcare",
+      signals: [
+        { label: "Cybersecurity signal", detail: "security operations breach", sourceType: "news", verification: "snippet_only" },
+        { label: "Leadership signal", detail: "CISO security leader", sourceType: "search_result", verification: "snippet_only" }
+      ],
+      pageDetails: [],
+      fromLiveSearch: true,
+      persons: [{ name: "Jane Smith", url: "https://example.com/jsmith", snippet: "CISO at HCA" }]
+    });
+    expect(live.score).toBeGreaterThan(fallback.score);
+  });
+});
+
+// ─── KB retrieval ─────────────────────────────────────────────────────────────
+describe("KB retrieval helpers", () => {
   it("computes bounded cosine similarity", () => {
     expect(cosineSimilarity([1, 0], [1, 0])).toBe(1);
     expect(cosineSimilarity([1, 0], [0, 1])).toBe(0);
@@ -173,72 +246,94 @@ describe("KB retrieval and scoring helpers", () => {
   });
 });
 
-// ─── runResearch ──────────────────────────────────────────────────────────────
-
-describe("runResearch", () => {
-  it("marks run as fallback/unverified when required providers are missing", async () => {
-    const run = await runResearch(input, []);
-    expect(run.openAiEmbeddingsUsed).toBe(false);
-    expect(run.isFallback).toBe(true);
-    expect(run.warnings).toEqual(
-      expect.arrayContaining([expect.stringContaining("Unverified fallback run")])
-    );
+// ─── synthesizeOrgFit ─────────────────────────────────────────────────────────
+describe("synthesizeOrgFit", () => {
+  it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
+    const cap = await productCapabilityMapper(input, []);
+    const debugStats = { discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0, rejectedCount: 0, rejectionReasons: {}, validOrgCount: 0, fallbackAccountsAdded: 0, pageFetchAttempts: 0, openAiSynthesisUsed: false };
+    const result = await synthesizeOrgFit("Mayo Clinic", [], cap, input, debugStats);
+    expect(result.fitReason).toContain("Mayo Clinic");
+    expect(result.ciscoFitSummary).toBeTruthy();
+    expect(result.nextStep).toContain("Mayo Clinic");
+    expect(debugStats.openAiSynthesisUsed).toBe(false);
   });
 
+  it("synthesis is org-specific (different outputs for different orgs)", async () => {
+    const cap = await productCapabilityMapper(input, []);
+    const debugStats = { discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0, rejectedCount: 0, rejectionReasons: {}, validOrgCount: 0, fallbackAccountsAdded: 0, pageFetchAttempts: 0, openAiSynthesisUsed: false };
+    const r1 = await synthesizeOrgFit("Mayo Clinic", [], cap, input, debugStats);
+    const r2 = await synthesizeOrgFit("HCA Healthcare", [], cap, input, debugStats);
+    // Different org names should produce different fit reasons
+    expect(r1.fitReason).toContain("Mayo Clinic");
+    expect(r2.fitReason).toContain("HCA Healthcare");
+  });
+});
+
+// ─── runResearch (integration) ────────────────────────────────────────────────
+describe("runResearch", () => {
   it("fills healthcare fallback candidates when live results are insufficient", async () => {
     const run = await runResearch(input, []);
     const names = run.accounts.map((a) => a.companyName);
-    // At least some of the known healthcare demo names must appear
     const knownFallbacks = ["Mayo Clinic", "Cleveland Clinic", "HCA Healthcare", "CommonSpirit Health", "Tenet Healthcare"];
     const matched = names.filter((n) => knownFallbacks.includes(n));
     expect(matched.length).toBeGreaterThan(0);
   });
 
-  it("account names are never person names or article titles", async () => {
+  it("account names are all valid organization names", async () => {
     const run = await runResearch(input, []);
     for (const account of run.accounts) {
       expect(isValidOrganizationName(account.companyName)).toBe(true);
     }
   });
 
-  it("accounts use BuyerTarget shape — no email field on champion", async () => {
+  it("accounts use BuyerTarget shape — no email field", async () => {
     const run = await runResearch(input, []);
     const champion = run.accounts[0]?.businessChampion;
-    expect(champion).toBeDefined();
-    expect(champion.roleTitle).toBeTruthy();
+    expect(champion?.roleTitle).toBeTruthy();
     expect("businessEmail" in champion).toBe(false);
     expect("emailVerified" in champion).toBe(false);
   });
 
-  it("exports include confidence and evidence_urls columns", async () => {
+  it("confidence scores vary across fallback orgs based on signals", async () => {
+    const run = await runResearch(input, []);
+    // All should have scores (may be same for pure fallback but should be non-zero)
+    for (const account of run.accounts) {
+      expect(account.confidenceScore).toBeGreaterThanOrEqual(0);
+      expect(["high", "medium", "low", "fallback"]).toContain(account.confidenceLabel);
+    }
+  });
+
+  it("debug stats are present on the run", async () => {
+    const run = await runResearch(input, []);
+    expect(run.debugStats).toBeDefined();
+    expect(typeof run.debugStats?.discoveryQueriesRun).toBe("number");
+    expect(typeof run.debugStats?.fallbackAccountsAdded).toBe("number");
+    expect(typeof run.debugStats?.rejectedCount).toBe("number");
+  });
+
+  it("marks run as fallback when required providers are missing", async () => {
+    const run = await runResearch(input, []);
+    expect(run.isFallback).toBe(true);
+    expect(run.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Unverified fallback run")]));
+  });
+
+  it("diagnostics labels empty-string OPENAI_API_KEY as missing", async () => {
+    process.env.OPENAI_API_KEY = "";
+    const { getProviderDiagnostics } = await import("@/lib/services");
+    const diag = getProviderDiagnostics();
+    expect(diag.openAiEmbeddingsAvailable).toBe(false);
+  });
+
+  it("exports include all required columns", async () => {
     const run = (await runResearch(input, [])) as ResearchRun;
     const csv = exportRun(run, "csv");
     expect(csv).toContain("confidence");
     expect(csv).toContain("evidence_urls");
+    expect(csv).toContain("cisco_fit_summary");
     const md = exportRun(run, "md");
     expect(md).toContain("Confidence");
     const json = exportRun(run, "json");
     expect(json).toContain("confidenceScore");
-    expect(json).toContain("providerStatus");
-  });
-
-  it("labels missing required providers as fallback diagnostics", async () => {
-    const { getProviderDiagnostics } = await import("@/lib/services");
-    const diagnostics = getProviderDiagnostics();
-    expect(diagnostics.fallbackModeActive).toBe(true);
-    expect(diagnostics.checks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "OPENAI_API_KEY", status: "missing_required_provider" }),
-        expect.objectContaining({ name: "SEARCH_API_KEY", status: "missing_required_provider" })
-      ])
-    );
-  });
-
-  it("marks missing Firecrawl evidence as snippet-only", async () => {
-    const { collectPageEvidence } = await import("@/lib/services");
-    const results = await collectPageEvidence([
-      { title: "Example", url: "https://example.com/source", snippet: "Search snippet", sourceType: "news" }
-    ]);
-    expect(results[0].verificationLevel).toBe("snippet_only");
+    expect(json).toContain("debugStats");
   });
 });

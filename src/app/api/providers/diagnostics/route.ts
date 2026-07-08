@@ -5,5 +5,12 @@ import { getProviderDiagnostics } from "@/lib/services";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json(getProviderDiagnostics());
+  const diagnostics = getProviderDiagnostics();
+  return NextResponse.json(diagnostics, {
+    headers: {
+      // Prevent browser and CDN from caching; client must always get the live status.
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "Pragma": "no-cache"
+    }
+  });
 }

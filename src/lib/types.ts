@@ -81,10 +81,24 @@ export type Citation = {
 export type OrgSignal = {
   label: string;
   detail: string;
+  /** What the signal implies about this organization's needs or fit. */
+  implication?: string;
   sourceTitle?: string;
   sourceUrl?: string;
   sourceType: "company_site" | "news" | "search_result" | "kb" | "fallback" | "unknown";
   verification: "verified" | "snippet_only" | "unverified";
+};
+
+export type RunDebugStats = {
+  discoveryQueriesRun: number;
+  enrichmentQueriesRun: number;
+  rawResultCount: number;
+  rejectedCount: number;
+  rejectionReasons: Partial<Record<ResultClassification, number>>;
+  validOrgCount: number;
+  fallbackAccountsAdded: number;
+  pageFetchAttempts: number;
+  openAiSynthesisUsed: boolean;
 };
 
 /** Buyer persona recommendation under an organization. Never contains invented people or emails. */
@@ -188,6 +202,7 @@ export type ResearchRun = {
   createdAt: string;
   updatedAt: string;
   error?: string;
+  debugStats?: RunDebugStats;
 };
 
 export type SearchResult = {

@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AccountRecommendation, BuyerTarget, ProviderStatusSnapshot, ResearchRun } from "@/lib/types";
+import type { AccountRecommendation, BuyerTarget, ProviderStatusSnapshot, ResearchRun, RunDebugStats } from "@/lib/types";
 
 function statusLabel(status: string) {
   return status.replaceAll("_", " ");
 }
 
-function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapshot | null }) {
+function ProviderStatusCard({
+  diagnostics,
+  onRefresh
+}: {
+  diagnostics: ProviderStatusSnapshot | null;
+  onRefresh: () => void;
+}) {
   return (
     <section className="panel provider-panel">
       <div className="section-heading">
@@ -15,9 +21,18 @@ function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapsh
           <h2>Provider diagnostics</h2>
           <p className="muted">Required providers control verified live research.</p>
         </div>
-        <span className={`status-pill ${diagnostics?.overall ?? "fallback_mode_active"}`}>
-          {diagnostics ? statusLabel(diagnostics.overall) : "checking…"}
-        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span className={`status-pill ${diagnostics?.overall ?? "fallback_mode_active"}`}>
+            {diagnostics ? statusLabel(diagnostics.overall) : "checking…"}
+          </span>
+          <button
+            className="button secondary"
+            style={{ padding: "6px 10px", fontSize: "0.82rem" }}
+            onClick={onRefresh}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       {diagnostics ? (
         <>
@@ -29,7 +44,7 @@ function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapsh
               <div className="provider-check" key={check.name}>
                 <strong>{check.name}</strong>
                 <span className={`mini-pill ${check.status}`}>
-                  {check.configured ? "configured" : check.required ? "missing" : "missing optional"}
+                  {check.configured ? "configured ✓" : check.required ? "missing" : "missing optional"}
                 </span>
                 <p>{check.message}</p>
               </div>
@@ -40,6 +55,39 @@ function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapsh
         <p className="muted">Loading provider configuration…</p>
       )}
     </section>
+  );
+}
+
+function DebugPanel({ stats }: { stats: RunDebugStats }) {
+  const rejectionLines = Object.entries(stats.rejectionReasons).map(([k, v]) => `${k}: ${v}`);
+  return (
+    <details className="debug-panel">
+      <summary>
+        Search debug — {stats.validOrgCount} valid org{stats.validOrgCount !== 1 ? "s" : ""} from{" "}
+        {stats.rawResultCount} raw result{stats.rawResultCount !== 1 ? "s" : ""}
+        {stats.fallbackAccountsAdded > 0 ? ` · ${stats.fallbackAccountsAdded} fallback added` : ""}
+      </summary>
+      <div className="debug-body">
+        <div className="debug-grid">
+          <span>Discovery queries run</span><span>{stats.discoveryQueriesRun}</span>
+          <span>Enrichment queries run</span><span>{stats.enrichmentQueriesRun}</span>
+          <span>Raw results</span><span>{stats.rawResultCount}</span>
+          <span>Rejected</span><span>{stats.rejectedCount}</span>
+          <span>Valid orgs</span><span>{stats.validOrgCount}</span>
+          <span>Fallback accounts added</span><span>{stats.fallbackAccountsAdded}</span>
+          <span>Page fetch attempts</span><span>{stats.pageFetchAttempts}</span>
+          <span>OpenAI synthesis used</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
+        </div>
+        {rejectionLines.length > 0 && (
+          <>
+            <strong style={{ display: "block", marginTop: 10 }}>Rejection reasons</strong>
+            <ul className="compact-list" style={{ marginTop: 4 }}>
+              {rejectionLines.map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          </>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -57,9 +105,7 @@ function BuyerRow({ label, buyer }: { label: string; buyer: BuyerTarget }) {
             {buyer.namedPerson.title && <span className="muted"> — {buyer.namedPerson.title}</span>}
           </p>
         ) : (
-          <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.82rem" }}>
-            No named person verified.
-          </p>
+          <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.82rem" }}>No named person verified.</p>
         )}
         <p style={{ margin: "4px 0 0", fontSize: "0.88rem" }}>{buyer.whyThisRole}</p>
       </div>
@@ -84,16 +130,8 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           <span className="score">Confidence {account.confidenceScore}</span>
-          <span
-            className={`mini-pill ${
-              isDemoCard
-                ? "fallback_mode_active"
-                : account.confidenceLabel === "high"
-                  ? "ready"
-                  : "missing_optional_provider"
-            }`}
-          >
-            {isDemoCard ? "Fallback / unverified" : account.verificationStatus.replaceAll("_", " ")}
+          <span className={`mini-pill ${isDemoCard ? "fallback_mode_active" : account.confidenceLabel === "high" ? "ready" : "missing_optional_provider"}`}>
+            {isDemoCard ? "Fallback / unverified" : account.confidenceLabel}
           </span>
         </div>
       </div>
@@ -105,20 +143,33 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
           <p style={{ margin: "6px 0 0" }}>{account.fitReason}</p>
         </div>
 
-        {/* Signals */}
+        {/* Signals — with implication shown */}
         {account.signals.length > 0 && (
           <div>
             <strong>Signals read</strong>
-            <ul className="compact-list" style={{ marginTop: 6 }}>
+            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
               {account.signals.map((signal, i) => (
-                <li key={i}>
-                  <em>{signal.label}:</em> {signal.detail.slice(0, 180)}
-                  {signal.sourceUrl && signal.sourceUrl.startsWith("http") && (
-                    <> · <a className="url-wrap" href={signal.sourceUrl}>{signal.sourceTitle || "source"}</a></>
+                <div key={i} className="signal-row">
+                  <div className="signal-header">
+                    <span className={`mini-pill ${signal.verification === "unverified" ? "fallback_mode_active" : signal.verification === "verified" ? "ready" : "missing_optional_provider"}`}>
+                      {signal.verification.replaceAll("_", " ")}
+                    </span>
+                    <strong style={{ marginLeft: 8 }}>{signal.label}</strong>
+                  </div>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.88rem" }}>{signal.detail.slice(0, 200)}</p>
+                  {signal.implication && (
+                    <p style={{ margin: "4px 0 0", fontSize: "0.84rem", color: "var(--muted)", fontStyle: "italic" }}>
+                      → {signal.implication}
+                    </p>
                   )}
-                </li>
+                  {signal.sourceUrl?.startsWith("http") && (
+                    <a className="url-wrap" href={signal.sourceUrl} style={{ fontSize: "0.8rem" }}>
+                      {signal.sourceTitle ?? signal.sourceUrl}
+                    </a>
+                  )}
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
@@ -127,36 +178,30 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
           <div>
             <strong>Pain points</strong>
             <ul className="compact-list" style={{ marginTop: 6 }}>
-              {account.painPoints.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
+              {account.painPoints.map((p) => <li key={p}>{p}</li>)}
             </ul>
           </div>
 
           {/* Cisco fit */}
           <div>
-            <strong>Cisco {account.ciscoCapabilityMatch[0]?.includes("XDR") ? "XDR" : ""} fit</strong>
+            <strong>Cisco fit</strong>
             <p style={{ margin: "6px 0 4px", fontSize: "0.88rem" }}>{account.ciscoFitSummary}</p>
             <ul className="compact-list">
-              {account.ciscoCapabilityMatch.slice(0, 4).map((c) => (
-                <li key={c}>{c}</li>
-              ))}
+              {account.ciscoCapabilityMatch.slice(0, 4).map((c) => <li key={c}>{c}</li>)}
             </ul>
           </div>
         </div>
 
-        {/* Buyer map — nested inside org card */}
+        {/* Buyer map */}
         <div>
           <strong>Contacts / buyer map</strong>
           <p className="muted" style={{ margin: "4px 0 8px", fontSize: "0.82rem" }}>
-            No named contacts or emails unless publicly verified. All entries are role/persona level by default.
+            No named contacts or emails unless publicly verified.
           </p>
           <div className="buyer-map">
             <BuyerRow label="Economic buyer" buyer={account.economicBuyer} />
             <BuyerRow label="Business champion" buyer={account.businessChampion} />
-            {account.technicalInfluencers.slice(0, 1).map((b, i) => (
-              <BuyerRow key={i} label="Technical influencer" buyer={b} />
-            ))}
+            {account.technicalInfluencers.slice(0, 1).map((b, i) => <BuyerRow key={i} label="Technical influencer" buyer={b} />)}
           </div>
         </div>
 
@@ -170,21 +215,17 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
                   <a className="url-wrap" href={e.url}>{e.title}</a>
                   <small className="muted"> — {e.sourceType} · {e.verificationLevel.replaceAll("_", " ")}</small>
                   {e.snippet && (
-                    <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.8rem" }}>
-                      {e.snippet.slice(0, 160)}
-                    </p>
+                    <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.8rem" }}>{e.snippet.slice(0, 180)}</p>
                   )}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="muted" style={{ marginTop: 6 }}>
-              Unavailable / unverified
-            </p>
+            <p className="muted" style={{ marginTop: 6 }}>Unavailable / unverified</p>
           )}
         </div>
 
-        {/* KB influence */}
+        {/* KB influence (only show if present) */}
         {account.kbInfluence.length > 0 && (
           <div>
             <strong>KB influence</strong>
@@ -208,6 +249,11 @@ function AccountCard({ account }: { account: AccountRecommendation }) {
   );
 }
 
+async function fetchDiagnostics(): Promise<ProviderStatusSnapshot> {
+  const response = await fetch("/api/providers/diagnostics", { cache: "no-store" });
+  return response.json();
+}
+
 export default function ResearchWorkspace() {
   const [run, setRun] = useState<ResearchRun | null>(null);
   const [diagnostics, setDiagnostics] = useState<ProviderStatusSnapshot | null>(null);
@@ -215,12 +261,11 @@ export default function ResearchWorkspace() {
   const [isRerunning, setIsRerunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/providers/diagnostics")
-      .then((r) => r.json())
-      .then(setDiagnostics)
-      .catch(() => setDiagnostics(null));
-  }, []);
+  const refreshDiagnostics = () => {
+    fetchDiagnostics().then(setDiagnostics).catch(() => setDiagnostics(null));
+  };
+
+  useEffect(() => { refreshDiagnostics(); }, []);
 
   async function submitResearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -232,6 +277,8 @@ export default function ResearchWorkspace() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? data.error ?? "Research failed");
       setRun(data);
+      // Refresh diagnostics after run so user sees current key status
+      refreshDiagnostics();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Research failed");
     } finally {
@@ -248,8 +295,7 @@ export default function ResearchWorkspace() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail ?? data.error ?? "Rerun failed");
       setRun(data);
-      const nextDiag = await fetch("/api/providers/diagnostics").then((r) => r.json());
-      setDiagnostics(nextDiag);
+      refreshDiagnostics();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Rerun failed");
     } finally {
@@ -259,7 +305,7 @@ export default function ResearchWorkspace() {
 
   return (
     <>
-      <ProviderStatusCard diagnostics={diagnostics} />
+      <ProviderStatusCard diagnostics={diagnostics} onRefresh={refreshDiagnostics} />
 
       <section className="panel">
         <h2>Research inputs</h2>
@@ -301,7 +347,7 @@ export default function ResearchWorkspace() {
           </label>
           <div className="actions">
             <button disabled={isLoading}>
-              {isLoading ? "Researching…" : "Run Cisco market intelligence"}
+              {isLoading ? "Running multi-stage research…" : "Run Cisco market intelligence"}
             </button>
           </div>
         </form>
@@ -318,54 +364,30 @@ export default function ResearchWorkspace() {
                 {run.accounts.length !== 1 ? "s" : ""}
               </p>
             </div>
-            <span
-              className={`status-pill ${
-                run.isFallback
-                  ? "fallback_mode_active"
-                  : run.isVerified
-                    ? "ready"
-                    : "missing_optional_provider"
-              }`}
-            >
-              {run.isFallback ? "Fallback run" : run.isVerified ? "Verified live run" : "Low-confidence live run"}
+            <span className={`status-pill ${run.isFallback ? "fallback_mode_active" : run.isVerified ? "ready" : "missing_optional_provider"}`}>
+              {run.isFallback ? "Fallback run" : run.isVerified ? "Verified live run" : "Live run (low confidence)"}
             </span>
           </div>
 
           <div className="summary-grid">
-            <div>
-              <strong>Search</strong>
-              <span>{run.liveSearchUsed ? "Live API-backed" : "Seed/demo fallback"}</span>
-            </div>
-            <div>
-              <strong>Embeddings</strong>
-              <span>{run.openAiEmbeddingsUsed ? "OpenAI" : "Development fallback"}</span>
-            </div>
-            <div>
-              <strong>Extraction</strong>
-              <span>{run.firecrawlExtractionUsed ? "Firecrawl full-page" : "Snippet-only"}</span>
-            </div>
-            <div>
-              <strong>Contacts</strong>
-              <span>{run.contactEnrichmentUsed ? "Licensed provider" : "Role/persona only"}</span>
-            </div>
+            <div><strong>Search</strong><span>{run.liveSearchUsed ? "Live API-backed" : "Seed/demo fallback"}</span></div>
+            <div><strong>Embeddings</strong><span>{run.openAiEmbeddingsUsed ? "OpenAI" : "Development fallback"}</span></div>
+            <div><strong>Extraction</strong><span>{run.firecrawlExtractionUsed ? "Firecrawl full-page" : "Snippet-only / server fetch"}</span></div>
+            <div><strong>Contacts</strong><span>{run.contactEnrichmentUsed ? "Licensed provider" : "Role/persona only"}</span></div>
           </div>
 
           {run.warnings
             .filter((w) => !w.includes("FIRECRAWL") && !w.includes("contact enrichment"))
             .map((w) => (
-              <div className="warning slim" key={w}>
-                {w}
-              </div>
+              <div className="warning slim" key={w}>{w}</div>
             ))}
 
-          {/* Single safety note per run */}
-          <div
-            className="warning slim"
-            style={{ background: "#f0f4f8", borderColor: "#c0cdd8", color: "#3a4f62" }}
-          >
-            No contacts, emails, or named people are invented. All buyer entries are role/persona level unless a public source is cited.
-            {run.isFallback ? " Some or all accounts are demo/fallback candidates — verify before outreach." : ""}
+          <div className="warning slim" style={{ background: "#f0f4f8", borderColor: "#c0cdd8", color: "#3a4f62" }}>
+            No contacts, emails, or named people are invented. Buyer entries are role/persona level unless a public source is cited.
+            {run.isFallback ? " Some or all accounts are fallback candidates — verify before outreach." : ""}
           </div>
+
+          {run.debugStats && <DebugPanel stats={run.debugStats} />}
 
           <div className="export-actions">
             {run.isFallback && (
@@ -373,20 +395,12 @@ export default function ResearchWorkspace() {
                 {isRerunning ? "Rerunning…" : "Rerun with configured APIs"}
               </button>
             )}
-            <a className="button secondary" href={`/api/research/${run.id}/export?format=csv`}>
-              Export CSV
-            </a>
-            <a className="button secondary" href={`/api/research/${run.id}/export?format=json`}>
-              Export JSON
-            </a>
-            <a className="button secondary" href={`/api/research/${run.id}/export?format=md`}>
-              Export Markdown
-            </a>
+            <a className="button secondary" href={`/api/research/${run.id}/export?format=csv`}>Export CSV</a>
+            <a className="button secondary" href={`/api/research/${run.id}/export?format=json`}>Export JSON</a>
+            <a className="button secondary" href={`/api/research/${run.id}/export?format=md`}>Export Markdown</a>
           </div>
 
-          <h3 style={{ marginTop: 24 }}>
-            Target organizations ({run.accounts.length})
-          </h3>
+          <h3 style={{ marginTop: 24 }}>Target organizations ({run.accounts.length})</h3>
           {run.accounts.map((account) => (
             <AccountCard key={account.id} account={account} />
           ))}

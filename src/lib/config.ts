@@ -1,16 +1,23 @@
 import { z } from "zod";
 
+// Trim string env vars at parse time so trailing spaces don't cause "missing" false-positives.
+const trimmedString = z
+  .string()
+  .transform((v) => v.trim())
+  .optional()
+  .transform((v) => (v === "" ? undefined : v));
+
 const envSchema = z.object({
-  OPENAI_API_KEY: z.string().optional(),
-  SEARCH_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: trimmedString,
+  SEARCH_API_KEY: trimmedString,
   SEARCH_PROVIDER: z.enum(["tavily", "brave", "exa", "serpapi"]).optional().default("tavily"),
-  FIRECRAWL_API_KEY: z.string().optional(),
-  DATABASE_URL: z.string().optional(),
-  SUPABASE_URL: z.string().optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-  HUNTER_API_KEY: z.string().optional(),
-  PEOPLE_DATA_LABS_API_KEY: z.string().optional(),
-  CLEARBIT_API_KEY: z.string().optional(),
+  FIRECRAWL_API_KEY: trimmedString,
+  DATABASE_URL: trimmedString,
+  SUPABASE_URL: trimmedString,
+  SUPABASE_SERVICE_ROLE_KEY: trimmedString,
+  HUNTER_API_KEY: trimmedString,
+  PEOPLE_DATA_LABS_API_KEY: trimmedString,
+  CLEARBIT_API_KEY: trimmedString,
   LOCAL_DATA_DIR: z.string().optional().default(".data")
 });
 
