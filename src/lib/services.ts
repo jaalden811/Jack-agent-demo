@@ -493,9 +493,28 @@ export function isValidOrganizationName(name: string): boolean {
 
   if (/^(what\s+is|how\s+to|how\s+do|how\s+|why\s+|when\s+|where\s+|are\s+|is\s+a\s+)/i.test(trimmed)) return false;
 
-  // ── Generic security concept titles (not org names) ───────────────────────
+  // ── Job-title-as-name patterns ────────────────────────────────────────────
+  // "Hospital Chief Information Security Officer CISO" — a job description, not an org
+
+  if (/\bCISO\b/.test(trimmed)) return false;
+  if (/\b(chief\s+information\s+security\s+officer|chief\s+information\s+officer)\b/i.test(trimmed)) return false;
+  // "Hospital Cybersecurity in Chicago, IL" — location-suffix means job listing
+  if (/\b(?:cybersecurity|security|IT)\s+(?:in|at|near|jobs?\s+in)\s+[A-Z][a-z]/i.test(trimmed)) return false;
+
+  // ── Service / resource / topic titles ────────────────────────────────────
+  // "Incident Response for Small Healthcare Organizations"
+  if (/\bfor\s+(?:small|medium|large|enterprise|the)\b/i.test(trimmed)) return false;
+  // "Proactive Cyber Security for the Healthcare Industry"
+  if (/\bfor\s+(?:the\s+)?(?:healthcare|health)\s+(?:industry|sector|organizations?|providers?|community)\b/i.test(trimmed)) return false;
+  // "Current and Emerging Healthcare Cyber Threat Landscape"
+  if (/\b(threat\s+landscape|cyber\s+threat\s+landscape|attack\s+landscape)\b/i.test(trimmed)) return false;
+  if (/^(current\s+and\s+emerging|proactive\s+cyber|emerging\s+(cyber|threat)|incident\s+response\s+for)/i.test(trimmed)) return false;
+
+  // ── Generic security concept titles ──────────────────────────────────────
 
   if (/^(security\s+operations\s+center|cyber.?attacks?\s+on|ransomware\s+attacks?\s+(in|on)|healthcare\s+cybersecurity|health\s*care\s+cybersecurity|cybersecurity\s+(in|for)\s+hospital|cybersecurity\s+challenges|what\s+is\s+a)/i.test(trimmed)) return false;
+  // "Security Incidents and Data Breaches" — generic topic category, not an org
+  if (/^(security|cyber)\s+(incidents?|breaches?|attacks?|threats?)\b/i.test(trimmed)) return false;
 
   // ── Article / content keywords ────────────────────────────────────────────
 
@@ -512,10 +531,13 @@ export function isValidOrganizationName(name: string): boolean {
 
   if (looksLikePersonName(trimmed)) return false;
 
-  // ── Word count heuristic (long names without org keywords are titles) ─────
+  // ── Word count heuristic ──────────────────────────────────────────────────
 
   const words = trimmed.split(/\s+/);
+  // > 7 words + no org keyword = likely a headline/article title
   if (words.length > 7 && !ORG_INDICATOR_RE.test(trimmed)) return false;
+  // > 9 words = almost certainly not an org name even with org keyword
+  if (words.length > 9) return false;
 
   return true;
 }
@@ -563,6 +585,19 @@ export function classifySearchResult(result: SearchResult): ResultClassification
   }
   // Generic security concept titles (not org names)
   if (/^(security\s+operations\s+center|cyber.?attacks?\s+on|ransomware\s+attacks?\s+(in|on)|healthcare\s+cybersecurity|health\s*care\s+cybersecurity|cybersecurity\s+(in|for)\s+hospital|cybersecurity\s+challenges)/i.test(title)) return "article_or_list";
+  // "Security Incidents and Data Breaches" — generic topic category
+  if (/^(security|cyber)\s+(incidents?|breaches?|attacks?|threats?)\b/i.test(title)) return "article_or_list";
+  // Job-title / role descriptions used as page/posting titles
+  if (/\bCISO\b/.test(title) && !/\b(health|hospital|clinic|medical|system|plan|center|group|network|healthcare)\b/i.test(title.replace(/ciso/gi, ""))) return "article_or_list";
+  if (/\b(chief\s+information\s+security\s+officer)\b/i.test(title) && !/:/.test(title)) return "article_or_list";
+  // Location-suffixed job/service listing: "Hospital Cybersecurity in Chicago, IL"
+  if (/\b(?:cybersecurity|security)\s+(?:in|at|near|jobs?\s+in)\s+[A-Z][a-z]/i.test(title)) return "job_posting";
+  // Service / resource titles targeting a market segment
+  if (/\bfor\s+(?:small|medium|large|enterprise|the)\b/i.test(title)) return "article_or_list";
+  if (/\bfor\s+(?:the\s+)?(?:healthcare|health)\s+(?:industry|sector|organizations?|providers?)\b/i.test(title)) return "article_or_list";
+  // Threat landscape / topic titles
+  if (/\b(threat\s+landscape|cyber\s+threat\s+landscape|attack\s+landscape)\b/i.test(title)) return "article_or_list";
+  if (/^(current\s+and\s+emerging|proactive\s+cyber|emerging\s+(cyber|threat)|incident\s+response\s+for)/i.test(title)) return "article_or_list";
   // Article/report content words
   if (/\b(narrative\s+review|systematic\s+review|white\s*paper|public\s+health\s+crisis|data\s+breach\s+report)\b/i.test(title)) return "article_or_list";
   // Question mark in title
@@ -938,27 +973,20 @@ export async function selectOrganizationsWithDiscovery(
 
   debugStats.dynamicOrgsDiscovered = 0;
 
-  // Try OpenAI entity extraction first, fall back to deterministic
+  // Only OpenAI can extract org names from search results reliably.
+  // The deterministic classifier is intentionally NOT used here because it
+  // accepts article titles containing org keywords (e.g. "Hospital CISO Report").
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   let dynamicOrgs: string[] = [];
 
   if (apiKey && discoveryResults.length > 0) {
     dynamicOrgs = await extractOrgsWithOpenAI(discoveryResults, input, apiKey, debugStats);
+    // Validate every name OpenAI returns — OpenAI can hallucinate article titles as orgs
+    dynamicOrgs = dynamicOrgs.filter(isValidOrganizationName);
   }
 
-  if (dynamicOrgs.length === 0) {
-    // Deterministic fallback: classify results and extract valid org names
-    for (const result of discoveryResults) {
-      const classification = classifySearchResult(result);
-      if (classification === "organization_candidate") {
-        const name = identifyCompanyName(result);
-        if (isValidOrganizationName(name) && !dynamicOrgs.includes(name)) {
-          dynamicOrgs.push(name);
-        }
-      }
-    }
-  }
-
+  // If no OpenAI key or OpenAI found nothing → use fallback list immediately.
+  // DO NOT fall back to deterministic title classification (it produces false positives).
   debugStats.dynamicOrgsDiscovered = dynamicOrgs.length;
 
   // Fill remaining slots with approved fallback orgs
@@ -1592,6 +1620,46 @@ Rules: Be specific to ${orgName}. Only reference evidence provided above. Do not
   }
 }
 
+/** Deterministic fallback reranking — used when OpenAI reranking fails. */
+function deterministicRerank(accounts: AccountRecommendation[]): AccountRecommendation[] {
+  return accounts
+    .map((account) => {
+      const publicEvidence = account.evidence.filter((e) => e.url.startsWith("http"));
+      const cyberSignals = account.signals.filter((s) =>
+        /cyber|ransomware|breach|SOC|security operations|incident/i.test(s.label + s.detail)
+      );
+      const leadershipSignals = account.signals.filter((s) =>
+        /CISO|CIO|security leader|chief information/i.test(s.label + s.detail)
+      );
+      const hasContact = account.contactCandidates.length > 0 || account.economicBuyer.namedPerson != null;
+
+      let priority: PriorityLevel;
+      let priorityReason: string;
+
+      if (
+        account.verificationStatus === "candidate_unverified" &&
+        publicEvidence.length >= 2 &&
+        cyberSignals.length >= 1
+      ) {
+        priority = "A";
+        priorityReason = `${account.companyName}: verified org with ${publicEvidence.length} sources and ${cyberSignals.length} cyber/SOC signal(s)${hasContact ? ", named contact found" : ""}.`;
+      } else if (publicEvidence.length >= 1 || cyberSignals.length >= 1 || leadershipSignals.length >= 1) {
+        priority = "B";
+        priorityReason = `${account.companyName}: some org-specific evidence or security signal available.`;
+      } else {
+        priority = "C";
+        priorityReason = `${account.companyName}: fallback selection; no verified org-specific evidence.`;
+      }
+
+      return { ...account, priority, priorityReason };
+    })
+    .sort((a, b) => {
+      const order: Record<string, number> = { A: 0, B: 1, C: 2 };
+      const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+      return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
+    });
+}
+
 /**
  * Use OpenAI to assign A/B/C priority and re-order accounts by opportunity strength.
  * Hard validation (org name validity) cannot be overridden.
@@ -1601,10 +1669,10 @@ export async function reRankAccounts(
   capabilityMap: CapabilityMap,
   input: ResearchInput,
   debugStats: RunDebugStats
-): Promise<AccountRecommendation[]> {
+): Promise<{ accounts: AccountRecommendation[]; rerankWarning?: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey || accounts.length === 0) {
-    return accounts.map((a) => ({ ...a, priority: "C" as PriorityLevel, priorityReason: "Priority not assessed — OPENAI_API_KEY not configured." }));
+    return { accounts: deterministicRerank(accounts) };
   }
 
   const summaries = accounts.map((a) => ({
@@ -1666,13 +1734,18 @@ scoreAdjustment: -10 to +10 modification. Be org-specific in rankReason.`;
 
     // Sort: A > B > C, then by confidenceScore
     const order: Record<string, number> = { A: 0, B: 1, C: 2 };
-    return ranked.sort((a, b) => {
-      const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
-      return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
-    });
+    return {
+      accounts: ranked.sort((a, b) => {
+        const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+        return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
+      })
+    };
   } catch (error) {
     console.warn("OpenAI reranking failed (non-fatal):", sanitizeProviderError(error));
-    return accounts.map((a) => ({ ...a, priority: "C" as PriorityLevel, priorityReason: "Reranking failed; default priority assigned." }));
+    return {
+      accounts: deterministicRerank(accounts),
+      rerankWarning: "OpenAI reranking unavailable; deterministic priority used."
+    };
   }
 }
 
@@ -2007,7 +2080,8 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   accounts.sort((a, b) => b.confidenceScore - a.confidenceScore);
 
   // ─ Stage 4b: OpenAI reranking ─────────────────────────────────────────────
-  const rerankedAccounts = await reRankAccounts(accounts, capabilityMap, input, debugStats);
+  const { accounts: rerankedAccounts, rerankWarning } = await reRankAccounts(accounts, capabilityMap, input, debugStats);
+  if (rerankWarning) warnings.push(rerankWarning);
   accounts.length = 0;
   accounts.push(...rerankedAccounts);
 

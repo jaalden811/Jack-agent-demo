@@ -17,6 +17,7 @@ import {
   groupSearchResultsWithStats,
   isValidOrganizationName,
   productCapabilityMapper,
+  reRankAccounts,
   retrieveKbContext,
   runResearch,
   sanitizeFinalAccounts,
@@ -26,6 +27,20 @@ import {
 import type { KbChunk, ResearchInput, ResearchRun, RunDebugStats, SearchResult } from "@/lib/types";
 
 vi.mock("openai", () => ({ default: vi.fn() }));
+
+// Shared helper for test debug stats fixtures
+const makeDebugStats = (): RunDebugStats => ({
+  selectedAccountBase: "healthcare_default", selectedOrganizationNames: [],
+  discoveryQueriesRun: 0, broadSearchResultsForContext: 0,
+  enrichmentQueriesRun: 0, rawResultCount: 0,
+  rejectedAsArticleTitle: 0, rejectedAsGenericConcept: 0, rejectedAsVendorProduct: 0,
+  rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
+  extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
+  fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
+  marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false,
+  openAiEntityExtractionRan: false, openAiRerankingRan: false,
+  linkedInQueriesRun: 0, contactCandidatesFound: 0, dynamicOrgsDiscovered: 0
+});
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
@@ -95,6 +110,17 @@ describe("isValidOrganizationName", () => {
     expect(isValidOrganizationName("Ransomware: A Public Health Crisis White Paper")).toBe(false);
   });
 
+  it("rejects the exact bad titles that appeared as accounts in production", () => {
+    // These are the real titles that appeared as account cards — they must all be rejected
+    expect(isValidOrganizationName("Current and Emerging Healthcare Cyber Threat Landscape")).toBe(false);
+    expect(isValidOrganizationName("Hospital Chief Information Security Officer CISO")).toBe(false);
+    expect(isValidOrganizationName("Hospital Cybersecurity in Chicago, IL")).toBe(false);
+    expect(isValidOrganizationName("Incident Response for Small Healthcare Organizations")).toBe(false);
+    expect(isValidOrganizationName("Proactive Cyber Security for the Healthcare Industry")).toBe(false);
+    expect(isValidOrganizationName("Hospital Chief Information Security Officer CISO Job")).toBe(false);
+    expect(isValidOrganizationName("Security Incidents and Data Breaches")).toBe(false);
+  });
+
   it("rejects other article / list / vendor patterns", () => {
     expect(isValidOrganizationName("53 hospital and health system CISOs and chief privacy offic")).toBe(false);
     expect(isValidOrganizationName("Resources and Templates")).toBe(false);
@@ -153,6 +179,20 @@ describe("classifySearchResult", () => {
   it("classifies healthcare org names as organization_candidate", () => {
     expect(classifySearchResult(r("BayCare Health System", "https://baycare.org"))).toBe("organization_candidate");
     expect(classifySearchResult(r("Mayo Clinic", "https://www.mayoclinic.org"))).toBe("organization_candidate");
+  });
+
+  it("classifies the exact bad production titles as article_or_list or job_posting", () => {
+    const bad = [
+      ["Current and Emerging Healthcare Cyber Threat Landscape", "https://healthisac.net/report"],
+      ["Incident Response for Small Healthcare Organizations", "https://hhs.gov/405d"],
+      ["Proactive Cyber Security for the Healthcare Industry", "https://vendor.com/healthcare"],
+      ["Hospital Chief Information Security Officer CISO", "https://jobs.example.com/ciso"],
+      ["Security Incidents and Data Breaches", "https://hhs.gov/incidents"]
+    ];
+    for (const [title, url] of bad) {
+      const classification = classifySearchResult(r(title, url));
+      expect(["article_or_list", "job_posting", "resource_template", "reject"]).toContain(classification);
+    }
   });
 });
 
@@ -525,19 +565,6 @@ describe("KB retrieval helpers", () => {
 
 // ─── synthesizeOrgFit ─────────────────────────────────────────────────────────
 describe("synthesizeOrgFit", () => {
-  const makeDebugStats = (): RunDebugStats => ({
-    selectedAccountBase: "healthcare_default", selectedOrganizationNames: [],
-    discoveryQueriesRun: 0, broadSearchResultsForContext: 0,
-    enrichmentQueriesRun: 0, rawResultCount: 0,
-    rejectedAsArticleTitle: 0, rejectedAsGenericConcept: 0, rejectedAsVendorProduct: 0,
-    rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
-    extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
-    fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
-    marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false,
-    openAiEntityExtractionRan: false, openAiRerankingRan: false,
-    linkedInQueriesRun: 0, contactCandidatesFound: 0, dynamicOrgsDiscovered: 0
-  });
-
   it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
     const cap = await productCapabilityMapper(input, []);
     const debugStats = makeDebugStats();
@@ -583,6 +610,45 @@ describe("runResearch", () => {
     expect(names).toContain("Kaiser Permanente");
     // Should NOT include generic healthcare fallback when seeds are provided
     expect(names).not.toContain("Mayo Clinic");
+  });
+
+  it("OpenAI reranking failure does NOT produce per-card 'failed' message", async () => {
+    // reRankAccounts with no API key should use deterministicRerank, not error messages
+    const cap = await productCapabilityMapper(input, []);
+    const run = await runResearch(input, []);
+    for (const account of run.accounts) {
+      expect(account.priorityReason).not.toMatch(/reranking failed/i);
+      expect(account.priority).toMatch(/^[ABC]$/);
+    }
+  });
+
+  it("reRankAccounts deterministic path assigns A/B/C based on signal count", async () => {
+    const mockAccounts = [
+      {
+        id: "1", companyName: "Mayo Clinic", website: null, verificationStatus: "candidate_unverified" as const,
+        fitReason: "", marketFit: "", signals: [
+          { label: "Cybersecurity signal", detail: "ransomware security operations", sourceType: "news" as const, verification: "snippet_only" as const },
+          { label: "Security signal", detail: "cyber breach", sourceType: "news" as const, verification: "snippet_only" as const }
+        ],
+        painPoints: [], ciscoCapabilityMatch: [], ciscoFitSummary: "",
+        economicBuyer: { roleTitle: "CIO", department: "", whyThisRole: "", contactStatus: "role_only" as const },
+        businessChampion: { roleTitle: "Dir", department: "", whyThisRole: "", contactStatus: "role_only" as const },
+        technicalInfluencers: [], evidence: [
+          { url: "https://example.com/1", title: "Mayo security", snippet: "", sourceType: "news" as const, verificationLevel: "snippet_only" as const, retrievedAt: "" },
+          { url: "https://example.com/2", title: "Mayo breach", snippet: "", sourceType: "news" as const, verificationLevel: "snippet_only" as const, retrievedAt: "" }
+        ],
+        kbInfluence: [], scores: { fit: 60, painEvidence: 0, buyerIdentification: 25, contactVerification: 0, overall: 55 },
+        confidenceScore: 55, confidenceLabel: "medium" as const,
+        priority: "C" as const, priorityReason: "",
+        contactCandidates: [], nextStep: "", missingDataFlags: []
+      }
+    ];
+    const debugStats = makeDebugStats();
+    const capMap = await productCapabilityMapper(input, []);
+    const { accounts } = await reRankAccounts(mockAccounts, capMap, input, debugStats);
+    // With 2 signals and 2 evidence URLs, should be Priority A
+    expect(accounts[0].priority).toBe("A");
+    expect(accounts[0].priorityReason).not.toMatch(/failed/i);
   });
 
   it("debug stats show selectedAccountBase and selectedOrganizationNames", async () => {
