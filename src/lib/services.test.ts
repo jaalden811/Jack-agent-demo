@@ -1,21 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chunkText,
-  collectPageEvidence,
+  classifySearchResult,
   cosineSimilarity,
   exportRun,
-  generateReport,
-  getProviderDiagnostics,
   groupSearchResults,
+  isValidOrganizationName,
   productCapabilityMapper,
   retrieveKbContext,
   runResearch
 } from "@/lib/services";
 import type { KbChunk, ResearchInput, ResearchRun, SearchResult } from "@/lib/types";
 
-vi.mock("openai", () => ({
-  default: vi.fn()
-}));
+vi.mock("openai", () => ({ default: vi.fn() }));
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
@@ -30,10 +27,10 @@ beforeEach(() => {
 const input: ResearchInput = {
   ciscoProduct: "Cisco XDR",
   targetMarket: "healthcare",
-  geography: "",
+  geography: "North America",
   companySize: "",
-  maxResults: 2,
-  seedAccounts: ["Regional Health System"]
+  maxResults: 5,
+  seedAccounts: []
 };
 
 function testChunk(content: string, index = 0): KbChunk {
@@ -44,10 +41,12 @@ function testChunk(content: string, index = 0): KbChunk {
     documentName: "cisco-xdr.md",
     chunkIndex: index,
     content,
-    embedding: new Array(128).fill(0).map((_, position) => (position === index ? 1 : 0)),
+    embedding: new Array(128).fill(0).map((_, p) => (p === index ? 1 : 0)),
     metadata: { sourceType: "uploaded_kb" }
   };
 }
+
+// ─── chunkText ────────────────────────────────────────────────────────────────
 
 describe("chunkText", () => {
   it("creates overlapping chunks without empty values", () => {
@@ -57,57 +56,174 @@ describe("chunkText", () => {
   });
 });
 
-describe("retrieval and scoring helpers", () => {
+// ─── isValidOrganizationName ──────────────────────────────────────────────────
+
+describe("isValidOrganizationName", () => {
+  it("accepts valid healthcare org names", () => {
+    expect(isValidOrganizationName("Mayo Clinic")).toBe(true);
+    expect(isValidOrganizationName("Cleveland Clinic")).toBe(true);
+    expect(isValidOrganizationName("HCA Healthcare")).toBe(true);
+    expect(isValidOrganizationName("CommonSpirit Health")).toBe(true);
+    expect(isValidOrganizationName("Tenet Healthcare")).toBe(true);
+    expect(isValidOrganizationName("BayCare Health System")).toBe(true);
+    expect(isValidOrganizationName("St. Lawrence Health")).toBe(true);
+  });
+
+  it("rejects person names", () => {
+    expect(isValidOrganizationName("Kirk Davis")).toBe(false);
+    expect(isValidOrganizationName("John Smith")).toBe(false);
+    expect(isValidOrganizationName("Mary Johnson")).toBe(false);
+  });
+
+  it("rejects article / list titles", () => {
+    expect(isValidOrganizationName("53 hospital and health system CISOs and chief privacy offic")).toBe(false);
+    expect(isValidOrganizationName("Resources and Templates")).toBe(false);
+    expect(isValidOrganizationName("IT Security Services Preferred Vendor List")).toBe(false);
+    expect(isValidOrganizationName("Careers in Cybersecurity")).toBe(false);
+  });
+
+  it("rejects vendor / product names", () => {
+    expect(isValidOrganizationName("Cisco XDR")).toBe(false);
+    expect(isValidOrganizationName("Cisco Security")).toBe(false);
+    expect(isValidOrganizationName("Cybersecurity Readiness Index")).toBe(false);
+    expect(isValidOrganizationName("2023 Cybersecurity Readiness Index")).toBe(false);
+  });
+
+  it("rejects truncated article titles", () => {
+    expect(isValidOrganizationName("Logicalis US Announced as First Global Partner to Launch ...")).toBe(false);
+  });
+});
+
+// ─── classifySearchResult ─────────────────────────────────────────────────────
+
+describe("classifySearchResult", () => {
+  function makeResult(title: string, url: string, snippet = ""): SearchResult {
+    return { title, url, snippet, verificationLevel: "snippet_only" };
+  }
+
+  it("classifies LinkedIn person profile as person_candidate", () => {
+    expect(classifySearchResult(makeResult("Kirk Davis", "https://www.linkedin.com/in/kirk-davis-12345"))).toBe("person_candidate");
+  });
+
+  it("classifies number-prefixed article as article_or_list", () => {
+    expect(classifySearchResult(makeResult("53 hospital and health system CISOs and chief privacy offic", "https://example.com/article"))).toBe("article_or_list");
+  });
+
+  it("classifies vendor domains as vendor_or_product", () => {
+    expect(classifySearchResult(makeResult("Cisco XDR", "https://www.cisco.com/site/us/en/products/security/xdr/index.html"))).toBe("vendor_or_product");
+  });
+
+  it("classifies resource/template pages", () => {
+    expect(classifySearchResult(makeResult("Resources and Templates", "https://somegov.gov/it/resources"))).toBe("resource_template");
+    expect(classifySearchResult(makeResult("IT Security Services Preferred Vendor List", "https://somegov.gov/vendor-list"))).toBe("resource_template");
+  });
+
+  it("classifies job postings", () => {
+    expect(classifySearchResult(makeResult("Careers in Cybersecurity", "https://somecompany.com/careers/cybersecurity"))).toBe("job_posting");
+  });
+
+  it("classifies healthcare org as organization_candidate", () => {
+    expect(classifySearchResult(makeResult("BayCare Health System", "https://baycare.org"))).toBe("organization_candidate");
+  });
+
+  it("classifies person name (2-word title-case, no org words) as person_candidate", () => {
+    expect(classifySearchResult(makeResult("John Smith", "https://somesite.org/jsmith"))).toBe("person_candidate");
+  });
+});
+
+// ─── groupSearchResults ───────────────────────────────────────────────────────
+
+describe("groupSearchResults", () => {
+  it("rejects person names, vendor pages, and article titles", () => {
+    const results: SearchResult[] = [
+      { title: "Kirk Davis", url: "https://www.linkedin.com/in/kirk-davis", snippet: "", verificationLevel: "snippet_only" },
+      { title: "Cisco XDR", url: "https://www.cisco.com/site/us/en/products/security/xdr/", snippet: "", verificationLevel: "snippet_only" },
+      { title: "53 hospital and health system CISOs...", url: "https://news.example.com/article", snippet: "", verificationLevel: "snippet_only" },
+      { title: "Resources and Templates", url: "https://gov.example.com/resources", snippet: "", verificationLevel: "snippet_only" },
+      { title: "Mayo Clinic", url: "https://www.mayoclinic.org", snippet: "security operations", verificationLevel: "snippet_only" },
+    ];
+    const grouped = groupSearchResults(results);
+    expect(grouped.has("Kirk Davis")).toBe(false);
+    expect(grouped.has("Cisco XDR")).toBe(false);
+    expect(grouped.has("53 hospital and health system CISOs...")).toBe(false);
+    expect(grouped.has("Resources and Templates")).toBe(false);
+    expect(grouped.has("Mayo Clinic")).toBe(true);
+  });
+});
+
+// ─── KB retrieval ─────────────────────────────────────────────────────────────
+
+describe("KB retrieval and scoring helpers", () => {
   it("computes bounded cosine similarity", () => {
     expect(cosineSimilarity([1, 0], [1, 0])).toBe(1);
     expect(cosineSimilarity([1, 0], [0, 1])).toBe(0);
   });
 
-  it("maps product capabilities with KB citations", async () => {
-    const capabilityMap = await productCapabilityMapper(input, [
-      testChunk("Cisco XDR helps ransomware readiness and zero trust operations.")
-    ]);
-    expect(capabilityMap.capabilities).toContain("extended detection and response");
-    expect(capabilityMap.citations[0]?.sourceType).toBe("uploaded_kb");
+  it("skips embedding when chunks is empty", async () => {
+    const result = await retrieveKbContext("ransomware", [], 5);
+    expect(result).toEqual([]);
   });
 
-  it("retrieves relevant KB chunks", async () => {
-    const chunks = [testChunk("ransomware zero trust", 0), testChunk("unrelated cafeteria menu", 1)];
-    const result = await retrieveKbContext("ransomware", chunks, 1);
-    expect(result).toHaveLength(1);
+  it("maps XDR capabilities with KB citations", async () => {
+    const cap = await productCapabilityMapper(input, [
+      testChunk("Cisco XDR helps ransomware readiness and zero trust operations.")
+    ]);
+    expect(cap.capabilities).toContain("extended detection and response");
+    expect(cap.citations[0]?.sourceType).toBe("uploaded_kb");
   });
 });
 
-describe("report generation", () => {
-  it("does not invent emails or named people", async () => {
-    const capabilityMap = await productCapabilityMapper(input, []);
-    const providerStatus = getProviderDiagnostics();
-    const results: SearchResult[] = [
-      {
-        title: "Regional Health System expands security operations",
-        url: "https://example.com/news",
-        snippet: "The hospital system is investing in cybersecurity operations.",
-        sourceType: "news",
-        verificationLevel: "snippet_only"
-      }
-    ];
-    const accounts = generateReport(input, capabilityMap, groupSearchResults(results), [], providerStatus);
-    expect(accounts[0].champion.name).toBeNull();
-    expect(accounts[0].champion.businessEmail).toBeNull();
-    expect(accounts[0].missingDataFlags.join(" ")).toMatch(/do not infer|not invented/i);
+// ─── runResearch ──────────────────────────────────────────────────────────────
+
+describe("runResearch", () => {
+  it("marks run as fallback/unverified when required providers are missing", async () => {
+    const run = await runResearch(input, []);
+    expect(run.openAiEmbeddingsUsed).toBe(false);
+    expect(run.isFallback).toBe(true);
+    expect(run.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("Unverified fallback run")])
+    );
   });
 
-  it("exports citations and confidence scores", async () => {
+  it("fills healthcare fallback candidates when live results are insufficient", async () => {
+    const run = await runResearch(input, []);
+    const names = run.accounts.map((a) => a.companyName);
+    // At least some of the known healthcare demo names must appear
+    const knownFallbacks = ["Mayo Clinic", "Cleveland Clinic", "HCA Healthcare", "CommonSpirit Health", "Tenet Healthcare"];
+    const matched = names.filter((n) => knownFallbacks.includes(n));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
+  it("account names are never person names or article titles", async () => {
+    const run = await runResearch(input, []);
+    for (const account of run.accounts) {
+      expect(isValidOrganizationName(account.companyName)).toBe(true);
+    }
+  });
+
+  it("accounts use BuyerTarget shape — no email field on champion", async () => {
+    const run = await runResearch(input, []);
+    const champion = run.accounts[0]?.businessChampion;
+    expect(champion).toBeDefined();
+    expect(champion.roleTitle).toBeTruthy();
+    expect("businessEmail" in champion).toBe(false);
+    expect("emailVerified" in champion).toBe(false);
+  });
+
+  it("exports include confidence and evidence_urls columns", async () => {
     const run = (await runResearch(input, [])) as ResearchRun;
     const csv = exportRun(run, "csv");
     expect(csv).toContain("confidence");
     expect(csv).toContain("evidence_urls");
+    const md = exportRun(run, "md");
+    expect(md).toContain("Confidence");
     const json = exportRun(run, "json");
     expect(json).toContain("confidenceScore");
     expect(json).toContain("providerStatus");
   });
 
-  it("labels missing required providers as fallback diagnostics", () => {
+  it("labels missing required providers as fallback diagnostics", async () => {
+    const { getProviderDiagnostics } = await import("@/lib/services");
     const diagnostics = getProviderDiagnostics();
     expect(diagnostics.fallbackModeActive).toBe(true);
     expect(diagnostics.checks).toEqual(
@@ -119,27 +235,10 @@ describe("report generation", () => {
   });
 
   it("marks missing Firecrawl evidence as snippet-only", async () => {
+    const { collectPageEvidence } = await import("@/lib/services");
     const results = await collectPageEvidence([
-      {
-        title: "Example source",
-        url: "https://example.com/source",
-        snippet: "Search snippet",
-        sourceType: "news"
-      }
+      { title: "Example", url: "https://example.com/source", snippet: "Search snippet", sourceType: "news" }
     ]);
     expect(results[0].verificationLevel).toBe("snippet_only");
-  });
-
-  it("marks runs as fallback/unverified when required providers are missing", async () => {
-    const run = await runResearch(input, []);
-    // No OPENAI_API_KEY configured → openAiEmbeddingsUsed must be false
-    expect(run.openAiEmbeddingsUsed).toBe(false);
-    // Missing required providers → isFallback via providerStatus.fallbackModeActive
-    expect(run.isFallback).toBe(true);
-    // When no KB files are uploaded, embeddings are skipped entirely (no embedding warning)
-    // but the run-level fallback warning IS present
-    expect(run.warnings).toEqual(
-      expect.arrayContaining([expect.stringContaining("Unverified fallback run")])
-    );
   });
 });

@@ -23,6 +23,15 @@ export type ResearchInput = z.infer<typeof researchInputSchema>;
 
 export type RunStatus = "queued" | "running" | "completed" | "failed";
 
+export type ResultClassification =
+  | "organization_candidate"
+  | "person_candidate"
+  | "article_or_list"
+  | "vendor_or_product"
+  | "job_posting"
+  | "resource_template"
+  | "reject";
+
 export type EvidenceSourceType =
   | "company_page"
   | "press_release"
@@ -69,6 +78,29 @@ export type Citation = {
   retrievedAt: string;
 };
 
+export type OrgSignal = {
+  label: string;
+  detail: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  sourceType: "company_site" | "news" | "search_result" | "kb" | "fallback" | "unknown";
+  verification: "verified" | "snippet_only" | "unverified";
+};
+
+/** Buyer persona recommendation under an organization. Never contains invented people or emails. */
+export type BuyerTarget = {
+  roleTitle: string;
+  department?: string;
+  /** Only populated when a person is publicly verified and clearly tied to the organization. */
+  namedPerson?: {
+    name: string;
+    title?: string;
+    sourceUrl: string;
+  };
+  whyThisRole: string;
+  contactStatus: "role_only" | "named_public_profile" | "unavailable";
+};
+
 export type KbDocument = {
   id: string;
   runId: string;
@@ -89,40 +121,41 @@ export type KbChunk = {
   metadata: Record<string, string | number | boolean>;
 };
 
-export type ContactRecommendation = {
-  roleType: "business_champion" | "economic_buyer" | "technical_influencer" | "other_influencer";
-  name: string | null;
-  title: string;
-  businessEmail: string | null;
-  emailVerified: boolean;
-  profileUrl: string | null;
-  companyPage: string | null;
-  verificationStatus: "verified" | "role_only" | "unverified";
-  relationshipHypothesis: string;
-  citations: Citation[];
-  missingDataFlags: string[];
-};
-
 export type AccountRecommendation = {
   id: string;
+
+  /** The target organization. Must be a real org name — never a person, article, or list title. */
   companyName: string;
   website: string | null;
+  verificationStatus: "verified" | "fallback_unverified" | "candidate_unverified";
+
+  /** Why this organization fits the Cisco product + market. */
   fitReason: string;
   marketFit: string;
+
+  /** Structured signals read from sources. */
+  signals: OrgSignal[];
+
+  /** Inferred pain points. */
+  painPoints: string[];
+
+  /** Cisco product capability bullets. */
   ciscoCapabilityMatch: string[];
-  champion: ContactRecommendation;
-  economicBuyer: ContactRecommendation;
-  otherInfluencers: ContactRecommendation[];
-  painPoints: Array<{
-    pain: string;
-    citations: Citation[];
-  }>;
+  ciscoFitSummary: string;
+
+  /** Buyer map — nested inside organization, never the top-level account name. */
+  economicBuyer: BuyerTarget;
+  businessChampion: BuyerTarget;
+  technicalInfluencers: BuyerTarget[];
+
+  /** Raw evidence citations from search/KB. */
   evidence: Citation[];
   kbInfluence: Array<{
     documentName: string;
     chunkIndex: number;
     snippet: string;
   }>;
+
   scores: {
     fit: number;
     painEvidence: number;
@@ -131,7 +164,9 @@ export type AccountRecommendation = {
     overall: number;
   };
   confidenceScore: number;
-  suggestedOutreachAngle: string;
+  confidenceLabel: "high" | "medium" | "low" | "fallback";
+
+  nextStep: string;
   missingDataFlags: string[];
 };
 

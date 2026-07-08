@@ -319,6 +319,33 @@ button:disabled {
   padding-left: 18px;
 }
 
+.buyer-map {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.buyer-row {
+  display: flex;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.buyer-row:last-child {
+  border-bottom: 0;
+}
+
+.buyer-label {
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  min-width: 130px;
+  padding-top: 2px;
+  text-transform: uppercase;
+}
+
 .role-grid {
   display: grid;
   gap: 12px;
