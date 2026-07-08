@@ -20,15 +20,22 @@ function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapsh
         </span>
       </div>
       {diagnostics ? (
-        <div className="provider-grid">
-          {diagnostics.checks.map((check) => (
-            <div className="provider-check" key={check.name}>
-              <strong>{check.name}</strong>
-              <span className={`mini-pill ${check.status}`}>{statusLabel(check.status)}</span>
-              <p>{check.message}</p>
-            </div>
-          ))}
-        </div>
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>
+            SEARCH_PROVIDER current value: <strong>{diagnostics.searchProvider}</strong>
+          </p>
+          <div className="provider-grid">
+            {diagnostics.checks.map((check) => (
+              <div className="provider-check" key={check.name}>
+                <strong>{check.name}</strong>
+                <span className={`mini-pill ${check.status}`}>
+                  {check.configured ? "configured" : check.required ? "missing" : "missing optional"}
+                </span>
+                <p>{check.message}</p>
+              </div>
+            ))}
+          </div>
+        </>
       ) : (
         <p className="muted">Loading provider configuration...</p>
       )}
