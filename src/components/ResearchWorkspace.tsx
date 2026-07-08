@@ -43,124 +43,109 @@ function ProviderStatusCard({ diagnostics }: { diagnostics: ProviderStatusSnapsh
   );
 }
 
-function RoleCard({
-  title,
-  contact
-}: {
-  title: string;
-  contact: AccountRecommendation["champion"];
-}) {
-  return (
-    <div className="role">
-      <strong>{title}</strong>
-      <p>{contact.name ?? "Person not verified"}</p>
-      <p className="muted">{contact.title}</p>
-      <p>Email: {contact.emailVerified ? contact.businessEmail : "Not verified"}</p>
-      {contact.profileUrl ? <a href={contact.profileUrl}>Profile</a> : <p className="muted">Profile URL not verified</p>}
-      <small>{contact.relationshipHypothesis}</small>
-    </div>
-  );
-}
+function AccountCard({ account, runIsFallback }: { account: AccountRecommendation; runIsFallback: boolean }) {
+  const isDemoCard =
+    runIsFallback || account.evidence.filter((e) => e.url.startsWith("http")).length === 0;
+  const publicEvidence = account.evidence.filter((e) => e.url.startsWith("http"));
 
-function AccountCard({ account }: { account: AccountRecommendation }) {
   return (
     <article className="account-card">
-      <header className="account-header">
+      <div className="account-header">
         <div>
-          <h3>{account.companyName}</h3>
-          <p className="muted url-wrap">{account.website ?? "Website not verified"}</p>
+          <h3 style={{ margin: "0 0 4px" }}>{account.companyName}</h3>
+          {account.website && (
+            <a className="url-wrap muted" href={account.website} style={{ fontSize: "0.88rem" }}>
+              {account.website}
+            </a>
+          )}
         </div>
-        <span className="score">Confidence {account.confidenceScore}</span>
-      </header>
-      <p>{account.fitReason}</p>
-      <div className="detail-grid">
-        <div>
-          <h4>Market / industry fit</h4>
-          <p>{account.marketFit}</p>
-        </div>
-        <div>
-          <h4>Cisco capability match</h4>
-          <ul className="compact-list">
-            {account.ciscoCapabilityMatch.map((capability) => (
-              <li key={capability}>{capability}</li>
-            ))}
-          </ul>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <span className="score">Confidence {account.confidenceScore}</span>
+          <span className={`mini-pill ${isDemoCard ? "fallback_mode_active" : "ready"}`}>
+            {isDemoCard ? "Fallback / unverified" : "Live evidence"}
+          </span>
         </div>
       </div>
-      <div className="role-grid">
-        <RoleCard title="Business champion" contact={account.champion} />
-        <RoleCard title="Economic buyer" contact={account.economicBuyer} />
-        {account.otherInfluencers.slice(0, 1).map((contact) => (
-          <RoleCard key={contact.title} title="Technical influencer" contact={contact} />
-        ))}
-      </div>
 
-      <h4>Observed pain points</h4>
-      {account.painPoints.length ? (
-        account.painPoints.map((pain) => (
-          <p key={pain.pain}>
-            {pain.pain} <span className="muted">({pain.citations.length} citation(s))</span>
-          </p>
-        ))
-      ) : (
-        <p className="muted">No source-backed pain point identified yet.</p>
-      )}
+      <div className="card-body">
+        <div className="detail-grid" style={{ marginTop: 14 }}>
+          <div>
+            <strong>Why this account</strong>
+            <p style={{ margin: "6px 0 0" }}>{account.fitReason}</p>
+            {account.painPoints.length > 0 && (
+              <ul className="compact-list" style={{ marginTop: 6 }}>
+                {account.painPoints.map((p) => (
+                  <li key={p.pain}>{p.pain}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <strong>Cisco capability fit</strong>
+            <ul className="compact-list" style={{ marginTop: 6 }}>
+              {account.ciscoCapabilityMatch.slice(0, 3).map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
-      <h4>Evidence</h4>
-      {account.evidence.length ? (
-        <div className="evidence-table-wrap">
-          <table className="evidence-table">
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Type</th>
-                <th>Verification</th>
-                <th>Snippet</th>
-              </tr>
-            </thead>
-            <tbody>
-          {account.evidence.map((item) => (
-                <tr key={`${item.url}-${item.title}`}>
-                  <td>
-                    <a className="url-wrap" href={item.url.startsWith("http") ? item.url : undefined}>
-                      {item.title}
+        <div className="detail-grid" style={{ marginTop: 14 }}>
+          <div>
+            <strong>Likely buyers</strong>
+            <ul className="compact-list" style={{ marginTop: 6 }}>
+              <li>{account.champion.title}</li>
+              <li>{account.economicBuyer.title}</li>
+              {account.otherInfluencers.slice(0, 1).map((i) => (
+                <li key={i.title}>{i.title}</li>
+              ))}
+            </ul>
+            <small className="muted">No named people unless publicly verified.</small>
+          </div>
+          <div>
+            <strong>Sources</strong>
+            {publicEvidence.length > 0 ? (
+              <ul className="compact-list" style={{ marginTop: 6 }}>
+                {publicEvidence.slice(0, 3).map((e) => (
+                  <li key={e.url}>
+                    <a className="url-wrap" href={e.url}>
+                      {e.title}
                     </a>
-                    <small className="muted url-wrap">{item.url}</small>
-                  </td>
-                  <td>{item.sourceType}</td>
-                  <td><span className={`mini-pill ${item.verificationLevel}`}>{item.verificationLevel.replaceAll("_", " ")}</span></td>
-                  <td>{item.snippet}</td>
-                </tr>
-          ))}
-            </tbody>
-          </table>
+                    <small className="muted"> — {e.sourceType}</small>
+                    {e.snippet && (
+                      <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.82rem" }}>
+                        {e.snippet.slice(0, 180)}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted" style={{ marginTop: 6 }}>
+                Unavailable / unverified
+              </p>
+            )}
+          </div>
         </div>
-      ) : (
-        <p className="muted">No public source evidence stored for this account.</p>
-      )}
 
-      <h4>KB influence</h4>
-      {account.kbInfluence.length ? (
-        <ul>
-          {account.kbInfluence.map((chunk) => (
-            <li key={`${chunk.documentName}-${chunk.chunkIndex}`}>
-              {chunk.documentName} chunk {chunk.chunkIndex}: {chunk.snippet}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted">No uploaded KB influenced this recommendation.</p>
-      )}
+        {account.kbInfluence.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <strong>KB influence</strong>
+            <ul className="compact-list" style={{ marginTop: 6 }}>
+              {account.kbInfluence.map((chunk) => (
+                <li key={`${chunk.documentName}-${chunk.chunkIndex}`}>
+                  {chunk.documentName}: {chunk.snippet.slice(0, 120)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-      <h4>Outreach angle</h4>
-      <p>{account.suggestedOutreachAngle}</p>
-
-      <h4>Do-not-invent flags</h4>
-      <ul>
-        {account.missingDataFlags.map((flag) => (
-          <li key={flag}>{flag}</li>
-        ))}
-      </ul>
+        <div style={{ marginTop: 14 }}>
+          <strong>Suggested next step</strong>
+          <p style={{ margin: "6px 0 0" }}>{account.suggestedOutreachAngle}</p>
+        </div>
+      </div>
     </article>
   );
 }
@@ -289,17 +274,23 @@ export default function ResearchWorkspace() {
             <div><strong>Extraction</strong><span>{run.firecrawlExtractionUsed ? "Firecrawl full-page" : "Snippet-only"}</span></div>
             <div><strong>Contacts</strong><span>{run.contactEnrichmentUsed ? "Licensed provider configured" : "Role/persona only"}</span></div>
           </div>
-          {run.warnings.map((warning) => (
+          {/* Show warnings once, not repeated per card */}
+          {run.warnings.filter((w) => !w.includes("FIRECRAWL") && !w.includes("contact enrichment")).map((warning) => (
             <div className="warning slim" key={warning}>
               {warning}
             </div>
           ))}
-          {run.isFallback ? (
-            <button className="rerun-button" disabled={isRerunning} onClick={rerunWithConfiguredApis}>
-              {isRerunning ? "Rerunning..." : "Rerun with configured APIs"}
-            </button>
-          ) : null}
+          {/* Single safety note for the whole run */}
+          <div className="warning slim" style={{ background: "#f0f4f8", borderColor: "#c0cdd8", color: "#3a4f62" }}>
+            No named contacts, emails, or phone numbers are invented. All buyer recommendations are role/persona level only.
+            {run.isFallback ? " Some or all accounts are demo/fallback candidates — verify before outreach." : ""}
+          </div>
           <div className="export-actions">
+            {run.isFallback && (
+              <button className="rerun-button" disabled={isRerunning} onClick={rerunWithConfiguredApis}>
+                {isRerunning ? "Rerunning..." : "Rerun with configured APIs"}
+              </button>
+            )}
             <a className="button secondary" href={`/api/research/${run.id}/export?format=csv`}>
               Export CSV
             </a>
@@ -310,33 +301,11 @@ export default function ResearchWorkspace() {
               Export Markdown
             </a>
           </div>
-          <h3>Ranked accounts</h3>
-          <div className="evidence-table-wrap">
-            <table className="ranked-table">
-              <thead>
-                <tr>
-                  <th>Rank</th>
-                  <th>Company</th>
-                  <th>Confidence</th>
-                  <th>Evidence</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {run.accounts.map((account, index) => (
-                  <tr key={account.id}>
-                    <td>{index + 1}</td>
-                    <td>{account.companyName}</td>
-                    <td>{account.confidenceScore}</td>
-                    <td>{account.evidence.filter((item) => item.url.startsWith("http")).length} public source(s)</td>
-                    <td>{run.isFallback ? "Fallback" : account.evidence.some((item) => item.verificationLevel === "full_page") ? "Full-page evidence" : "Snippet-only"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <h3 style={{ marginTop: 24 }}>
+            {run.accounts.length} target account{run.accounts.length !== 1 ? "s" : ""}
+          </h3>
           {run.accounts.map((account) => (
-            <AccountCard key={account.id} account={account} />
+            <AccountCard key={account.id} account={account} runIsFallback={run.isFallback} />
           ))}
         </section>
       ) : null}

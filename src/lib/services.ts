@@ -408,15 +408,43 @@ type SearchProviderClient = {
   search(options: SearchOptions): Promise<SearchResult[]>;
 };
 
+// Expand market segment into search terms that target COMPANIES, not vendor product pages.
+function expandMarketForSearch(market: string): string {
+  const lower = market.toLowerCase();
+  if (lower.includes("healthcare") || lower.includes("health")) {
+    return '"health system" OR "hospital system" OR "healthcare provider" OR "health plan"';
+  }
+  if (lower.includes("retail")) {
+    return '"retail chain" OR "retailer" OR "retail company"';
+  }
+  if (lower.includes("government") || lower.includes("sled") || lower.includes("state")) {
+    return '"state government" OR "local government" OR "county government"';
+  }
+  return `"${market}" company`;
+}
+
+// Return per-market well-known company names used when live search yields < maxResults valid accounts.
+function getDemoNamesFor(market: string): string[] {
+  const lower = market.toLowerCase();
+  if (lower.includes("healthcare") || lower.includes("health")) {
+    return ["Mayo Clinic", "Cleveland Clinic", "HCA Healthcare", "CommonSpirit Health", "Tenet Healthcare"];
+  }
+  if (lower.includes("retail")) {
+    return ["Kroger", "Albertsons", "Dollar Tree", "Ross Stores", "Burlington Stores"];
+  }
+  if (lower.includes("government") || lower.includes("sled")) {
+    return ["State of Texas DIR", "Los Angeles County", "Fairfax County", "State of Georgia", "Dallas County"];
+  }
+  return ["Enterprise Corp A", "Enterprise Corp B", "Enterprise Corp C", "Enterprise Corp D", "Enterprise Corp E"];
+}
+
 function buildMarketQuery(input: ResearchInput, capabilityMap: CapabilityMap) {
-  return [
-    `"${input.ciscoProduct}"`,
-    input.targetMarket,
-    input.geography,
-    input.companySize,
-    capabilityMap.painCategories.slice(0, 3).join(" OR "),
-    "company press release job posting annual report cybersecurity networking operations"
-  ]
+  // Do NOT include the Cisco product name — that biases results to vendor product pages.
+  // Focus the query on finding target companies in the specified market.
+  const marketTerms = expandMarketForSearch(input.targetMarket);
+  const geoTerms = input.geography || "";
+  const painTerms = capabilityMap.painCategories.slice(0, 2).join(" ");
+  return [marketTerms, geoTerms, "cybersecurity CISO", '"security operations"', painTerms]
     .filter(Boolean)
     .join(" ");
 }
@@ -874,15 +902,119 @@ function originFromUrl(url: string) {
   }
 }
 
+// Domains whose content should never become target account names.
+const REJECT_SOURCE_DOMAINS = new Set([
+  "cisco.com", "facebook.com", "youtube.com", "instagram.com",
+  "twitter.com", "x.com", "paloaltonetworks.com", "crowdstrike.com",
+  "fortinet.com", "splunk.com", "mcafee.com", "sentinelone.com",
+  "zscaler.com", "okta.com", "microsoft.com", "google.com"
+]);
+
+// Title patterns that indicate an article, report, or vendor product page rather than a company.
+const REJECT_TITLE_PATTERNS = [
+  /^cisco\b/i,
+  /\bcisco\s+(xdr|security|cloud|protection|meraki|duo|firewall|umbrella|talos)/i,
+  /cybersecurity\s+readiness\s+index/i,
+  /cloud\s+protection\s+suite/i,
+  /^\d{4}\s+(?:cybersecurity|security|threat|data)/i,
+  /\b(webinar|whitepaper|datasheet|ebook|podcast|newsletter)\b/i,
+  /\b(readiness\s+index|maturity\s+model)\b/i,
+  /\.\.\.$/, // truncated article title
+];
+
+function extractDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function isValidTargetAccount(companyName: string, sourceUrl: string): boolean {
+  const domain = extractDomain(sourceUrl);
+  if (REJECT_SOURCE_DOMAINS.has(domain)) return false;
+  // Also catch sub-domains like security.cisco.com
+  if ([...REJECT_SOURCE_DOMAINS].some((d) => domain.endsWith("." + d))) return false;
+  if (REJECT_TITLE_PATTERNS.some((p) => p.test(companyName))) return false;
+  const trimmed = companyName.trim();
+  // Reject overly short, overly long, or clearly truncated names
+  if (trimmed.length < 4 || trimmed.length > 80) return false;
+  return true;
+}
+
 export function groupSearchResults(results: SearchResult[]) {
   const grouped = new Map<string, SearchResult[]>();
   for (const result of results) {
     const companyName = identifyCompanyName(result);
+    // Only include results that look like actual target companies.
+    const primaryUrl = result.url || "";
+    if (!isValidTargetAccount(companyName, primaryUrl)) continue;
     const existing = grouped.get(companyName) ?? [];
     existing.push(result);
     grouped.set(companyName, existing);
   }
   return grouped;
+}
+
+function createDemoAccount(
+  companyName: string,
+  input: ResearchInput,
+  capabilityMap: CapabilityMap,
+  providerStatus: ProviderStatusSnapshot
+): AccountRecommendation {
+  const makeContact = (
+    roleType: ContactRecommendation["roleType"],
+    title: string
+  ): ContactRecommendation => ({
+    roleType,
+    name: null,
+    title,
+    businessEmail: null,
+    emailVerified: false,
+    profileUrl: null,
+    companyPage: null,
+    verificationStatus: "role_only",
+    relationshipHypothesis: `${title} is the typical decision-maker for ${capabilityMap.product} at a ${input.targetMarket} organization.`,
+    citations: [],
+    missingDataFlags: ["No verified contact available."]
+  });
+
+  const scores = {
+    fit: 42,
+    painEvidence: 0,
+    buyerIdentification: 25,
+    contactVerification: 0,
+    overall: 22
+  };
+
+  return {
+    id: randomUUID(),
+    companyName,
+    website: null,
+    fitReason: `${companyName} is a major ${input.targetMarket} organization with security operations complexity, regulatory compliance requirements, and ransomware exposure that aligns with ${capabilityMap.product} capabilities.`,
+    marketFit: `${companyName} is a well-known ${input.targetMarket} organization. Confirm current security priorities from public sources before outreach.`,
+    ciscoCapabilityMatch: capabilityMap.capabilities.slice(0, 3),
+    champion: makeContact("business_champion", capabilityMap.buyerPersonas.championTitles[0]),
+    economicBuyer: makeContact("economic_buyer", capabilityMap.buyerPersonas.economicBuyerTitles[0]),
+    otherInfluencers: [makeContact("technical_influencer", capabilityMap.buyerPersonas.influencerTitles[0])],
+    painPoints: [
+      {
+        pain: `${input.targetMarket} organizations face significant ransomware and breach risks requiring SOC capability improvements and faster incident response.`,
+        citations: []
+      }
+    ],
+    evidence: [],
+    kbInfluence: [],
+    scores,
+    confidenceScore: scores.overall,
+    suggestedOutreachAngle: `Engage ${companyName} around ${capabilityMap.product} capabilities for ${input.targetMarket} security challenges. Validate current priorities from public sources before outreach.`,
+    missingDataFlags: [
+      "Fallback / demo candidate — not sourced from live search.",
+      "No verified contact available.",
+      "No public evidence retrieved.",
+      "Verify this account manually before outreach."
+    ]
+  };
 }
 
 export async function runResearch(input: ResearchInput, files: File[] = []): Promise<ResearchRun> {
@@ -947,6 +1079,22 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     embeddingRuntime
   );
   const accounts = generateReport(input, capabilityMap, grouped, relevantKb, providerStatus);
+
+  // If live search didn't produce enough valid target accounts, fill with market-specific demo candidates.
+  if (accounts.length < input.maxResults) {
+    const existingNames = new Set(accounts.map((a) => a.companyName.toLowerCase()));
+    const demoNames = getDemoNamesFor(input.targetMarket)
+      .filter((name) => !existingNames.has(name.toLowerCase()))
+      .slice(0, input.maxResults - accounts.length);
+    for (const name of demoNames) {
+      accounts.push(createDemoAccount(name, input, capabilityMap, providerStatus));
+    }
+    if (demoNames.length > 0 && !warnings.some((w) => w.includes("demo"))) {
+      warnings.push(
+        `Live search returned fewer than ${input.maxResults} valid target accounts; filled with ${input.targetMarket} demo candidates. Verify before outreach.`
+      );
+    }
+  }
 
   for (const account of accounts) {
     account.champion = await contactEnricher(account.champion);

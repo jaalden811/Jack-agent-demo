@@ -3,6 +3,9 @@ import { runResearch } from "@/lib/services";
 import { saveRun } from "@/lib/storage";
 import { researchInputSchema } from "@/lib/types";
 
+// Read env vars at request time, not build time.
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
