@@ -130,10 +130,16 @@ describe("report generation", () => {
     expect(results[0].verificationLevel).toBe("snippet_only");
   });
 
-  it("marks fallback embedding runs as unverified", async () => {
+  it("marks runs as fallback/unverified when required providers are missing", async () => {
     const run = await runResearch(input, []);
+    // No OPENAI_API_KEY configured → openAiEmbeddingsUsed must be false
     expect(run.openAiEmbeddingsUsed).toBe(false);
+    // Missing required providers → isFallback via providerStatus.fallbackModeActive
     expect(run.isFallback).toBe(true);
-    expect(run.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Development fallback embeddings")]));
+    // When no KB files are uploaded, embeddings are skipped entirely (no embedding warning)
+    // but the run-level fallback warning IS present
+    expect(run.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("Unverified fallback run")])
+    );
   });
 });

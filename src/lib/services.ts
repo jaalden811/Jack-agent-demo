@@ -204,14 +204,15 @@ async function embedTextWithRuntime(text: string, runtime?: EmbeddingRuntime) {
   }
 
   try {
-    const client = new OpenAI({ apiKey: config.OPENAI_API_KEY, timeout: 10000, maxRetries: 0 });
+    // 5 s timeout; 1 retry (2 total attempts). Fail fast — deterministic fallback is always available.
+    const client = new OpenAI({ apiKey: config.OPENAI_API_KEY, timeout: 5000, maxRetries: 0 });
     const response = await withRetry(
       () =>
         client.embeddings.create({
           model: "text-embedding-3-small",
           input: text.slice(0, 8000)
         }),
-      { label: "OpenAI embedding", retries: 2, baseDelayMs: 300 }
+      { label: "OpenAI embedding", retries: 1, baseDelayMs: 200 }
     );
     return response.data[0]?.embedding ?? deterministicEmbedding(text);
   } catch (error) {
@@ -305,6 +306,8 @@ export async function retrieveKbContext(
   limit = 5,
   embeddingRuntime?: EmbeddingRuntime
 ) {
+  // Skip the OpenAI call entirely when there is nothing to rank against.
+  if (chunks.length === 0) return [];
   const queryEmbedding = await embedTextWithRuntime(query, embeddingRuntime);
   return chunks
     .map((chunk) => ({ chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
@@ -519,10 +522,31 @@ export async function searchMarketAccounts(input: ResearchInput, capabilityMap: 
     }));
   }
 
-  return provider.search({
-    query: buildMarketQuery(input, capabilityMap),
-    maxResults: input.maxResults * 4
-  });
+  try {
+    return await provider.search({
+      query: buildMarketQuery(input, capabilityMap),
+      maxResults: input.maxResults * 4
+    });
+  } catch (error) {
+    // Search failure must not crash the run. Fall back to seed accounts.
+    console.warn("Search provider error (non-fatal):", error instanceof Error ? error.message : "Unknown");
+    const seedResults = input.seedAccounts.map<SearchResult>((name) => ({
+      title: name,
+      url: "",
+      snippet: "Search provider error; using seed accounts only. Check SEARCH_API_KEY and SEARCH_PROVIDER.",
+      sourceType: "search_result" as const,
+      verificationLevel: "unverified" as const
+    }));
+    if (seedResults.length > 0) return seedResults;
+    const fallback: SearchResult = {
+      title: "Search provider unavailable",
+      url: "",
+      snippet: `Search provider error: ${error instanceof Error ? error.message : "Unknown"}. Configure SEARCH_API_KEY and add seed accounts.`,
+      sourceType: "search_result",
+      verificationLevel: "unverified"
+    };
+    return [fallback];
+  }
 }
 
 function classifySource(url: string, title: string): EvidenceSourceType {
