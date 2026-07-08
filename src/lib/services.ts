@@ -116,20 +116,24 @@ export async function withRetry<T>(
   const retries = options.retries ?? 2;
   const baseDelayMs = options.baseDelayMs ?? 400;
   let lastError: unknown;
+  let attemptsRun = 0;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
       return await operation();
     } catch (error) {
+      attemptsRun = attempt + 1;
       lastError = error;
-      // Never retry permanent HTTP failures (401, 403, 404, etc.)
+      // Never retry permanent HTTP failures (401, 403, 404, etc.) — break immediately.
       if (error instanceof PermanentHttpError) break;
       if (attempt === retries) break;
       await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
     }
   }
 
-  throw new Error(`${options.label} failed after ${retries + 1} attempts: ${(lastError as Error).message}`);
+  throw new Error(
+    `${options.label} failed after ${attemptsRun} attempt${attemptsRun === 1 ? "" : "s"}: ${(lastError as Error).message}`
+  );
 }
 
 // Errors thrown with this marker are not retried by withRetry.
