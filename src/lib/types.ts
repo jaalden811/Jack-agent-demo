@@ -33,12 +33,39 @@ export type EvidenceSourceType =
   | "uploaded_kb"
   | "search_result";
 
+export type ProviderReadiness =
+  | "ready"
+  | "missing_optional_provider"
+  | "missing_required_provider"
+  | "fallback_mode_active";
+
+export type ProviderCheck = {
+  name: string;
+  configured: boolean;
+  required: boolean;
+  status: ProviderReadiness;
+  message: string;
+};
+
+export type ProviderStatusSnapshot = {
+  overall: ProviderReadiness;
+  searchProvider: "tavily" | "brave" | "exa" | "serpapi";
+  checks: ProviderCheck[];
+  liveSearchAvailable: boolean;
+  openAiEmbeddingsAvailable: boolean;
+  firecrawlAvailable: boolean;
+  contactEnrichmentAvailable: boolean;
+  fallbackModeActive: boolean;
+  summary: string;
+};
+
 export type Citation = {
   url: string;
   title: string;
   date?: string;
   snippet: string;
   sourceType: EvidenceSourceType;
+  verificationLevel: "full_page" | "snippet_only" | "kb" | "unverified";
   retrievedAt: string;
 };
 
@@ -79,7 +106,10 @@ export type ContactRecommendation = {
 export type AccountRecommendation = {
   id: string;
   companyName: string;
+  website: string | null;
   fitReason: string;
+  marketFit: string;
+  ciscoCapabilityMatch: string[];
   champion: ContactRecommendation;
   economicBuyer: ContactRecommendation;
   otherInfluencers: ContactRecommendation[];
@@ -109,6 +139,13 @@ export type ResearchRun = {
   id: string;
   input: ResearchInput;
   status: RunStatus;
+  providerStatus: ProviderStatusSnapshot;
+  liveSearchUsed: boolean;
+  openAiEmbeddingsUsed: boolean;
+  firecrawlExtractionUsed: boolean;
+  contactEnrichmentUsed: boolean;
+  isVerified: boolean;
+  isFallback: boolean;
   warnings: string[];
   accounts: AccountRecommendation[];
   kbDocuments: KbDocument[];
@@ -124,6 +161,8 @@ export type SearchResult = {
   snippet: string;
   publishedDate?: string;
   sourceType?: EvidenceSourceType;
+  extractedContent?: string;
+  verificationLevel?: "full_page" | "snippet_only" | "unverified";
 };
 
 export type CapabilityMap = {
