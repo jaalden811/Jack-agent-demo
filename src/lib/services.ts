@@ -122,12 +122,22 @@ export async function withRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error;
+      // Never retry permanent HTTP failures (401, 403, 404, etc.)
+      if (error instanceof PermanentHttpError) break;
       if (attempt === retries) break;
       await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
     }
   }
 
   throw new Error(`${options.label} failed after ${retries + 1} attempts: ${(lastError as Error).message}`);
+}
+
+// Errors thrown with this marker are not retried by withRetry.
+class PermanentHttpError extends Error {
+  constructor(public readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "PermanentHttpError";
+  }
 }
 
 export async function fetchJsonWithTimeout<T>(
@@ -139,6 +149,10 @@ export async function fetchJsonWithTimeout<T>(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
+    // 4xx (except 429) are permanent failures — no point retrying.
+    if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      throw new PermanentHttpError(response.status);
+    }
     if (response.status === 429) {
       throw new Error("rate_limited");
     }
@@ -510,6 +524,61 @@ function createSearchProviderClient(): SearchProviderClient | null {
   };
 }
 
+// Thrown by searchMarketAccounts when the provider returns a non-retryable error.
+// Caught in runResearch so the run continues in fallback mode.
+class SearchProviderFallbackError extends Error {
+  constructor(public readonly providerMessage: string) {
+    super(`Live search unavailable: ${providerMessage}`);
+    this.name = "SearchProviderFallbackError";
+  }
+}
+
+// Per-market unverified demo candidates used when live search is unavailable.
+const DEMO_CANDIDATES: Record<string, string[]> = {
+  healthcare: [
+    "Mayo Clinic",
+    "Cleveland Clinic",
+    "HCA Healthcare",
+    "CommonSpirit Health",
+    "Tenet Healthcare"
+  ],
+  "mid-market retail": [
+    "Shoe Carnival",
+    "Tuesday Morning",
+    "Gordmans",
+    "Big 5 Sporting Goods",
+    "Sportsman's Warehouse"
+  ],
+  "state/local government": [
+    "City of Phoenix",
+    "Dallas County",
+    "State of Utah ITS",
+    "Miami-Dade County",
+    "Virginia VITA"
+  ],
+  "general market": [
+    "Example Corp A",
+    "Example Corp B",
+    "Example Corp C",
+    "Example Corp D",
+    "Example Corp E"
+  ]
+};
+
+function demoCandidatesFor(market: string, maxResults: number): SearchResult[] {
+  const normalised = market.toLowerCase();
+  const candidates =
+    Object.entries(DEMO_CANDIDATES).find(([key]) => normalised.includes(key))?.[1] ??
+    DEMO_CANDIDATES["general market"];
+  return candidates.slice(0, maxResults).map<SearchResult>((name) => ({
+    title: name,
+    url: "",
+    snippet: `Demo/unverified fallback candidate for ${market}. Live search was unavailable. Verify this account manually before outreach.`,
+    sourceType: "search_result",
+    verificationLevel: "unverified"
+  }));
+}
+
 export async function searchMarketAccounts(input: ResearchInput, capabilityMap: CapabilityMap) {
   const provider = createSearchProviderClient();
   if (!provider) {
@@ -528,24 +597,11 @@ export async function searchMarketAccounts(input: ResearchInput, capabilityMap: 
       maxResults: input.maxResults * 4
     });
   } catch (error) {
-    // Search failure must not crash the run. Fall back to seed accounts.
-    console.warn("Search provider error (non-fatal):", error instanceof Error ? error.message : "Unknown");
-    const seedResults = input.seedAccounts.map<SearchResult>((name) => ({
-      title: name,
-      url: "",
-      snippet: "Search provider error; using seed accounts only. Check SEARCH_API_KEY and SEARCH_PROVIDER.",
-      sourceType: "search_result" as const,
-      verificationLevel: "unverified" as const
-    }));
-    if (seedResults.length > 0) return seedResults;
-    const fallback: SearchResult = {
-      title: "Search provider unavailable",
-      url: "",
-      snippet: `Search provider error: ${error instanceof Error ? error.message : "Unknown"}. Configure SEARCH_API_KEY and add seed accounts.`,
-      sourceType: "search_result",
-      verificationLevel: "unverified"
-    };
-    return [fallback];
+    // Non-fatal: 401/403/429/network errors must not block the run.
+    const message = error instanceof Error ? error.message : "Unknown";
+    console.warn("Search provider error (non-fatal):", message);
+    // Propagate the reason so runResearch can add the right warning.
+    throw new SearchProviderFallbackError(message);
   }
 }
 
@@ -851,7 +907,33 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
 
   const { documents, chunks } = await ingestKnowledgeBase(runId, files, embeddingRuntime);
   const capabilityMap = await productCapabilityMapper(input, chunks, embeddingRuntime);
-  const searchResults = await searchMarketAccounts(input, capabilityMap);
+
+  let searchResults: SearchResult[];
+  let searchFellBack = false;
+  try {
+    searchResults = await searchMarketAccounts(input, capabilityMap);
+  } catch (error) {
+    searchFellBack = true;
+    if (error instanceof SearchProviderFallbackError) {
+      warnings.push(
+        `Live search unavailable (${error.providerMessage}); using seed/demo candidates. Check SEARCH_API_KEY and SEARCH_PROVIDER.`
+      );
+    } else {
+      warnings.push("Live search unavailable; using seed/demo candidates.");
+    }
+    // Prefer user-supplied seed accounts, then market-keyed demo candidates.
+    searchResults =
+      input.seedAccounts.length > 0
+        ? input.seedAccounts.map<SearchResult>((name) => ({
+            title: name,
+            url: "",
+            snippet: "Seed account supplied by user. Live search was unavailable.",
+            sourceType: "search_result",
+            verificationLevel: "unverified"
+          }))
+        : demoCandidatesFor(input.targetMarket, input.maxResults);
+  }
+
   const evidenceResults = await collectPageEvidence(searchResults);
   const grouped = groupSearchResults(evidenceResults);
   const relevantKb = await retrieveKbContext(
@@ -878,14 +960,14 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     warnings.push("Development fallback embeddings used — not production-quality.");
   }
 
-  const usedFallbackRun = providerStatus.fallbackModeActive || embeddingRuntime.usedFallback;
+  const usedFallbackRun = providerStatus.fallbackModeActive || embeddingRuntime.usedFallback || searchFellBack;
 
   return {
     id: runId,
     input,
     status: "completed",
     providerStatus,
-    liveSearchUsed: providerStatus.liveSearchAvailable,
+    liveSearchUsed: providerStatus.liveSearchAvailable && !searchFellBack,
     openAiEmbeddingsUsed: providerStatus.openAiEmbeddingsAvailable && !embeddingRuntime.usedFallback,
     firecrawlExtractionUsed: accounts.some((account) =>
       account.evidence.some((evidence) => evidence.verificationLevel === "full_page")
