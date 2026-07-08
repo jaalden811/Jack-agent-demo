@@ -93,12 +93,31 @@ export type RunDebugStats = {
   discoveryQueriesRun: number;
   enrichmentQueriesRun: number;
   rawResultCount: number;
+  // Granular rejection counters — makes it obvious why bad titles were rejected
+  rejectedAsArticleTitle: number;
+  rejectedAsGenericConcept: number;
+  rejectedAsVendorProduct: number;
+  rejectedAsPerson: number;
+  rejectedInvalidOrgName: number;
   rejectedCount: number;
   rejectionReasons: Partial<Record<ResultClassification, number>>;
+  // Org tracking
+  extractedOrgMentions: number;
+  verifiedOrganizations: number;
   validOrgCount: number;
-  fallbackAccountsAdded: number;
+  fallbackOrganizationsAdded: number;
+  // Evidence
   pageFetchAttempts: number;
+  accountSignalsAttached: number;
+  marketSignalsOnly: number;
   openAiSynthesisUsed: boolean;
+};
+
+export type MarketSignal = {
+  title: string;
+  url?: string;
+  snippet?: string;
+  reason: string;
 };
 
 /** Buyer persona recommendation under an organization. Never contains invented people or emails. */
@@ -203,6 +222,8 @@ export type ResearchRun = {
   updatedAt: string;
   error?: string;
   debugStats?: RunDebugStats;
+  /** Generic market/industry evidence — not tied to a specific org; shown once in run summary. */
+  marketSignals?: MarketSignal[];
 };
 
 export type SearchResult = {

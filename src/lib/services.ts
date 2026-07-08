@@ -434,10 +434,21 @@ function keywordHints(text: string) {
 // ─── Result classification ────────────────────────────────────────────────────
 
 const REJECT_SOURCE_DOMAINS = new Set([
-  "cisco.com", "facebook.com", "youtube.com", "instagram.com",
-  "twitter.com", "x.com", "linkedin.com", "paloaltonetworks.com",
-  "crowdstrike.com", "fortinet.com", "splunk.com", "mcafee.com",
-  "sentinelone.com", "zscaler.com", "okta.com", "microsoft.com", "google.com"
+  // Security vendors
+  "cisco.com", "paloaltonetworks.com", "crowdstrike.com", "fortinet.com",
+  "splunk.com", "mcafee.com", "sentinelone.com", "zscaler.com", "okta.com",
+  "proofpoint.com", "ibm.com", "cloudflare.com", "microsoft.com", "google.com",
+  // Social / content platforms
+  "facebook.com", "youtube.com", "instagram.com", "twitter.com", "x.com",
+  "linkedin.com", "medium.com", "substack.com",
+  // Academic / research databases — good for market signals, never org names
+  "wikipedia.org", "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov",
+  "researchgate.net", "arxiv.org"
+]);
+
+// Domains that produce academic/research pages — classify as article_or_list, not vendor_or_product
+const ACADEMIC_DOMAINS = new Set([
+  "ncbi.nlm.nih.gov", "pubmed.ncbi.nlm.nih.gov", "researchgate.net", "arxiv.org"
 ]);
 
 export const ORG_INDICATOR_RE = /\b(health(care)?|hospital|clinic|medical|system(s)?|plan|center|group|network|care|services|solutions|inc|llc|corp|ltd|foundation|trust|association|society|institute|university|college|authority|agency|department|county|state of)\b/i;
@@ -456,17 +467,54 @@ function looksLikePersonName(name: string): boolean {
 }
 
 export function isValidOrganizationName(name: string): boolean {
-  if (!name || name.trim().length < 4) return false;
-  if (name.trim().length > 100) return false;
-  if (/^\d+[\s.]/.test(name.trim())) return false;
-  if (/\b(resources|templates|guide|guides|playbook|careers?|job\s+posting|preferred\s+vendor|vendor\s+list|approved\s+vendor)\b/i.test(name)) return false;
-  if (/^cisco\b/i.test(name) || /\bcisco\s+(xdr|security|cloud|meraki|duo|firewall|umbrella|talos)/i.test(name)) return false;
-  if (/\b(cybersecurity\s+readiness\s+index|cloud\s+protection\s+suite|readiness\s+index)\b/i.test(name)) return false;
-  if (/\b(webinar|whitepaper|datasheet|podcast|ebook|newsletter|report|announcement)\b/i.test(name)) return false;
-  if (/\.\.\.$/.test(name.trim())) return false;
-  if (looksLikePersonName(name)) return false;
-  const words = name.trim().split(/\s+/);
-  if (words.length > 7 && !ORG_INDICATOR_RE.test(name)) return false;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length < 4) return false;
+  if (trimmed.length > 100) return false;
+
+  // ── Basic structural rejects ──────────────────────────────────────────────
+
+  // Starts with a number (article: "53 hospital CISOs...")
+  if (/^\d+[\s.]/.test(trimmed)) return false;
+  // Truncated article title
+  if (/\.\.\.$/.test(trimmed)) return false;
+  // Contains a question mark → headline/title, not an org
+  if (trimmed.includes("?")) return false;
+  // Contains a colon followed by article/report language (most org names don't have colons)
+  if (/:/.test(trimmed)) {
+    const afterColon = trimmed.split(":").slice(1).join(":");
+    if (/\b(review|report|study|guide|analysis|overview|challenges|crisis|attacks|definition|examples|cybersecurity|hospitals|modern)\b/i.test(afterColon)) return false;
+    // Even without a keyword after the colon, a colon usually means it's a title/subtitle
+    if (!/\b(health|hospital|clinic|medical|system|network|group|center|plan)\b/i.test(trimmed)) return false;
+  }
+
+  // ── Interrogative / headline starts ──────────────────────────────────────
+
+  if (/^(what\s+is|how\s+to|how\s+do|how\s+|why\s+|when\s+|where\s+|are\s+|is\s+a\s+)/i.test(trimmed)) return false;
+
+  // ── Generic security concept titles (not org names) ───────────────────────
+
+  if (/^(security\s+operations\s+center|cyber.?attacks?\s+on|ransomware\s+attacks?\s+(in|on)|healthcare\s+cybersecurity|health\s*care\s+cybersecurity|cybersecurity\s+(in|for)\s+hospital|cybersecurity\s+challenges|what\s+is\s+a)/i.test(trimmed)) return false;
+
+  // ── Article / content keywords ────────────────────────────────────────────
+
+  if (/\b(narrative\s+review|systematic\s+review|white\s*paper|whitepaper|case\s+study|public\s+health\s+crisis|data\s+breach\s+report|cybersecurity\s+for\s+healthcare)\b/i.test(trimmed)) return false;
+  if (/\b(resources|templates|guide|guides|playbook|careers?|job\s+posting|preferred\s+vendor|vendor\s+list|approved\s+vendor)\b/i.test(trimmed)) return false;
+  if (/\b(webinar|whitepaper|datasheet|podcast|ebook|newsletter|report|announcement|challenges\s+for|challenges\s+of|solutions\s+for|overview\s+of|definition\s+of)\b/i.test(trimmed)) return false;
+
+  // ── Vendor / product names ────────────────────────────────────────────────
+
+  if (/^cisco\b/i.test(trimmed) || /\bcisco\s+(xdr|security|cloud|meraki|duo|firewall|umbrella|talos)/i.test(trimmed)) return false;
+  if (/\b(cybersecurity\s+readiness\s+index|cloud\s+protection\s+suite|readiness\s+index)\b/i.test(trimmed)) return false;
+
+  // ── Person names ──────────────────────────────────────────────────────────
+
+  if (looksLikePersonName(trimmed)) return false;
+
+  // ── Word count heuristic (long names without org keywords are titles) ─────
+
+  const words = trimmed.split(/\s+/);
+  if (words.length > 7 && !ORG_INDICATOR_RE.test(trimmed)) return false;
+
   return true;
 }
 
@@ -474,17 +522,62 @@ export function classifySearchResult(result: SearchResult): ResultClassification
   const title = (result.title ?? "").trim();
   const url = (result.url ?? "").toLowerCase();
 
+  // ── Domain checks ─────────────────────────────────────────────────────────
+
   if (url.includes("linkedin.com/in/")) return "person_candidate";
   const domain = extractDomain(url);
+  // Academic databases → always article, never an org name source
+  if (ACADEMIC_DOMAINS.has(domain) || [...ACADEMIC_DOMAINS].some((d) => domain.endsWith("." + d))) return "article_or_list";
+  // Vendor / social domains
   if (REJECT_SOURCE_DOMAINS.has(domain) || [...REJECT_SOURCE_DOMAINS].some((d) => domain.endsWith("." + d))) return "vendor_or_product";
-  if (/^cisco\b/i.test(title) || /\bcisco\s+(xdr|security|cloud|meraki|duo|umbrella|firewall)/i.test(title)) return "vendor_or_product";
-  if (/\b(careers?|job\s+posting|we.?re hiring|apply now)\b/i.test(title)) return "job_posting";
+
+  // ── Resource / template pages (checked before article patterns) ───────────
+  // These must be classified before the article/colon checks so govsite.gov pages
+  // that say "Resources and Templates" are still caught as resource_template.
+
   if (/\b(resources?\s+(and\s+)?templates?|preferred\s+vendor|vendor\s+list|approved\s+vendor|it\s+security\s+services)\b/i.test(title)) return "resource_template";
+
+  // ── Vendor / product title checks ─────────────────────────────────────────
+
+  if (/^cisco\b/i.test(title) || /\bcisco\s+(xdr|security|cloud|meraki|duo|umbrella|firewall)/i.test(title)) return "vendor_or_product";
+
+  // ── Job postings ──────────────────────────────────────────────────────────
+
+  if (/\b(careers?|job\s+posting|we.?re hiring|apply now)\b/i.test(title)) return "job_posting";
+
+  // ── Article / list / report headlines ─────────────────────────────────────
+
+  // Starts with a number (e.g. "53 hospital CISOs...")
   if (/^\d+\s+(hospital|health|ciso|top|best|leading|major|key)/i.test(title)) return "article_or_list";
   if (/^(top|best|leading|major|key)\s+\d+/i.test(title)) return "article_or_list";
+  // Interrogative headlines
+  if (/^(what\s+is|how\s+to|how\s+do|how\s+|why\s+|when\s+|where\s+)/i.test(title)) return "article_or_list";
+  // Colon-delimited article titles: "X: A Narrative Review"
+  if (/:/.test(title)) {
+    const afterColon = title.split(":").slice(1).join(":");
+    if (/\b(review|report|study|guide|analysis|overview|challenges|crisis|attacks|definition|examples|cybersecurity|hospitals|modern)\b/i.test(afterColon)) return "article_or_list";
+    // Colon without org keyword → likely a headline/subtitle
+    if (!/\b(health|hospital|clinic|medical|system|network|group|center|plan)\b/i.test(title)) return "article_or_list";
+  }
+  // Generic security concept titles (not org names)
+  if (/^(security\s+operations\s+center|cyber.?attacks?\s+on|ransomware\s+attacks?\s+(in|on)|healthcare\s+cybersecurity|health\s*care\s+cybersecurity|cybersecurity\s+(in|for)\s+hospital|cybersecurity\s+challenges)/i.test(title)) return "article_or_list";
+  // Article/report content words
+  if (/\b(narrative\s+review|systematic\s+review|white\s*paper|public\s+health\s+crisis|data\s+breach\s+report)\b/i.test(title)) return "article_or_list";
+  // Question mark in title
+  if (title.includes("?")) return "article_or_list";
+
+  // ── Person names ──────────────────────────────────────────────────────────
+
   if (looksLikePersonName(title)) return "person_candidate";
+
+  // ── Short prepositional fragment ──────────────────────────────────────────
+
   if (/^(in|at|of|for|the)\s+/i.test(title) && title.split(/\s+/).length < 6) return "reject";
+
+  // ── Org keyword → likely org candidate ───────────────────────────────────
+
   if (ORG_INDICATOR_RE.test(title)) return "organization_candidate";
+
   return isValidOrganizationName(title) ? "organization_candidate" : "reject";
 }
 
@@ -661,16 +754,33 @@ type OrgGroup = {
 type GroupStats = {
   total: number;
   rejected: number;
+  rejectedAsArticleTitle: number;
+  rejectedAsGenericConcept: number;
+  rejectedAsVendorProduct: number;
+  rejectedAsPerson: number;
+  rejectedInvalidOrgName: number;
   rejectionReasons: Partial<Record<ResultClassification, number>>;
+  marketSignals: import("@/lib/types").MarketSignal[];
 };
 
 export function groupSearchResults(results: SearchResult[]): Map<string, OrgGroup> {
   return groupSearchResultsWithStats(results).grouped;
 }
 
+// Exported so tests can inspect rejection stats
 export function groupSearchResultsWithStats(results: SearchResult[]): { grouped: Map<string, OrgGroup>; stats: GroupStats } {
   const grouped = new Map<string, OrgGroup>();
-  const stats: GroupStats = { total: results.length, rejected: 0, rejectionReasons: {} };
+  const stats: GroupStats = {
+    total: results.length,
+    rejected: 0,
+    rejectedAsArticleTitle: 0,
+    rejectedAsGenericConcept: 0,
+    rejectedAsVendorProduct: 0,
+    rejectedAsPerson: 0,
+    rejectedInvalidOrgName: 0,
+    rejectionReasons: {},
+    marketSignals: []
+  };
 
   for (const result of results) {
     const classification = classifySearchResult(result);
@@ -683,8 +793,32 @@ export function groupSearchResultsWithStats(results: SearchResult[]): { grouped:
         grouped.set(orgName, existing);
       } else {
         stats.rejected++;
+        stats.rejectedAsPerson++;
         stats.rejectionReasons.person_candidate = (stats.rejectionReasons.person_candidate ?? 0) + 1;
       }
+      continue;
+    }
+
+    if (classification === "article_or_list") {
+      // Article titles become market signals — context for the run, not account names
+      stats.rejected++;
+      stats.rejectedAsArticleTitle++;
+      stats.rejectionReasons.article_or_list = (stats.rejectionReasons.article_or_list ?? 0) + 1;
+      if (result.title && result.snippet) {
+        stats.marketSignals.push({
+          title: result.title,
+          url: result.url || undefined,
+          snippet: result.snippet.slice(0, 200),
+          reason: "article_or_list"
+        });
+      }
+      continue;
+    }
+
+    if (classification === "vendor_or_product") {
+      stats.rejected++;
+      stats.rejectedAsVendorProduct++;
+      stats.rejectionReasons.vendor_or_product = (stats.rejectionReasons.vendor_or_product ?? 0) + 1;
       continue;
     }
 
@@ -697,7 +831,20 @@ export function groupSearchResultsWithStats(results: SearchResult[]): { grouped:
     const companyName = identifyCompanyName(result);
     if (!isValidOrganizationName(companyName)) {
       stats.rejected++;
+      stats.rejectedInvalidOrgName++;
       stats.rejectionReasons.reject = (stats.rejectionReasons.reject ?? 0) + 1;
+      // If it looks like an article title, capture as market signal
+      if (/:/.test(companyName) || /^(what|how|why|cyber|ransomware|healthcare\s+cyber)/i.test(companyName)) {
+        stats.rejectedAsArticleTitle++;
+        if (result.snippet) {
+          stats.marketSignals.push({
+            title: companyName,
+            url: result.url || undefined,
+            snippet: result.snippet.slice(0, 200),
+            reason: "article_title_not_org"
+          });
+        }
+      }
       continue;
     }
 
@@ -1097,11 +1244,20 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     discoveryQueriesRun: 0,
     enrichmentQueriesRun: 0,
     rawResultCount: 0,
+    rejectedAsArticleTitle: 0,
+    rejectedAsGenericConcept: 0,
+    rejectedAsVendorProduct: 0,
+    rejectedAsPerson: 0,
+    rejectedInvalidOrgName: 0,
     rejectedCount: 0,
     rejectionReasons: {},
+    extractedOrgMentions: 0,
+    verifiedOrganizations: 0,
     validOrgCount: 0,
-    fallbackAccountsAdded: 0,
+    fallbackOrganizationsAdded: 0,
     pageFetchAttempts: 0,
+    accountSignalsAttached: 0,
+    marketSignalsOnly: 0,
     openAiSynthesisUsed: false
   };
 
@@ -1160,17 +1316,24 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   const { grouped, stats } = groupSearchResultsWithStats(allDiscoveryResults);
   debugStats.rawResultCount = stats.total;
   debugStats.rejectedCount = stats.rejected;
+  debugStats.rejectedAsArticleTitle = stats.rejectedAsArticleTitle;
+  debugStats.rejectedAsVendorProduct = stats.rejectedAsVendorProduct;
+  debugStats.rejectedAsPerson = stats.rejectedAsPerson;
+  debugStats.rejectedInvalidOrgName = stats.rejectedInvalidOrgName;
+  debugStats.marketSignalsOnly = stats.marketSignals.length;
   debugStats.rejectionReasons = stats.rejectionReasons;
 
   const validOrgEntries = Array.from(grouped.entries()).slice(0, input.maxResults);
   debugStats.validOrgCount = validOrgEntries.length;
+  debugStats.extractedOrgMentions = validOrgEntries.length;
+  debugStats.verifiedOrganizations = validOrgEntries.length;
 
   // Fill with fallback names if needed
   const existingOrgNames = new Set(validOrgEntries.map(([name]) => name.toLowerCase()));
   const fallbackNames = getDemoNamesFor(input.targetMarket)
     .filter((name) => !existingOrgNames.has(name.toLowerCase()))
     .slice(0, Math.max(0, input.maxResults - validOrgEntries.length));
-  debugStats.fallbackAccountsAdded = fallbackNames.length;
+  debugStats.fallbackOrganizationsAdded = fallbackNames.length;
 
   if (fallbackNames.length > 0) {
     warnings.push(
@@ -1290,7 +1453,8 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     kbChunks: chunks,
     createdAt,
     updatedAt: now(),
-    debugStats
+    debugStats,
+    marketSignals: stats.marketSignals
   };
 }
 

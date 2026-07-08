@@ -58,31 +58,43 @@ function ProviderStatusCard({
   );
 }
 
-function DebugPanel({ stats }: { stats: RunDebugStats }) {
-  const rejectionLines = Object.entries(stats.rejectionReasons).map(([k, v]) => `${k}: ${v}`);
+function DebugPanel({ stats, marketSignals }: { stats: RunDebugStats; marketSignals?: import("@/lib/types").MarketSignal[] }) {
   return (
     <details className="debug-panel">
       <summary>
-        Search debug — {stats.validOrgCount} valid org{stats.validOrgCount !== 1 ? "s" : ""} from{" "}
-        {stats.rawResultCount} raw result{stats.rawResultCount !== 1 ? "s" : ""}
-        {stats.fallbackAccountsAdded > 0 ? ` · ${stats.fallbackAccountsAdded} fallback added` : ""}
+        Search debug — {stats.validOrgCount} valid org{stats.validOrgCount !== 1 ? "s" : ""} found, {stats.rejectedCount} rejected, {stats.fallbackOrganizationsAdded} fallback
+        {stats.rejectedAsArticleTitle > 0 ? ` · ${stats.rejectedAsArticleTitle} article titles blocked` : ""}
       </summary>
       <div className="debug-body">
         <div className="debug-grid">
-          <span>Discovery queries run</span><span>{stats.discoveryQueriesRun}</span>
-          <span>Enrichment queries run</span><span>{stats.enrichmentQueriesRun}</span>
+          <span>Discovery queries</span><span>{stats.discoveryQueriesRun}</span>
+          <span>Enrichment queries</span><span>{stats.enrichmentQueriesRun}</span>
           <span>Raw results</span><span>{stats.rawResultCount}</span>
-          <span>Rejected</span><span>{stats.rejectedCount}</span>
-          <span>Valid orgs</span><span>{stats.validOrgCount}</span>
-          <span>Fallback accounts added</span><span>{stats.fallbackAccountsAdded}</span>
-          <span>Page fetch attempts</span><span>{stats.pageFetchAttempts}</span>
+          <span>Valid organizations</span><span>{stats.validOrgCount}</span>
+          <span>Fallback orgs added</span><span>{stats.fallbackOrganizationsAdded}</span>
           <span>OpenAI synthesis used</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
         </div>
-        {rejectionLines.length > 0 && (
+        <strong style={{ display: "block", marginTop: 10 }}>Rejection breakdown</strong>
+        <div className="debug-grid" style={{ marginTop: 4 }}>
+          <span>Article / report titles</span><span>{stats.rejectedAsArticleTitle}</span>
+          <span>Vendor / product pages</span><span>{stats.rejectedAsVendorProduct}</span>
+          <span>Person results</span><span>{stats.rejectedAsPerson}</span>
+          <span>Invalid org name</span><span>{stats.rejectedInvalidOrgName}</span>
+          <span>Market signals (context only)</span><span>{stats.marketSignalsOnly}</span>
+        </div>
+        {(marketSignals ?? []).length > 0 && (
           <>
-            <strong style={{ display: "block", marginTop: 10 }}>Rejection reasons</strong>
+            <strong style={{ display: "block", marginTop: 10 }}>Market signals (not accounts)</strong>
+            <p className="muted" style={{ margin: "4px 0 6px", fontSize: "0.8rem" }}>
+              These search results were classified as market context, not target organizations.
+            </p>
             <ul className="compact-list" style={{ marginTop: 4 }}>
-              {rejectionLines.map((line) => <li key={line}>{line}</li>)}
+              {(marketSignals ?? []).slice(0, 5).map((s, i) => (
+                <li key={i} style={{ fontSize: "0.82rem" }}>
+                  {s.url ? <a className="url-wrap" href={s.url}>{s.title}</a> : s.title}
+                  <span className="muted"> — {s.reason}</span>
+                </li>
+              ))}
             </ul>
           </>
         )}
@@ -387,7 +399,7 @@ export default function ResearchWorkspace() {
             {run.isFallback ? " Some or all accounts are fallback candidates — verify before outreach." : ""}
           </div>
 
-          {run.debugStats && <DebugPanel stats={run.debugStats} />}
+          {run.debugStats && <DebugPanel stats={run.debugStats} marketSignals={run.marketSignals} />}
 
           <div className="export-actions">
             {run.isFallback && (

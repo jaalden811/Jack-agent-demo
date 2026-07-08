@@ -36,7 +36,7 @@ describe("POST /api/research", () => {
     const json = await response.json();
     expect(json.debugStats).toBeDefined();
     expect(typeof json.debugStats.discoveryQueriesRun).toBe("number");
-    expect(typeof json.debugStats.fallbackAccountsAdded).toBe("number");
+    expect(typeof json.debugStats.fallbackOrganizationsAdded).toBe("number");
   });
 
   it("returns fallback/unverified run when provider keys are missing", async () => {

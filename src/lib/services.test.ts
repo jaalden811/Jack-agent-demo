@@ -8,13 +8,14 @@ import {
   computeOrgConfidence,
   exportRun,
   groupSearchResults,
+  groupSearchResultsWithStats,
   isValidOrganizationName,
   productCapabilityMapper,
   retrieveKbContext,
   runResearch,
   synthesizeOrgFit
 } from "@/lib/services";
-import type { KbChunk, ResearchInput, ResearchRun, SearchResult } from "@/lib/types";
+import type { KbChunk, ResearchInput, ResearchRun, RunDebugStats, SearchResult } from "@/lib/types";
 
 vi.mock("openai", () => ({ default: vi.fn() }));
 
@@ -75,7 +76,18 @@ describe("isValidOrganizationName", () => {
     expect(isValidOrganizationName("Mary Johnson")).toBe(false);
   });
 
-  it("rejects article / list / vendor titles", () => {
+  it("rejects article / report / generic concept titles — the ones currently appearing as bad accounts", () => {
+    // The exact bad titles reported by the user
+    expect(isValidOrganizationName("Cyber-Attacks on Hospital Systems: A Narrative Review")).toBe(false);
+    expect(isValidOrganizationName("Healthcare Cybersecurity: Challenges for Modern Hospitals")).toBe(false);
+    expect(isValidOrganizationName("Ransomware Attacks in Healthcare: How to Respond")).toBe(false);
+    expect(isValidOrganizationName("What Is a Security Operations Center (SOC)?")).toBe(false);
+    expect(isValidOrganizationName("Ransomware Attacks on Hospitals Have Changed")).toBe(false);
+    expect(isValidOrganizationName("Cybersecurity in Hospitals: A Systematic, Organizational ...")).toBe(false);
+    expect(isValidOrganizationName("Ransomware: A Public Health Crisis White Paper")).toBe(false);
+  });
+
+  it("rejects other article / list / vendor patterns", () => {
     expect(isValidOrganizationName("53 hospital and health system CISOs and chief privacy offic")).toBe(false);
     expect(isValidOrganizationName("Resources and Templates")).toBe(false);
     expect(isValidOrganizationName("IT Security Services Preferred Vendor List")).toBe(false);
@@ -83,6 +95,8 @@ describe("isValidOrganizationName", () => {
     expect(isValidOrganizationName("Cisco XDR")).toBe(false);
     expect(isValidOrganizationName("2023 Cybersecurity Readiness Index")).toBe(false);
     expect(isValidOrganizationName("Logicalis US Announced as First Global Partner to Launch ...")).toBe(false);
+    expect(isValidOrganizationName("Security Operations Center")).toBe(false);
+    expect(isValidOrganizationName("Healthcare Cybersecurity")).toBe(false);
   });
 });
 
@@ -96,6 +110,23 @@ describe("classifySearchResult", () => {
 
   it("classifies number-prefixed article as article_or_list", () => {
     expect(classifySearchResult(r("53 hospital and health system CISOs", "https://news.example.com/article"))).toBe("article_or_list");
+  });
+
+  it("classifies colon article titles as article_or_list", () => {
+    expect(classifySearchResult(r("Cyber-Attacks on Hospital Systems: A Narrative Review", "https://ncbi.nlm.nih.gov/article"))).toBe("article_or_list");
+    expect(classifySearchResult(r("Healthcare Cybersecurity: Challenges for Modern Hospitals", "https://blog.example.com"))).toBe("article_or_list");
+    expect(classifySearchResult(r("Ransomware Attacks in Healthcare: How to Respond", "https://healthtech.example.com"))).toBe("article_or_list");
+  });
+
+  it("classifies interrogative / generic concept titles as article_or_list", () => {
+    // Use a neutral domain so the title pattern fires (not the vendor domain check)
+    expect(classifySearchResult(r("What Is a Security Operations Center (SOC)?", "https://healthcareit.example.com/soc"))).toBe("article_or_list");
+    expect(classifySearchResult(r("Ransomware Attacks on Hospitals Have Changed", "https://news.example.com/ransomware"))).toBe("article_or_list");
+  });
+
+  it("classifies academic/research domains as article_or_list", () => {
+    expect(classifySearchResult(r("Some Article", "https://ncbi.nlm.nih.gov/pmc/articles/12345"))).toBe("article_or_list");
+    expect(classifySearchResult(r("Research Paper", "https://pubmed.ncbi.nlm.nih.gov/12345"))).toBe("article_or_list");
   });
 
   it("classifies cisco.com as vendor_or_product", () => {
@@ -113,6 +144,25 @@ describe("classifySearchResult", () => {
 
   it("classifies healthcare org names as organization_candidate", () => {
     expect(classifySearchResult(r("BayCare Health System", "https://baycare.org"))).toBe("organization_candidate");
+    expect(classifySearchResult(r("Mayo Clinic", "https://www.mayoclinic.org"))).toBe("organization_candidate");
+  });
+});
+
+// ─── groupSearchResultsWithStats ─────────────────────────────────────────────
+describe("groupSearchResultsWithStats", () => {
+  it("counts article titles in rejectedAsArticleTitle, not in validOrgs", () => {
+    const results: SearchResult[] = [
+      { title: "Cyber-Attacks on Hospital Systems: A Narrative Review", url: "https://ncbi.nlm.nih.gov/pmc/123", snippet: "hospitals cybersecurity", verificationLevel: "snippet_only" },
+      { title: "Healthcare Cybersecurity: Challenges for Modern Hospitals", url: "https://blog.example.com/hc", snippet: "cybersecurity challenges", verificationLevel: "snippet_only" },
+      { title: "Ransomware Attacks in Healthcare: How to Respond", url: "https://securitynews.com/r", snippet: "ransomware healthcare", verificationLevel: "snippet_only" },
+      { title: "What Is a Security Operations Center (SOC)?", url: "https://crowdstrike.com/blog/soc", snippet: "SOC definition", verificationLevel: "snippet_only" },
+      { title: "Mayo Clinic", url: "https://www.mayoclinic.org", snippet: "health system", verificationLevel: "snippet_only" },
+    ];
+    const { grouped, stats } = groupSearchResultsWithStats(results);
+    expect(grouped.size).toBe(1);
+    expect(grouped.has("Mayo Clinic")).toBe(true);
+    expect(stats.rejectedAsArticleTitle).toBeGreaterThanOrEqual(3);
+    expect(stats.marketSignals.length).toBeGreaterThan(0);
   });
 });
 
@@ -248,9 +298,18 @@ describe("KB retrieval helpers", () => {
 
 // ─── synthesizeOrgFit ─────────────────────────────────────────────────────────
 describe("synthesizeOrgFit", () => {
+  const makeDebugStats = (): RunDebugStats => ({
+    discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0,
+    rejectedAsArticleTitle: 0, rejectedAsGenericConcept: 0, rejectedAsVendorProduct: 0,
+    rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
+    extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
+    fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
+    marketSignalsOnly: 0, openAiSynthesisUsed: false
+  });
+
   it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
     const cap = await productCapabilityMapper(input, []);
-    const debugStats = { discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0, rejectedCount: 0, rejectionReasons: {}, validOrgCount: 0, fallbackAccountsAdded: 0, pageFetchAttempts: 0, openAiSynthesisUsed: false };
+    const debugStats = makeDebugStats();
     const result = await synthesizeOrgFit("Mayo Clinic", [], cap, input, debugStats);
     expect(result.fitReason).toContain("Mayo Clinic");
     expect(result.ciscoFitSummary).toBeTruthy();
@@ -260,7 +319,7 @@ describe("synthesizeOrgFit", () => {
 
   it("synthesis is org-specific (different outputs for different orgs)", async () => {
     const cap = await productCapabilityMapper(input, []);
-    const debugStats = { discoveryQueriesRun: 0, enrichmentQueriesRun: 0, rawResultCount: 0, rejectedCount: 0, rejectionReasons: {}, validOrgCount: 0, fallbackAccountsAdded: 0, pageFetchAttempts: 0, openAiSynthesisUsed: false };
+    const debugStats = makeDebugStats();
     const r1 = await synthesizeOrgFit("Mayo Clinic", [], cap, input, debugStats);
     const r2 = await synthesizeOrgFit("HCA Healthcare", [], cap, input, debugStats);
     // Different org names should produce different fit reasons
@@ -271,6 +330,21 @@ describe("synthesizeOrgFit", () => {
 
 // ─── runResearch (integration) ────────────────────────────────────────────────
 describe("runResearch", () => {
+  it("uses approved fallback orgs when all discovery results are article titles", async () => {
+    // Even if every search result is a generic article title, we must get the right fallback orgs
+    const run = await runResearch(input, []);
+    const names = run.accounts.map((a) => a.companyName);
+    const approvedFallbacks = ["Mayo Clinic", "Cleveland Clinic", "HCA Healthcare", "CommonSpirit Health", "Tenet Healthcare"];
+    for (const name of names) {
+      // Every account must be a valid org name — never an article title
+      expect(isValidOrganizationName(name)).toBe(true);
+      expect(name).not.toMatch(/what is|how to|narrative review|ransomware attacks in|cybersecurity challenges|security operations center/i);
+    }
+    // At least some approved fallback names should be present
+    const matched = names.filter((n) => approvedFallbacks.includes(n));
+    expect(matched.length).toBeGreaterThan(0);
+  });
+
   it("fills healthcare fallback candidates when live results are insufficient", async () => {
     const run = await runResearch(input, []);
     const names = run.accounts.map((a) => a.companyName);
@@ -307,7 +381,7 @@ describe("runResearch", () => {
     const run = await runResearch(input, []);
     expect(run.debugStats).toBeDefined();
     expect(typeof run.debugStats?.discoveryQueriesRun).toBe("number");
-    expect(typeof run.debugStats?.fallbackAccountsAdded).toBe("number");
+    expect(typeof run.debugStats?.fallbackOrganizationsAdded).toBe("number");
     expect(typeof run.debugStats?.rejectedCount).toBe("number");
   });
 
