@@ -1,0 +1,11 @@
+# Core runtime dependencies for the Signal-to-Action Agent POC.
+#
+# The agent runs entirely on the Python standard library (csv, json,
+# argparse, pathlib, datetime, re) with deterministic pain-point matching.
+# No packages are required to run:
+#   python run_signal_agent.py --transcript data/transcripts/high_intent_orchestrator.txt
+#
+# The optional OpenAI synthesis pass in skills/detect_painpoint.py is only
+# used when OPENAI_API_KEY is set. Install it explicitly if you want that
+# enhancement:
+#   pip install openai>=1.40.0

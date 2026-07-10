@@ -1,0 +1,6 @@
+solution,specialist,role,channel,handle,routing_reason
+Cisco Collaboration Orchestration,Priya Nair,Collaboration Solutions Specialist,console,priya.nair@internal.example,Owns Collaboration Orchestration accounts in this region
+Cisco XDR,Marcus Webb,Security Solutions Specialist,console,marcus.webb@internal.example,Owns XDR / SecOps solution accounts
+Cisco ThousandEyes,Elena Ruiz,Network Assurance Specialist,console,elena.ruiz@internal.example,Owns ThousandEyes / network visibility accounts
+Cisco Webex Contact Center,Devon Park,Contact Center Specialist,console,devon.park@internal.example,Owns Webex Contact Center accounts
+Cisco Secure Access,Sam Whitfield,Secure Access Specialist,console,sam.whitfield@internal.example,Owns Secure Access / hybrid work connectivity accounts

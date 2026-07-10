@@ -1,0 +1,20 @@
+Account: Meridian Health Systems
+Participants: Jordan Ellis (Customer, VP of IT Operations), Casey Tran (Account Executive), Priya Nair (Sales Engineer)
+Call Date: 2026-06-02
+Source: Gong call recording
+
+[Casey Tran]: Thanks for making time today, Jordan. Last quarter you mentioned some friction across your collaboration tools. Can you walk me through what's happening?
+
+[Jordan Ellis]: Sure. Honestly, the biggest issue right now is that every team has their own tool. Facilities uses one system, clinical ops uses another, and IT uses a third. We need a centralized orchestrator for all these hubs, because right now we cannot coordinate actions across the environment when something breaks.
+
+[Jordan Ellis]: Last month a scheduling outage in one hub didn't get flagged to the other teams for almost two hours. We just don't have a way to see or act across all of it from one place.
+
+[Casey Tran]: That sounds painful. Is this something leadership is prioritizing for this fiscal year?
+
+[Jordan Ellis]: Yes, we already got budget approved for FY26 to modernize our collaboration stack. We're actively evaluating vendors who can help us coordinate actions across our existing Webex footprint instead of ripping everything out.
+
+[Priya Nair]: Got it. When you say "coordinate actions across the environment," are you thinking about a single orchestration layer that sits on top of your current tools?
+
+[Jordan Ellis]: Exactly. We don't want another point tool. We want a centralized orchestrator that can sit across the hubs we already have and give our ops team one place to respond from.
+
+[Casey Tran]: Understood. We'll put together a proposal and loop in our collaboration specialist for a deeper technical review.
