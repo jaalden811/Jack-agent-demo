@@ -1108,7 +1108,7 @@ export function sanitizeFinalAccounts(
 type SearchOptions = { query: string; maxResults: number };
 type SearchProviderClient = { search(options: SearchOptions): Promise<SearchResult[]> };
 
-function createSearchProviderClient(): SearchProviderClient | null {
+export function createSearchProviderClient(): SearchProviderClient | null {
   const apiKey = process.env.SEARCH_API_KEY?.trim();
   const config = getConfig();
   if (!apiKey) return null;

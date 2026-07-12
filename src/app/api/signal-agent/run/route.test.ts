@@ -20,26 +20,28 @@ function post(body: unknown) {
 }
 
 describe("POST /api/signal-agent/run", () => {
-  it("HIGH_INTENT demo transcript routes to a specialist with a notification draft", async () => {
-    const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false } });
+  it("HIGH_INTENT demo transcript routes to a specialist with matches", async () => {
+    const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     expect(response.status).toBe(200);
     const json = await response.json();
 
-    expect(["HIGH_INTENT", "REVIEW"]).toContain(json.intent_label);
-    expect(json.recommended_specialist).toBeTruthy();
-    expect(Array.isArray(json.recommended_solution)).toBe(true);
-    expect(json.recommended_solution.length).toBeGreaterThan(0);
-    expect(json.notification_text).toBeTruthy();
+    expect(json.use_case).toBe("secure_networking_deal_signal_triage");
+    expect(["HIGH_INTENT", "REVIEW"]).toContain(json.executive_summary.verdict);
+    expect(Array.isArray(json.matches)).toBe(true);
+    expect(json.matches.length).toBeGreaterThan(0);
+    expect(json.matches[0].recommended_solutions.length).toBeGreaterThan(0);
+    expect(json.recommended_specialists.length).toBeGreaterThan(0);
+    expect(json.internal_brief).toBeTruthy();
   });
 
-  it("NOISE demo transcript suppresses notification", async () => {
-    const response = await post({ transcriptId: "noise", options: { useOpenAIEmbeddings: false } });
+  it("NOISE demo transcript suppresses recommendations", async () => {
+    const response = await post({ transcriptId: "noise", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     expect(response.status).toBe(200);
     const json = await response.json();
 
-    expect(json.intent_label).toBe("NOISE");
-    expect(json.notification_text).toBeNull();
-    expect(json.recommended_specialist).toBeNull();
+    expect(json.executive_summary.verdict).toBe("NOISE");
+    expect(json.matches[0].recommended_specialist).toBeNull();
+    expect(json.matches[0].recommended_solutions).toEqual([]);
   });
 
   it("rejects a request with neither transcriptId nor customTranscript", async () => {
@@ -50,7 +52,7 @@ describe("POST /api/signal-agent/run", () => {
   it("never returns an API key or key-shaped value anywhere in the JSON payload", async () => {
     process.env.OPENAI_API_KEY = "sk-test-not-a-real-key-0123456789";
     try {
-      const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false } });
+      const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
       const text = await response.text();
       expect(text).not.toContain("sk-test-not-a-real-key");
       expect(text).not.toContain(process.env.OPENAI_API_KEY);

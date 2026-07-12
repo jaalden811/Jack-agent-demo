@@ -9,6 +9,7 @@ const trimmedString = z
 
 const envSchema = z.object({
   OPENAI_API_KEY: trimmedString,
+  OPENAI_EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-small"),
   SEARCH_API_KEY: trimmedString,
   SEARCH_PROVIDER: z.enum(["tavily", "brave", "exa", "serpapi"]).optional().default("tavily"),
   FIRECRAWL_API_KEY: trimmedString,

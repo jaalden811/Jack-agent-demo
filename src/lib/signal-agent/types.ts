@@ -86,6 +86,22 @@ export type ParsedMatchingConfig = {
   };
 };
 
+/** Data-driven negation lexicon + polarity-resolution config loaded from
+ * signal-agent-poc/config/generic_negation_phrases.json. The *phrases* and
+ * *category* of each phrase (hypothetical vs. plain negative) live here;
+ * the clause-aware polarity algorithm itself lives in polarity.ts and
+ * never hard-codes a phrase. */
+export type NegationConfig = {
+  phrases: string[];
+  hypotheticalMarkers: string[];
+  externalNegators: string[];
+  resolutionMarkers: string[];
+  resolutionEvidenceTerms: string[];
+  penaltyWeight: number;
+  hypotheticalPenaltyWeight: number;
+  negationWindowWords: number;
+};
+
 export type LoadedCatalog = {
   source: "cisco_mapping" | "legacy_fallback";
   sourcePath: string;
@@ -97,7 +113,7 @@ export type LoadedCatalog = {
   rawMatchingConfig: Record<string, unknown> | null;
   entries: CatalogEntry[];
   sourceCatalog: SourceCatalog;
-  genericNegationPhrases: string[];
+  negationConfig: NegationConfig;
 };
 
 export type AccountRecord = {
@@ -164,6 +180,60 @@ export type CorroborationSignal = {
 
 export type SemanticMode = "openai_embeddings" | "fallback";
 
+export type NegativeCuePolarity = "negative" | "negated_negative" | "hypothetical" | "resolved";
+
+/** Result of clause-aware polarity analysis for one matched negative-cue
+ * phrase. See polarity.ts — never raw substring "contains negative
+ * phrase => penalize" logic. */
+export type NegativeCueResult = {
+  phrase: string;
+  polarity: NegativeCuePolarity;
+  context: string;
+  penalty: number;
+};
+
+export type BuyingIntentEvidenceType = "budget" | "timeline" | "owner" | "impact" | "renewal" | "evaluation" | "next_step";
+
+export type BuyingIntentEvidence = {
+  type: BuyingIntentEvidenceType;
+  text: string;
+  normalized_value: string | null;
+  score_contribution: number;
+};
+
+export type StakeholderOwnershipType = "executive" | "operational" | "technical" | "security" | "application";
+
+export type Stakeholder = {
+  name: string;
+  role: string;
+  ownership_type: StakeholderOwnershipType;
+};
+
+export type RuleEvaluationStatus = "matched" | "contradicted" | "not_evidenced";
+
+export type RuleEvaluation = {
+  rule: string;
+  status: RuleEvaluationStatus;
+  evidence: string | null;
+};
+
+export type AdjacentSolutionDecision = {
+  solution: string;
+  decision: "include" | "secondary" | "exclude" | "needs_discovery";
+  reason: string;
+};
+
+export type SolutionDecision = {
+  recommended: string[];
+  supporting_products: string[];
+  retained_existing_platforms: string[];
+  choose_when_evidence: RuleEvaluation[];
+  do_not_choose_conflicts: RuleEvaluation[];
+  adjacent_solutions_considered: AdjacentSolutionDecision[];
+};
+
+export type MatchRelationship = "primary" | "secondary" | "supporting";
+
 export type EntryEvaluation = {
   entry: CatalogEntry;
   keywordScore: number;
@@ -174,13 +244,21 @@ export type EntryEvaluation = {
   semanticMode: SemanticMode;
   corroborationScore: number;
   corroboration: CorroborationSignal[];
+  transcriptCorroborationScore: number;
+  transcriptCorroboration: CorroborationSignal[];
   specificityIntentScore: number;
-  domainNegativeCuesHit: string[];
-  genericNegationHit: string[];
+  intentEvidence: BuyingIntentEvidence[];
+  negativeCueResults: NegativeCueResult[];
   penalty: number;
   confidence: number;
+  /** Pre-clamp confidence, used only to break ties between entries that
+   * both saturate at the 0..1 ceiling — several entries can legitimately
+   * all reach "1.0" while still differing meaningfully in how strongly
+   * their own keyword/semantic evidence supports them. */
+  rawConfidence: number;
   intentLabel: "HIGH_INTENT" | "REVIEW" | "NOISE";
   transcriptOnlyMode: boolean;
+  strongIntentOverride: boolean;
 };
 
 export type AuditSummary = {
@@ -191,17 +269,161 @@ export type AuditSummary = {
 };
 
 export const runRequestSchema = z.object({
-  transcriptId: z.enum(["high_intent", "noise"]).optional(),
+  transcriptId: z.enum(["high_intent", "noise", "secure_networking_triage"]).optional(),
   customTranscript: z.string().trim().max(20000).optional(),
+  accountOverride: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   options: z
     .object({
       useOpenAIEmbeddings: z.boolean().optional(),
+      useOpenAISynthesis: z.boolean().optional(),
+      enrichPublicSignals: z.boolean().optional(),
       maxLabels: z.number().int().min(1).max(5).optional()
     })
     .optional()
 });
 
 export type RunRequest = z.infer<typeof runRequestSchema>;
+
+export type ProviderStatusEntry = {
+  configured: boolean;
+  usable: boolean;
+  model?: string;
+  provider?: string;
+  used_for: string;
+  last_check?: string;
+  message: string;
+};
+
+/** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of
+ * ProviderStatusSnapshot in @/lib/types, reusing @/lib/config's
+ * getConfig() as the single source of truth for what is configured. */
+export type SignalAgentStatus = {
+  openai: ProviderStatusEntry;
+  search: ProviderStatusEntry;
+  firecrawl: ProviderStatusEntry;
+  contact_enrichment: ProviderStatusEntry;
+  taxonomy: { loaded: boolean; file: string; version: string; as_of: string | null; categories: number };
+  reference_report: { loaded: boolean; file: string };
+  audit_log: { writable: boolean; path: string };
+};
+
+export type PublicSignal = {
+  title: string;
+  url: string;
+  snippet: string;
+  relevance: string;
+};
+
+export type CorroborationSummary = {
+  transcript_score: number;
+  structured_account_score: number;
+  combined_score: number;
+  transcript_signals: CorroborationSignal[];
+  structured_signals: CorroborationSignal[];
+  structured_account_available: boolean;
+};
+
+/** One taxonomy match in the multi-label result — the full per-entry
+ * evaluation, serialized for the API/UI. */
+export type ScoreBreakdown = {
+  keyword_score: number;
+  keyword_weight: number;
+  semantic_score: number;
+  semantic_weight: number;
+  intent_score: number;
+  intent_weight: number;
+  structured_account_score: number;
+  structured_account_weight: number;
+  penalty: number;
+  final: number;
+};
+
+export type MatchOutput = {
+  entry_id: string;
+  pain_category: string;
+  domain: string;
+  confidence: number;
+  rank: number;
+  relationship: MatchRelationship;
+  matched_text: string[];
+  matched_keywords: string[];
+  semantic_evidence: MatchedSemanticCue[];
+  intent_evidence: BuyingIntentEvidence[];
+  corroboration: CorroborationSignal[];
+  negative_cues: NegativeCueResult[];
+  recommended_solutions: string[];
+  recommended_specialist: string | null;
+  solution_decision: SolutionDecision;
+  score_breakdown: ScoreBreakdown;
+};
+
+export type ReferencePack = {
+  taxonomy_file: string;
+  taxonomy_version: string;
+  taxonomy_as_of: string | null;
+  taxonomy_scope: string | null;
+  category_count: number;
+  final_formula: string | null;
+  multi_label_policy: string | null;
+  notification_gates: { high_intent: string | null; review: string | null; noise: string | null };
+  report_file: string;
+  report_loaded: boolean;
+};
+
+export type TranscriptMeta = {
+  title: string | null;
+  account: string | null;
+  participant_count: number;
+  sentence_count: number;
+  raw_text: string;
+};
+
+/** Full response shape for POST /api/signal-agent/run — the
+ * "secure_networking_deal_signal_triage" use-case contract. */
+export type SecureNetworkingTriageResult = {
+  use_case: "secure_networking_deal_signal_triage";
+  executive_summary: {
+    verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
+    confidence: number;
+    account: string | null;
+    business_problem: string;
+    business_impact: string;
+    urgency: string;
+    primary_opportunity: string | null;
+    secondary_opportunities: string[];
+    recommended_next_action: string;
+  };
+  stakeholders: Stakeholder[];
+  commercial_signals: {
+    budget: string | null;
+    timeline: string | null;
+    renewal_events: string[];
+    quantified_impact: string[];
+    evaluation_stage: string | null;
+    purchase_language: string[];
+  };
+  matches: MatchOutput[];
+  solution_architecture: Array<{ layer: string; product: string; role: string }>;
+  recommended_specialists: string[];
+  discovery_questions: string[];
+  internal_brief: string;
+  /** Internal-only notification draft for the primary match (never sent
+   * to the customer). Null when the primary match is NOISE and nothing
+   * should be routed. */
+  notification_text: string | null;
+  providers: {
+    embeddings_used: boolean;
+    synthesis_used: boolean;
+    fallback_reason: string | null;
+    semantic_mode: SemanticMode;
+  };
+  reference_pack: ReferencePack;
+  corroboration_summary: CorroborationSummary;
+  public_signals: PublicSignal[];
+  audit: { logged: boolean; path: string; warning: string | null };
+  transcript_meta: TranscriptMeta;
+  timestamp: string;
+};
 
 /** Wire shape for GET /api/signal-agent/catalog — one taxonomy entry as
  * sent to the browser. Snake_case to match the entry's own JSON fields. */

@@ -1,7 +1,39 @@
 {
-  "description": "Domain-agnostic hedging/negation phrases applied as a penalty across every pain-point category, independent of the product-specific negative_cues stored per entry in cisco_painpoint_solution_map.json. Loaded generically by the matching engine — never hard-coded in application code.",
-  "version": "1.0",
+  "description": "Domain-agnostic hedging/negation phrases applied as a penalty across every pain-point category, independent of the product-specific negative_cues stored per entry in cisco_painpoint_solution_map.json. Loaded generically by the matching engine — never hard-coded in application code. Polarity (negative vs. negated_negative vs. hypothetical vs. resolved) is determined at runtime by clause-aware analysis in src/lib/signal-agent/polarity.ts — this file only supplies the phrase lexicon and weights, never the polarity logic itself.",
+  "version": "1.1",
   "penalty_weight": 0.35,
+  "hypothetical_penalty_weight": 0.2,
+  "negation_window_words": 6,
+  "external_negators": [
+    "not",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "doesn't",
+    "don't",
+    "didn't",
+    "won't",
+    "wouldn't",
+    "cannot",
+    "can't",
+    "never",
+    "no longer",
+    "without"
+  ],
+  "resolution_markers": ["but", "however", "although", "that said", "in fact", "actually"],
+  "resolution_evidence_terms": [
+    "budget",
+    "approved",
+    "executive",
+    "sponsor",
+    "sponsorship",
+    "committed",
+    "this quarter",
+    "this year",
+    "pilot",
+    "funded"
+  ],
   "phrases": [
     "not a priority",
     "just curious",
@@ -22,6 +54,21 @@
     "we already have that covered",
     "purely academic interest",
     "not a current pain point",
-    "hypothetically speaking"
+    "hypothetically speaking",
+    "future-year placeholder",
+    "demo showed",
+    "sample slide",
+    "just a demo",
+    "in theory only"
+  ],
+  "hypothetical_markers": [
+    "tabletop only",
+    "presenter showed",
+    "hypothetically speaking",
+    "demo showed",
+    "sample slide",
+    "just a demo",
+    "in theory only",
+    "purely academic interest"
   ]
 }

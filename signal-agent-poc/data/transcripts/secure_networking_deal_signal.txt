@@ -1,0 +1,30 @@
+Account: Demo Account - Global Retail Operations
+Participants: Dana Whitfield (Customer, Chief Information Officer), Marcus Cole (Customer, VP Network Operations), Renee Ibarra (Customer, Director of Network Engineering), Priya Anand (Customer, Head of Application Platforms), Sam Okafor (Customer, Director of Security Operations), Taylor Grant (Account Executive), Jamie Fischer (Sales Engineer)
+Call Date: 2026-07-01
+Source: Gong call recording
+
+[Taylor Grant]: Thanks everyone for joining. Dana, can you set the stage for why this is on the roadmap now?
+
+[Dana Whitfield]: Sure. As CIO I've personally sponsored this. We already got board approval for a $1.4M first-phase budget, and this is funded — this is not a future-year placeholder, it's approved capital for this fiscal year. We are not just curious. This is a real, funded initiative and we intend to move quickly.
+
+[Marcus Cole]: On the operational side, I'm the VP of Network Operations and I own the day-to-day outcome here. Renee Ibarra is our Director of Network Engineering and owns the technical architecture. We're dealing with too many consoles across campus, branch, cloud-managed sites, and internet paths — every team has a different single pane of glass and none of them talk to each other. That dashboard sprawl means unified management is our top priority. We need unified, cross-domain network operations instead of five disconnected dashboards, and we want a common operational experience without replacing every underlying controller we already have.
+
+[Renee Ibarra]: Right. Concretely: we had nine high-severity incidents last quarter across 83 locations. Our current mean time to fault isolation is 47 minutes, and leadership wants that below 15 minutes. The last incident alone cost us roughly $180,000 in lost transactions because we couldn't tell whether the fault was our network, the ISP, or the SaaS provider we depend on.
+
+[Jamie Fischer]: When you say you couldn't isolate the fault domain, is that an internet, DNS, BGP, or SaaS-path visibility problem specifically?
+
+[Renee Ibarra]: Exactly that. We have no visibility once traffic leaves our network — no hop-by-hop internet path view, no way to correlate user experience with DNS or BGP or the SaaS applications we don't own. That's a huge blind spot across all 83 locations.
+
+[Priya Anand]: I'm Head of Application Platforms, and from my side — our application code instrumentation is already solid. We are not asking for another APM tool for our code. The gap is specifically between our users, our network, the internet, and the external SaaS applications we depend on, not inside our own application code.
+
+[Sam Okafor]: And I'm Director of Security Operations. This isn't a security alert correlation project for us — I just want it on record that our SOC tooling is a separate initiative. This is about network and internet path assurance, not threat detection.
+
+[Marcus Cole]: We also have two monitoring-related renewals coming up in the next seven months, and our SD-WAN support contract renews around the same window, so we want an architecture decision that accounts for all of that instead of renewing point tools in isolation.
+
+[Dana Whitfield]: Here's the timeline: we need an architecture recommendation this quarter. We're planning a 60-day vendor selection window, a pilot next quarter, and a 12-month phased rollout across all 83 locations after that.
+
+[Marcus Cole]: We'd like to request a formal architecture workshop — ideally a two-week engagement — to validate the design before we finalize the shortlist.
+
+[Dana Whitfield]: We are actively evaluating this quarter, not next year, and if the pilot hits our metrics — sub-15-minute fault isolation and full path visibility across our internet and SaaS dependencies — we are prepared to purchase this quarter. Can someone get back to us with next steps within five business days?
+
+[Taylor Grant]: Absolutely — we'll schedule the architecture workshop and follow up within five business days with a proposed plan.
