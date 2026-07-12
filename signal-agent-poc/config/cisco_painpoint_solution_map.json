@@ -1,0 +1,2925 @@
+{
+  "metadata": {
+    "title": "Cisco Pain-Point to Solution Mapping Dictionary",
+    "version": "1.0",
+    "as_of": "2026-07-12",
+    "scope": "Public, agent-ready mapping of customer pain language to current Cisco and Splunk solution families. It is not a complete SKU, license, compatibility, or ordering catalog.",
+    "design_principles": [
+      "Store taxonomy as editable data, not hard-coded logic.",
+      "Use multi-label matching; one transcript may contain several valid pains.",
+      "A literal keyword hit is only a candidate signal.",
+      "Require semantic evidence or an independent corroborating signal before notifying.",
+      "Explain the exact phrase, cue, evidence, and product-selection rationale.",
+      "Distinguish the operational role of each product: observe, assure, orchestrate, enforce, respond, collaborate, or support.",
+      "Route uncertain or overlapping cases to a specialist rather than forcing a single product."
+    ]
+  },
+  "matching_configuration": {
+    "sentence_chunking": {
+      "method": "Split by speaker turn and sentence; preserve 1 sentence before and after each candidate sentence.",
+      "reason": "Pain language, negation, ownership, and timing are often distributed across adjacent sentences."
+    },
+    "keyword_pass": {
+      "weight": 0.2,
+      "description": "Weighted phrase and keyword match. Longer phrases, product-neutral pain terms, and repeated distinct matches score more than isolated generic words.",
+      "cap": 1.0
+    },
+    "semantic_pass": {
+      "weight": 0.45,
+      "description": "Embedding similarity between transcript chunks and semantic cues. Use the maximum match plus a smaller contribution from the next two matches.",
+      "suggested_formula": "0.70 * max_similarity + 0.30 * mean(top_3_similarities)",
+      "starting_thresholds": {
+        "candidate": 0.66,
+        "strong": 0.74,
+        "very_strong": 0.82
+      },
+      "note": "Calibrate thresholds on labeled transcripts produced with the exact embedding model used in production."
+    },
+    "corroboration_pass": {
+      "weight": 0.25,
+      "description": "CRM, install-base, renewal, opportunity, incident, architecture, or initiative evidence that independently supports the pain and solution."
+    },
+    "specificity_and_intent": {
+      "weight": 0.1,
+      "description": "Rewards concrete timing, ownership, quantified impact, active projects, budget, evaluation, renewal, or executive mandate."
+    },
+    "penalties": {
+      "negation": "Subtract 0.35 when the customer explicitly denies the pain or says it is already solved.",
+      "hypothetical_or_education": "Subtract 0.20 when the statement is clearly hypothetical, training, or generic market discussion.",
+      "wrong_domain": "Subtract 0.25 when negative cues indicate a different solution domain.",
+      "competitor_only_context": "Subtract 0.10 when a product is mentioned only as an unrelated comparison."
+    },
+    "final_formula": "confidence = 0.20*keyword + 0.45*semantic + 0.25*corroboration + 0.10*specificity_intent - penalties",
+    "notification_gates": {
+      "HIGH_INTENT": "confidence >= 0.78 AND (semantic >= 0.74 OR corroboration >= 0.70) AND no unresolved negation",
+      "REVIEW": "0.62 <= confidence < 0.78, or conflicting categories/products remain",
+      "NOISE": "confidence < 0.62, keyword-only evidence, hypothetical discussion, or explicit negation"
+    },
+    "transcript_only_mode": {
+      "formula": "confidence = 0.35*keyword + 0.65*semantic - penalties",
+      "maximum_label": "REVIEW unless the transcript contains explicit timing, ownership, impact, and buying intent",
+      "reason": "Without independent corroboration, the agent should not overstate sales intent."
+    },
+    "multi_label_policy": {
+      "enabled": true,
+      "max_labels": 3,
+      "selection_rule": "Keep categories within 0.08 of the top score when they represent distinct layers; merge duplicates; apply product-role conflict rules."
+    }
+  },
+  "required_output_schema": {
+    "account": "string",
+    "pain_category": "entry id",
+    "confidence": "0.00-1.00",
+    "intent_label": "HIGH_INTENT | REVIEW | NOISE",
+    "matched_text": [
+      "verbatim transcript snippets"
+    ],
+    "matched_keywords": [
+      "literal matches"
+    ],
+    "matched_semantic_cues": [
+      {
+        "cue": "string",
+        "similarity": "0.00-1.00"
+      }
+    ],
+    "corroboration": [
+      {
+        "signal": "string",
+        "source": "CRM|install_base|opportunity|public_signal|other"
+      }
+    ],
+    "recommended_solution": [
+      "primary solution names"
+    ],
+    "why_this_solution": "plain-language explanation of product role and fit",
+    "why_not_adjacent_solution": "brief disambiguation",
+    "recommended_specialist": "routing destination",
+    "next_best_action": "validate | discovery_question | specialist_route | suppress"
+  },
+  "entries": {
+    "cross_domain_network_operations": {
+      "id": "cross_domain_network_operations",
+      "domain": "Networking",
+      "pain_category": "Fragmented network operations and management",
+      "customer_language": [
+        "We have too many network consoles.",
+        "There is no unified operational view across campus, branch, and internet.",
+        "We need one place to operate the network.",
+        "Our teams waste time switching between Meraki, Catalyst, and other tools."
+      ],
+      "keywords": [
+        "single pane",
+        "too many consoles",
+        "network operations",
+        "unified management",
+        "dashboard sprawl",
+        "cross-domain",
+        "agenticops"
+      ],
+      "semantic_cues": [
+        "centralize day-to-day network operations across multiple domains",
+        "reduce tool switching between campus, branch, cloud-managed, and internet assurance systems",
+        "provide a common operational experience without replacing every underlying controller"
+      ],
+      "negative_cues": [
+        "single pane specifically for security policy",
+        "single pane specifically for collaboration devices",
+        "single pane specifically for servers and compute"
+      ],
+      "solution": "Cisco Networking Platform / Cisco Cloud Control, with Catalyst Center, Meraki Dashboard, and ThousandEyes",
+      "primary_solutions": [
+        {
+          "name": "Cisco Networking Platform / Cisco Cloud Control",
+          "role": "Cross-domain cloud-native network operations layer"
+        },
+        {
+          "name": "Cisco Catalyst Center",
+          "role": "Campus and enterprise network automation and assurance"
+        },
+        {
+          "name": "Cisco Meraki Dashboard",
+          "role": "Cloud-managed networking operations"
+        },
+        {
+          "name": "Cisco ThousandEyes Assurance",
+          "role": "Internet, SaaS, cloud, and end-user assurance"
+        }
+      ],
+      "adjacent_solutions": [
+        "Splunk IT Service Intelligence",
+        "Cisco Security Cloud Control"
+      ],
+      "choose_when": [
+        "The problem spans multiple network domains or management systems.",
+        "The buyer is network operations or infrastructure leadership.",
+        "The customer wants operational unification rather than a hardware-only refresh."
+      ],
+      "do_not_choose_when": [
+        "The problem is primarily SOC alert triage or security policy management.",
+        "The customer only needs server lifecycle management.",
+        "The issue is isolated to application code or database performance."
+      ],
+      "corroboration_hints": [
+        "Existing Catalyst, Meraki, or ThousandEyes footprint",
+        "Multiple network-management products in install base",
+        "NOC consolidation, tool-reduction, or network-operations transformation initiative"
+      ],
+      "install_base_signals": [
+        "Catalyst Center",
+        "Meraki Dashboard",
+        "ThousandEyes",
+        "Catalyst switching",
+        "Meraki networking"
+      ],
+      "buying_roles": [
+        "VP Infrastructure",
+        "Head of Network Operations",
+        "NOC Director",
+        "Network Architect"
+      ],
+      "intent_markers": [
+        "platform consolidation project",
+        "operations transformation",
+        "renewal overlap",
+        "new NOC initiative"
+      ],
+      "recommended_specialist": "Enterprise Networking / Networking Platform specialist"
+    },
+    "campus_network_assurance": {
+      "id": "campus_network_assurance",
+      "domain": "Networking",
+      "pain_category": "Campus network assurance, automation, and troubleshooting",
+      "customer_language": [
+        "Users keep dropping off Wi-Fi and we cannot find the cause.",
+        "Provisioning switches takes too long.",
+        "We need better client health and network assurance.",
+        "Campus changes are manual and inconsistent."
+      ],
+      "keywords": [
+        "campus",
+        "client health",
+        "network health",
+        "assurance",
+        "provisioning",
+        "software image",
+        "configuration drift",
+        "sd-access"
+      ],
+      "semantic_cues": [
+        "automate and assure an enterprise campus network",
+        "troubleshoot wired and wireless client onboarding or performance",
+        "standardize configurations and software lifecycle across Catalyst infrastructure"
+      ],
+      "negative_cues": [
+        "internet path outside the enterprise",
+        "application trace or code issue",
+        "cloud-managed small branch preference"
+      ],
+      "solution": "Cisco Catalyst Center with Catalyst 9000 switching and Cisco Wireless",
+      "primary_solutions": [
+        {
+          "name": "Cisco Catalyst Center",
+          "role": "Campus automation, assurance, topology, client and application health"
+        },
+        {
+          "name": "Cisco Catalyst 9000 switching",
+          "role": "Campus access, distribution, and core infrastructure"
+        },
+        {
+          "name": "Cisco Wireless",
+          "role": "Enterprise wireless infrastructure"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco ThousandEyes Assurance",
+        "Cisco Identity Services Engine",
+        "Cisco Spaces"
+      ],
+      "choose_when": [
+        "The fault domain is the owned campus LAN/WLAN.",
+        "The customer needs provisioning, assurance, image management, or client troubleshooting.",
+        "Catalyst is present or a campus refresh is planned."
+      ],
+      "do_not_choose_when": [
+        "The dominant issue is outside the owned network.",
+        "The customer explicitly wants a fully cloud-managed Meraki operating model.",
+        "The problem is primarily user identity policy."
+      ],
+      "corroboration_hints": [
+        "Catalyst 9000 install base",
+        "wireless controller/AP footprint",
+        "campus refresh opportunity",
+        "high help-desk volume for connectivity"
+      ],
+      "install_base_signals": [
+        "Catalyst 9000",
+        "Cisco Wireless",
+        "DNA Center",
+        "Catalyst Center"
+      ],
+      "buying_roles": [
+        "Campus Network Lead",
+        "Network Operations",
+        "Infrastructure Director"
+      ],
+      "intent_markers": [
+        "campus refresh",
+        "Wi-Fi refresh",
+        "automation mandate",
+        "image compliance project"
+      ],
+      "recommended_specialist": "Campus Networking specialist"
+    },
+    "internet_saas_assurance": {
+      "id": "internet_saas_assurance",
+      "domain": "Networking",
+      "pain_category": "Internet, SaaS, cloud, and external dependency visibility",
+      "customer_language": [
+        "The app is slow but our network looks fine.",
+        "We cannot tell whether the ISP, SaaS provider, DNS, or cloud is responsible.",
+        "We are blind once traffic leaves our network.",
+        "Users in one region cannot reach a critical SaaS application."
+      ],
+      "keywords": [
+        "internet",
+        "saas",
+        "isp",
+        "bgp",
+        "dns",
+        "packet loss",
+        "latency",
+        "path",
+        "external dependency",
+        "digital experience"
+      ],
+      "semantic_cues": [
+        "isolate performance problems across networks the customer does not own",
+        "see hop-by-hop internet and cloud paths",
+        "correlate user experience with DNS, BGP, ISP, and SaaS dependencies"
+      ],
+      "negative_cues": [
+        "code-level method latency",
+        "campus switch provisioning",
+        "SOC threat investigation"
+      ],
+      "solution": "Cisco ThousandEyes Assurance",
+      "primary_solutions": [
+        {
+          "name": "Cisco ThousandEyes Assurance",
+          "role": "End-to-end assurance across internet, cloud, SaaS, networks, services, and users"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Catalyst Center",
+        "Catalyst SD-WAN",
+        "Splunk Observability Cloud",
+        "Splunk AppDynamics"
+      ],
+      "choose_when": [
+        "The suspected fault can be outside the enterprise boundary.",
+        "The customer cites ISP, DNS, BGP, SaaS, cloud region, or remote-user path issues.",
+        "The goal is fault-domain isolation and experience assurance."
+      ],
+      "do_not_choose_when": [
+        "The customer only needs application code instrumentation.",
+        "The pain is security alert correlation.",
+        "The issue is server provisioning or compute lifecycle."
+      ],
+      "corroboration_hints": [
+        "SaaS-heavy application portfolio",
+        "global workforce",
+        "multiple ISPs",
+        "Catalyst SD-WAN or Meraki footprint",
+        "SLA penalties"
+      ],
+      "install_base_signals": [
+        "ThousandEyes",
+        "Catalyst SD-WAN",
+        "Meraki MX",
+        "Catalyst 9000"
+      ],
+      "buying_roles": [
+        "Network Operations",
+        "Digital Experience Lead",
+        "SRE",
+        "Application Owner"
+      ],
+      "intent_markers": [
+        "recurring brownouts",
+        "SLA breach",
+        "major SaaS migration",
+        "global expansion"
+      ],
+      "recommended_specialist": "ThousandEyes / Assurance specialist"
+    },
+    "cloud_managed_network": {
+      "id": "cloud_managed_network",
+      "domain": "Networking",
+      "pain_category": "Cloud-managed distributed network simplification",
+      "customer_language": [
+        "We need to manage hundreds of branches with a small team.",
+        "We want zero-touch deployment and one cloud dashboard.",
+        "Our distributed sites are inconsistent.",
+        "We need simpler networking for stores, clinics, or schools."
+      ],
+      "keywords": [
+        "cloud managed",
+        "zero touch",
+        "distributed sites",
+        "branch",
+        "store",
+        "clinic",
+        "dashboard",
+        "lean IT",
+        "meraki"
+      ],
+      "semantic_cues": [
+        "operate many distributed sites with limited local IT",
+        "standardize branch networking from a cloud dashboard",
+        "simplify deployment of switching, wireless, security, and SD-WAN"
+      ],
+      "negative_cues": [
+        "deep on-prem campus policy automation",
+        "carrier-grade routing",
+        "highly customized data-center fabric"
+      ],
+      "solution": "Cisco Meraki cloud-managed networking",
+      "primary_solutions": [
+        {
+          "name": "Cisco Meraki Dashboard",
+          "role": "Cloud management and operational visibility"
+        },
+        {
+          "name": "Meraki MX",
+          "role": "Cloud-managed security and SD-WAN"
+        },
+        {
+          "name": "Meraki switching and wireless",
+          "role": "Cloud-managed LAN and WLAN"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco ThousandEyes Assurance",
+        "Cisco Secure Access",
+        "Cisco Spaces"
+      ],
+      "choose_when": [
+        "The customer values operational simplicity and rapid distributed deployment.",
+        "Sites have limited or no local network staff.",
+        "A common cloud-managed operating model is a priority."
+      ],
+      "do_not_choose_when": [
+        "The customer requires a primarily on-premises controller model.",
+        "The environment is a service-provider core.",
+        "The principal problem is application telemetry."
+      ],
+      "corroboration_hints": [
+        "Large branch/store/site count",
+        "Meraki install base",
+        "managed service model",
+        "rapid acquisition or expansion"
+      ],
+      "install_base_signals": [
+        "Meraki MX",
+        "Meraki MS",
+        "Meraki MR",
+        "Meraki Dashboard"
+      ],
+      "buying_roles": [
+        "IT Director",
+        "Distributed Infrastructure Lead",
+        "Retail/Branch Technology Lead"
+      ],
+      "intent_markers": [
+        "new site rollout",
+        "branch standardization",
+        "M&A integration",
+        "lean-IT mandate"
+      ],
+      "recommended_specialist": "Meraki specialist"
+    },
+    "enterprise_sdwan": {
+      "id": "enterprise_sdwan",
+      "domain": "Networking",
+      "pain_category": "Enterprise WAN modernization and application-aware connectivity",
+      "customer_language": [
+        "Our MPLS costs are too high.",
+        "We need a more resilient WAN across branches and clouds.",
+        "Traffic should take the best path automatically.",
+        "We are planning an SD-WAN refresh."
+      ],
+      "keywords": [
+        "sd-wan",
+        "mpls",
+        "wan",
+        "branch connectivity",
+        "path selection",
+        "direct internet access",
+        "multicloud connectivity",
+        "viptela"
+      ],
+      "semantic_cues": [
+        "modernize enterprise WAN connectivity across branches, data centers, and cloud",
+        "use application-aware routing and multiple transports",
+        "build the networking foundation for SASE"
+      ],
+      "negative_cues": [
+        "remote-user SSE only",
+        "campus switching only",
+        "service-provider core routing"
+      ],
+      "solution": "Cisco Catalyst SD-WAN; Meraki SD-WAN for cloud-managed distributed environments",
+      "primary_solutions": [
+        {
+          "name": "Cisco Catalyst SD-WAN",
+          "role": "Enterprise SD-WAN with multicloud connectivity, security, and predictive intelligence"
+        },
+        {
+          "name": "Meraki SD-WAN",
+          "role": "Cloud-managed SD-WAN for distributed sites"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Secure Access",
+        "Cisco ThousandEyes Assurance",
+        "Cisco Secure Firewall"
+      ],
+      "choose_when": [
+        "WAN transport, branch-to-cloud connectivity, or application path selection is central.",
+        "The customer is replacing MPLS or legacy routers.",
+        "The customer is building toward SASE."
+      ],
+      "do_not_choose_when": [
+        "The need is only user-to-SaaS security without WAN transformation.",
+        "The buyer is discussing carrier backbone capacity.",
+        "The issue is application code performance."
+      ],
+      "corroboration_hints": [
+        "ISR/ASR or Viptela footprint",
+        "MPLS contracts",
+        "branch router refresh",
+        "cloud migration"
+      ],
+      "install_base_signals": [
+        "Catalyst SD-WAN",
+        "Viptela",
+        "ISR",
+        "ASR",
+        "Meraki MX"
+      ],
+      "buying_roles": [
+        "WAN Architect",
+        "Network Director",
+        "Infrastructure VP"
+      ],
+      "intent_markers": [
+        "MPLS renewal",
+        "router EOL",
+        "cloud migration",
+        "SASE roadmap"
+      ],
+      "recommended_specialist": "SD-WAN / Routing specialist"
+    },
+    "wireless_refresh": {
+      "id": "wireless_refresh",
+      "domain": "Networking",
+      "pain_category": "Wireless capacity, coverage, reliability, and lifecycle refresh",
+      "customer_language": [
+        "Our Wi-Fi cannot handle device density.",
+        "We have dead zones and roaming problems.",
+        "We need Wi-Fi 7.",
+        "Our access points are aging or out of support."
+      ],
+      "keywords": [
+        "wi-fi 7",
+        "wireless",
+        "access point",
+        "coverage",
+        "density",
+        "roaming",
+        "6 ghz",
+        "refresh",
+        "dead zone"
+      ],
+      "semantic_cues": [
+        "increase wireless capacity and reliability for dense or AI-enabled workplaces",
+        "refresh aging access points and controllers",
+        "improve coverage, roaming, and user experience"
+      ],
+      "negative_cues": [
+        "internet path outside campus",
+        "WAN transport",
+        "application tracing"
+      ],
+      "solution": "Cisco Wireless Wi-Fi 7 access points with Catalyst or Meraki management",
+      "primary_solutions": [
+        {
+          "name": "Cisco Wireless Wi-Fi 7 access points",
+          "role": "Modern enterprise WLAN infrastructure"
+        },
+        {
+          "name": "Cisco Catalyst Center or Meraki Dashboard",
+          "role": "On-premises or cloud management and assurance"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Spaces",
+        "Cisco ThousandEyes Assurance",
+        "Cisco Identity Services Engine"
+      ],
+      "choose_when": [
+        "The customer names capacity, coverage, roaming, density, or AP lifecycle.",
+        "A workplace, campus, venue, healthcare, retail, or education refresh is planned."
+      ],
+      "do_not_choose_when": [
+        "The problem is primarily internet/SaaS reachability.",
+        "The customer only needs location analytics without a wireless refresh."
+      ],
+      "corroboration_hints": [
+        "Aging AP/controller models",
+        "Wi-Fi 6 or older estate",
+        "new building",
+        "density complaints",
+        "device growth"
+      ],
+      "install_base_signals": [
+        "Catalyst 9100",
+        "Cisco Wireless",
+        "Meraki MR",
+        "wireless controllers"
+      ],
+      "buying_roles": [
+        "Wireless Architect",
+        "Campus Network Lead",
+        "Workplace Technology"
+      ],
+      "intent_markers": [
+        "new building",
+        "AP EOL",
+        "Wi-Fi 7 initiative",
+        "capacity complaints"
+      ],
+      "recommended_specialist": "Wireless specialist"
+    },
+    "smart_spaces": {
+      "id": "smart_spaces",
+      "domain": "Networking / Workplace",
+      "pain_category": "Location analytics, occupancy, asset visibility, and smart buildings",
+      "customer_language": [
+        "We do not know how our buildings are being used.",
+        "We need occupancy and space-utilization data.",
+        "We need to locate devices or assets indoors.",
+        "We want the network to act like a sensor."
+      ],
+      "keywords": [
+        "occupancy",
+        "location analytics",
+        "indoor location",
+        "asset tracking",
+        "space utilization",
+        "smart building",
+        "iot sensors"
+      ],
+      "semantic_cues": [
+        "turn network and collaboration infrastructure into a source of building intelligence",
+        "analyze presence, location, occupancy, or environmental context",
+        "connect people, things, and spaces for operational decisions"
+      ],
+      "negative_cues": [
+        "packet path troubleshooting",
+        "SOC telemetry",
+        "application performance"
+      ],
+      "solution": "Cisco Spaces",
+      "primary_solutions": [
+        {
+          "name": "Cisco Spaces",
+          "role": "Cloud platform for location, occupancy, IoT, and smart-space intelligence"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Wireless",
+        "Cisco Collaboration Devices",
+        "Meraki cameras and sensors"
+      ],
+      "choose_when": [
+        "The use case is physical-space intelligence.",
+        "The customer has Cisco wireless, switches, cameras, collaboration devices, or third-party sensors."
+      ],
+      "do_not_choose_when": [
+        "The term visibility refers to network or security visibility.",
+        "The customer only wants room-device administration."
+      ],
+      "corroboration_hints": [
+        "Cisco wireless footprint",
+        "real-estate consolidation",
+        "return-to-office program",
+        "asset-tracking requirement"
+      ],
+      "install_base_signals": [
+        "Cisco Wireless",
+        "Meraki",
+        "Webex devices",
+        "Cisco cameras and sensors"
+      ],
+      "buying_roles": [
+        "Facilities",
+        "Corporate Real Estate",
+        "Workplace Technology",
+        "IoT Lead"
+      ],
+      "intent_markers": [
+        "office redesign",
+        "lease consolidation",
+        "smart-building initiative",
+        "asset-loss problem"
+      ],
+      "recommended_specialist": "Cisco Spaces / Smart Buildings specialist"
+    },
+    "data_center_networking": {
+      "id": "data_center_networking",
+      "domain": "Data Center",
+      "pain_category": "Data-center fabric modernization, automation, and operations",
+      "customer_language": [
+        "Our data-center network is hard to operate.",
+        "We need policy-driven fabric and better segmentation.",
+        "Provisioning and troubleshooting Nexus fabrics is too manual.",
+        "We need consistent operations across data centers."
+      ],
+      "keywords": [
+        "data center fabric",
+        "nexus",
+        "aci",
+        "apic",
+        "vxlan",
+        "evpn",
+        "fabric automation",
+        "nexus dashboard",
+        "segmentation"
+      ],
+      "semantic_cues": [
+        "automate and operate data-center network fabrics",
+        "apply policy-driven connectivity and segmentation",
+        "manage Nexus infrastructure across sites from a central operations platform"
+      ],
+      "negative_cues": [
+        "server lifecycle only",
+        "campus access switching",
+        "public internet visibility"
+      ],
+      "solution": "Cisco Nexus Dashboard, Nexus 9000, and Cisco ACI",
+      "primary_solutions": [
+        {
+          "name": "Cisco Nexus Dashboard",
+          "role": "Data-center network operations, automation, lifecycle, and analytics"
+        },
+        {
+          "name": "Cisco Nexus 9000",
+          "role": "Data-center switching and AI networking fabric"
+        },
+        {
+          "name": "Cisco ACI",
+          "role": "Policy-driven data-center fabric and segmentation"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Hypershield",
+        "Cisco Intersight",
+        "Splunk Observability"
+      ],
+      "choose_when": [
+        "The problem is the data-center network fabric.",
+        "The customer needs Nexus/ACI operations, automation, visibility, or segmentation."
+      ],
+      "do_not_choose_when": [
+        "The customer is asking only for UCS server management.",
+        "The issue is distributed branch networking.",
+        "The issue is cloud-native application observability."
+      ],
+      "corroboration_hints": [
+        "Nexus or ACI footprint",
+        "data-center refresh",
+        "AI workload initiative",
+        "fabric consolidation"
+      ],
+      "install_base_signals": [
+        "Nexus 9000",
+        "ACI",
+        "APIC",
+        "Nexus Dashboard",
+        "NX-OS"
+      ],
+      "buying_roles": [
+        "Data Center Network Architect",
+        "Infrastructure Director",
+        "Cloud Network Lead"
+      ],
+      "intent_markers": [
+        "fabric refresh",
+        "ACI expansion",
+        "AI cluster build",
+        "data-center consolidation"
+      ],
+      "recommended_specialist": "Data Center Networking specialist"
+    },
+    "hybrid_compute_operations": {
+      "id": "hybrid_compute_operations",
+      "domain": "Data Center",
+      "pain_category": "Compute infrastructure lifecycle and hybrid operations",
+      "customer_language": [
+        "We need one place to manage our UCS estate.",
+        "Server provisioning and firmware compliance are manual.",
+        "We need infrastructure lifecycle management from core to edge.",
+        "Our compute operations are inconsistent."
+      ],
+      "keywords": [
+        "ucs",
+        "server management",
+        "firmware",
+        "intersight",
+        "compute lifecycle",
+        "provisioning",
+        "infrastructure as code"
+      ],
+      "semantic_cues": [
+        "centrally manage Cisco UCS compute infrastructure",
+        "automate server, fabric, storage, and provisioning workflows",
+        "simplify compute lifecycle from core to edge"
+      ],
+      "negative_cues": [
+        "data-center network fabric only",
+        "application code performance",
+        "branch SD-WAN"
+      ],
+      "solution": "Cisco Intersight with Cisco UCS",
+      "primary_solutions": [
+        {
+          "name": "Cisco Intersight",
+          "role": "Unified intelligent management and lifecycle for Cisco UCS compute"
+        },
+        {
+          "name": "Cisco UCS",
+          "role": "Enterprise compute infrastructure"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Nexus Dashboard",
+        "Cisco AI PODs",
+        "Splunk Observability"
+      ],
+      "choose_when": [
+        "The pain centers on servers, compute profiles, firmware, provisioning, or UCS lifecycle.",
+        "The customer wants SaaS-delivered infrastructure management."
+      ],
+      "do_not_choose_when": [
+        "The pain is primarily network-fabric configuration.",
+        "The customer needs application telemetry rather than infrastructure management."
+      ],
+      "corroboration_hints": [
+        "UCS install base",
+        "manual firmware process",
+        "multiple server generations",
+        "edge compute expansion"
+      ],
+      "install_base_signals": [
+        "UCS X-Series",
+        "UCS C-Series",
+        "Fabric Interconnects",
+        "Intersight"
+      ],
+      "buying_roles": [
+        "Compute Lead",
+        "Data Center Operations",
+        "Infrastructure Platform Team"
+      ],
+      "intent_markers": [
+        "server refresh",
+        "firmware compliance issue",
+        "UCS expansion",
+        "automation project"
+      ],
+      "recommended_specialist": "Compute / Intersight specialist"
+    },
+    "ai_infrastructure": {
+      "id": "ai_infrastructure",
+      "domain": "AI Infrastructure",
+      "pain_category": "Production AI infrastructure, GPU scale, and secure AI factory",
+      "customer_language": [
+        "We need to move AI from pilots into production.",
+        "We need GPU infrastructure that can scale.",
+        "We need a validated AI stack with security and observability.",
+        "Power, cooling, networking, and operational complexity are slowing our AI program."
+      ],
+      "keywords": [
+        "ai factory",
+        "gpu",
+        "training",
+        "inference",
+        "ai pod",
+        "nvidia",
+        "high density",
+        "ai networking",
+        "agentic ai infrastructure"
+      ],
+      "semantic_cues": [
+        "deploy a modular, validated enterprise AI infrastructure stack",
+        "combine accelerated compute, high-performance networking, security, and observability",
+        "scale AI training, fine-tuning, inference, or distributed agents from core to edge"
+      ],
+      "negative_cues": [
+        "only securing employee use of public AI tools",
+        "only monitoring an existing AI application",
+        "generic server refresh with no AI workload"
+      ],
+      "solution": "Cisco Secure AI Factory with NVIDIA and Cisco AI PODs",
+      "primary_solutions": [
+        {
+          "name": "Cisco Secure AI Factory with NVIDIA",
+          "role": "Full-stack secure AI infrastructure architecture"
+        },
+        {
+          "name": "Cisco AI PODs",
+          "role": "Pre-validated modular building blocks for enterprise AI"
+        },
+        {
+          "name": "Cisco UCS and Nexus",
+          "role": "Compute and AI networking foundation"
+        },
+        {
+          "name": "Cisco AI Defense and Splunk Observability",
+          "role": "AI security and operational visibility"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Hypershield",
+        "Cisco Intersight",
+        "Isovalent/Cilium"
+      ],
+      "choose_when": [
+        "The customer is building or modernizing AI infrastructure.",
+        "The need spans compute, network, security, observability, and validated design."
+      ],
+      "do_not_choose_when": [
+        "The only issue is shadow AI or prompt security.",
+        "The customer only needs model/application monitoring."
+      ],
+      "corroboration_hints": [
+        "GPU procurement",
+        "AI center of excellence",
+        "data-center power planning",
+        "NVIDIA strategy",
+        "AI pilot backlog"
+      ],
+      "install_base_signals": [
+        "UCS",
+        "Nexus",
+        "NVIDIA GPUs",
+        "Intersight",
+        "Splunk"
+      ],
+      "buying_roles": [
+        "CTO",
+        "AI Infrastructure Lead",
+        "Data Center Architect",
+        "Head of AI Platform"
+      ],
+      "intent_markers": [
+        "GPU RFP",
+        "AI factory program",
+        "production AI deadline",
+        "data-center expansion"
+      ],
+      "recommended_specialist": "AI Infrastructure / Data Center specialist"
+    },
+    "storage_networking": {
+      "id": "storage_networking",
+      "domain": "Data Center",
+      "pain_category": "Storage-area-network modernization and resilience",
+      "customer_language": [
+        "Our SAN is aging.",
+        "Storage congestion is affecting critical applications.",
+        "We need resilient Fibre Channel connectivity.",
+        "We need to modernize mainframe or mission-critical storage networking."
+      ],
+      "keywords": [
+        "san",
+        "fibre channel",
+        "ficon",
+        "storage network",
+        "mds",
+        "vsan",
+        "fcip",
+        "storage congestion"
+      ],
+      "semantic_cues": [
+        "modernize high-availability storage networking",
+        "improve SAN performance, resiliency, security, or extension",
+        "operate mission-critical Fibre Channel or mainframe storage fabrics"
+      ],
+      "negative_cues": [
+        "ethernet data-center fabric",
+        "object storage software",
+        "server provisioning"
+      ],
+      "solution": "Cisco MDS 9000 storage networking",
+      "primary_solutions": [
+        {
+          "name": "Cisco MDS 9000 Series",
+          "role": "High-performance, resilient, secure SAN switching and directors"
+        },
+        {
+          "name": "Nexus Dashboard SAN management capabilities",
+          "role": "Unified SAN operations and insights"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Nexus",
+        "Cisco Intersight"
+      ],
+      "choose_when": [
+        "The customer explicitly references SAN, Fibre Channel, FICON, or storage fabric.",
+        "Availability and storage-network performance are business-critical."
+      ],
+      "do_not_choose_when": [
+        "The need is general Ethernet switching.",
+        "The customer is discussing cloud object storage with no SAN component."
+      ],
+      "corroboration_hints": [
+        "Existing MDS or competing SAN estate",
+        "mainframe refresh",
+        "storage-array migration",
+        "Fibre Channel growth"
+      ],
+      "install_base_signals": [
+        "MDS 9000",
+        "Fibre Channel",
+        "FICON",
+        "SAN directors"
+      ],
+      "buying_roles": [
+        "Storage Architect",
+        "Data Center Infrastructure",
+        "Mainframe Operations"
+      ],
+      "intent_markers": [
+        "storage refresh",
+        "array migration",
+        "mainframe upgrade",
+        "SAN EOL"
+      ],
+      "recommended_specialist": "Storage Networking specialist"
+    },
+    "industrial_connectivity": {
+      "id": "industrial_connectivity",
+      "domain": "Industrial IoT",
+      "pain_category": "Industrial connectivity, resilience, and OT network operations",
+      "customer_language": [
+        "We need reliable connectivity in harsh environments.",
+        "Factories and field assets are hard to connect and manage.",
+        "We need secure remote access to industrial equipment.",
+        "Our OT network cannot support automation or industrial AI."
+      ],
+      "keywords": [
+        "industrial",
+        "ot",
+        "factory",
+        "rugged",
+        "industrial ethernet",
+        "industrial router",
+        "urwb",
+        "private 5g",
+        "field asset"
+      ],
+      "semantic_cues": [
+        "connect and automate industrial operations in harsh or distributed environments",
+        "provide resilient wired, wireless, or cellular connectivity for OT assets",
+        "centrally provision and operate industrial edge routers and networks"
+      ],
+      "negative_cues": [
+        "office campus only",
+        "consumer IoT",
+        "application APM"
+      ],
+      "solution": "Cisco Industrial Ethernet, industrial routers and wireless, with IoT Operations Dashboard",
+      "primary_solutions": [
+        {
+          "name": "Cisco Industrial Ethernet switches",
+          "role": "Rugged industrial switching"
+        },
+        {
+          "name": "Cisco industrial routers and wireless",
+          "role": "Industrial WAN, cellular, and mission-critical wireless connectivity"
+        },
+        {
+          "name": "Cisco IoT Operations Dashboard",
+          "role": "Cloud provisioning and management for industrial edge"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Cyber Vision",
+        "Cisco Secure Equipment Access",
+        "Splunk"
+      ],
+      "choose_when": [
+        "The environment is manufacturing, utilities, transportation, mining, ports, or field operations.",
+        "Ruggedization, deterministic uptime, mobility, or remote assets are central."
+      ],
+      "do_not_choose_when": [
+        "The pain is a conventional office branch.",
+        "The need is exclusively OT threat detection without connectivity modernization."
+      ],
+      "corroboration_hints": [
+        "Industrial switch/router footprint",
+        "plant modernization",
+        "remote asset program",
+        "IT/OT convergence"
+      ],
+      "install_base_signals": [
+        "Cisco IE switches",
+        "industrial routers",
+        "URWB",
+        "IoT Operations Dashboard"
+      ],
+      "buying_roles": [
+        "OT Network Lead",
+        "Plant Engineering",
+        "Industrial IT",
+        "Operations Technology Director"
+      ],
+      "intent_markers": [
+        "plant expansion",
+        "automation project",
+        "private cellular project",
+        "equipment remote-access initiative"
+      ],
+      "recommended_specialist": "Industrial IoT specialist"
+    },
+    "service_provider_modernization": {
+      "id": "service_provider_modernization",
+      "domain": "Service Provider",
+      "pain_category": "Mass-scale routing, metro/core modernization, and IP-optical convergence",
+      "customer_language": [
+        "We need more core capacity with less power.",
+        "Our IP and optical layers are too complex.",
+        "We need 400G or 800G scale.",
+        "We need to automate a carrier-grade network."
+      ],
+      "keywords": [
+        "service provider",
+        "core routing",
+        "metro",
+        "peering",
+        "400g",
+        "800g",
+        "silicon one",
+        "ios xr",
+        "routed optical",
+        "crosswork"
+      ],
+      "semantic_cues": [
+        "scale a carrier, webscale, metro, or backbone network",
+        "converge IP and optical layers",
+        "increase routing density while reducing power and operational complexity"
+      ],
+      "negative_cues": [
+        "enterprise branch WAN",
+        "campus switching",
+        "data-center server lifecycle"
+      ],
+      "solution": "Cisco 8000 Series, Silicon One, Crosswork, and Routed Optical Networking",
+      "primary_solutions": [
+        {
+          "name": "Cisco 8000 Series Routers",
+          "role": "Mass-scale, high-performance routing"
+        },
+        {
+          "name": "Cisco Silicon One and IOS XR",
+          "role": "Routing silicon and network operating system"
+        },
+        {
+          "name": "Cisco Crosswork",
+          "role": "Service-provider automation and assurance"
+        },
+        {
+          "name": "Cisco Routed Optical Networking",
+          "role": "IP-optical convergence with coherent pluggable optics"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco NCS",
+        "Cisco optics",
+        "ThousandEyes"
+      ],
+      "choose_when": [
+        "The buyer is a service provider, webscale operator, or very large backbone team.",
+        "The need concerns core, peering, metro, DCI, or optical convergence."
+      ],
+      "do_not_choose_when": [
+        "The use case is ordinary enterprise SD-WAN.",
+        "The customer is refreshing campus access switches."
+      ],
+      "corroboration_hints": [
+        "Cisco 8000/NCS footprint",
+        "400G/800G roadmap",
+        "IP-optical transformation",
+        "capacity expansion"
+      ],
+      "install_base_signals": [
+        "Cisco 8000",
+        "NCS",
+        "IOS XR",
+        "Crosswork",
+        "optical transport"
+      ],
+      "buying_roles": [
+        "Service Provider CTO",
+        "Core Network Architect",
+        "Transport Engineering"
+      ],
+      "intent_markers": [
+        "capacity forecast",
+        "optical refresh",
+        "peering expansion",
+        "power-reduction initiative"
+      ],
+      "recommended_specialist": "Service Provider / Mass-Scale Infrastructure specialist"
+    },
+    "soc_detection_response": {
+      "id": "soc_detection_response",
+      "domain": "Security",
+      "pain_category": "SOC alert overload, threat detection, investigation, and response",
+      "customer_language": [
+        "We have too many alerts to triage.",
+        "Analysts jump between tools during every incident.",
+        "We do not know which threats matter.",
+        "Response is too manual and slow."
+      ],
+      "keywords": [
+        "xdr",
+        "alert fatigue",
+        "incident response",
+        "triage",
+        "soc",
+        "threat detection",
+        "investigation",
+        "response",
+        "soar"
+      ],
+      "semantic_cues": [
+        "correlate security telemetry into prioritized incidents",
+        "reduce SOC tool switching and accelerate investigation and response",
+        "automate threat detection, investigation, and remediation workflows"
+      ],
+      "negative_cues": [
+        "only log retention for audit",
+        "only firewall replacement",
+        "only identity MFA rollout"
+      ],
+      "solution": "Cisco XDR and/or Splunk Enterprise Security",
+      "primary_solutions": [
+        {
+          "name": "Cisco XDR",
+          "role": "Curated cross-domain telemetry correlation and prioritized incident response"
+        },
+        {
+          "name": "Splunk Enterprise Security",
+          "role": "Broad SIEM/TDIR platform with SOAR, UEBA, detection engineering, and data flexibility"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Secure Network Analytics",
+        "Cisco Secure Endpoint",
+        "Cisco Secure Firewall",
+        "Cisco Talos"
+      ],
+      "choose_when": [
+        "Use Cisco XDR when the emphasis is fast correlation and response across endpoint, network, firewall, email, identity, and DNS.",
+        "Use Splunk Enterprise Security when the emphasis is broad data onboarding, SIEM, custom detections, compliance, SOAR, and SOC platform consolidation.",
+        "Use both when Cisco controls and enterprise-wide data analytics must be joined."
+      ],
+      "do_not_choose_when": [
+        "The customer only needs a point firewall or MFA product.",
+        "The issue is IT operations alert noise rather than security incidents."
+      ],
+      "corroboration_hints": [
+        "Existing Cisco security controls",
+        "Splunk estate",
+        "SOC staffing pressure",
+        "MDR/MXDR interest",
+        "breach or tabletop findings"
+      ],
+      "install_base_signals": [
+        "Cisco XDR",
+        "Secure Endpoint",
+        "Secure Firewall",
+        "Duo",
+        "Umbrella",
+        "Splunk ES"
+      ],
+      "buying_roles": [
+        "CISO",
+        "SOC Director",
+        "Head of Detection and Response",
+        "Security Operations"
+      ],
+      "intent_markers": [
+        "recent incident",
+        "SOC consolidation",
+        "SIEM renewal",
+        "MDR evaluation",
+        "staffing shortage"
+      ],
+      "recommended_specialist": "Security Operations / XDR / Splunk Security specialist"
+    },
+    "siem_compliance": {
+      "id": "siem_compliance",
+      "domain": "Security / Data",
+      "pain_category": "Enterprise security analytics, SIEM, audit, and log-data platform",
+      "customer_language": [
+        "We need centralized logs for security and compliance.",
+        "Our SIEM is expensive or hard to scale.",
+        "Audit reporting takes too long.",
+        "We need custom detections across all our data."
+      ],
+      "keywords": [
+        "siem",
+        "logs",
+        "compliance",
+        "audit",
+        "retention",
+        "spl",
+        "security analytics",
+        "data platform",
+        "ueba"
+      ],
+      "semantic_cues": [
+        "ingest, search, and analyze security data from many sources at scale",
+        "support compliance reporting, threat hunting, and custom detections",
+        "consolidate SIEM, SOAR, UEBA, and security analytics"
+      ],
+      "negative_cues": [
+        "small set of Cisco-native alerts only",
+        "network performance logs",
+        "application tracing only"
+      ],
+      "solution": "Splunk Enterprise Security on Splunk Cloud Platform or Splunk Enterprise",
+      "primary_solutions": [
+        {
+          "name": "Splunk Enterprise Security",
+          "role": "SIEM and unified threat detection, investigation, and response"
+        },
+        {
+          "name": "Splunk Cloud Platform",
+          "role": "Managed cloud data platform"
+        },
+        {
+          "name": "Splunk Enterprise",
+          "role": "Customer-managed/on-premises data platform"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco XDR",
+        "Splunk SOAR",
+        "Splunk Asset and Risk Intelligence"
+      ],
+      "choose_when": [
+        "The customer requires broad data flexibility, retention, search, custom analytics, and compliance.",
+        "The buying motion is SIEM replacement or SOC data-platform modernization."
+      ],
+      "do_not_choose_when": [
+        "The requirement is only simple Cisco-native telemetry correlation.",
+        "The problem is IT service health rather than security analytics."
+      ],
+      "corroboration_hints": [
+        "Existing Splunk estate",
+        "SIEM renewal",
+        "audit findings",
+        "data-volume growth",
+        "SOC engineering team"
+      ],
+      "install_base_signals": [
+        "Splunk Enterprise",
+        "Splunk Cloud",
+        "Splunk ES",
+        "legacy SIEM"
+      ],
+      "buying_roles": [
+        "CISO",
+        "SIEM Platform Owner",
+        "Security Engineering",
+        "Compliance"
+      ],
+      "intent_markers": [
+        "SIEM RFP",
+        "renewal event",
+        "audit deadline",
+        "data-tier optimization"
+      ],
+      "recommended_specialist": "Splunk Security specialist"
+    },
+    "firewall_policy": {
+      "id": "firewall_policy",
+      "domain": "Security",
+      "pain_category": "Firewall modernization, segmentation, and distributed policy management",
+      "customer_language": [
+        "Our firewalls are aging.",
+        "Policies are inconsistent across sites and clouds.",
+        "We need better threat prevention at the edge.",
+        "Firewall changes are slow and risky."
+      ],
+      "keywords": [
+        "firewall",
+        "ngfw",
+        "ips",
+        "policy",
+        "segmentation",
+        "hybrid mesh firewall",
+        "firepower",
+        "asa",
+        "threat defense"
+      ],
+      "semantic_cues": [
+        "replace or modernize network firewalls",
+        "enforce consistent security policy across distributed environments",
+        "improve threat inspection, segmentation, and firewall operations"
+      ],
+      "negative_cues": [
+        "remote-user SSE only",
+        "identity MFA only",
+        "SIEM-only requirement"
+      ],
+      "solution": "Cisco Secure Firewall with Cisco Security Cloud Control",
+      "primary_solutions": [
+        {
+          "name": "Cisco Secure Firewall",
+          "role": "Network firewall and threat prevention across branch, campus, data center, and cloud"
+        },
+        {
+          "name": "Cisco Security Cloud Control",
+          "role": "Unified cloud-native security and firewall management"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Hypershield",
+        "Cisco XDR",
+        "Cisco Multicloud Defense"
+      ],
+      "choose_when": [
+        "The customer explicitly references firewall refresh, policy, IPS, perimeter, or segmentation.",
+        "Distributed firewall management is a major pain."
+      ],
+      "do_not_choose_when": [
+        "The primary need is secure access for users to SaaS/private apps.",
+        "The customer only needs workload microsegmentation with no firewall modernization."
+      ],
+      "corroboration_hints": [
+        "ASA/Firepower footprint",
+        "competing firewall renewal",
+        "policy audit",
+        "data-center or branch refresh"
+      ],
+      "install_base_signals": [
+        "ASA",
+        "Firepower",
+        "Secure Firewall",
+        "FMC",
+        "Security Cloud Control"
+      ],
+      "buying_roles": [
+        "Network Security",
+        "Firewall Operations",
+        "CISO"
+      ],
+      "intent_markers": [
+        "firewall EOL",
+        "policy cleanup",
+        "breach finding",
+        "data-center refresh"
+      ],
+      "recommended_specialist": "Network Security / Firewall specialist"
+    },
+    "identity_zero_trust": {
+      "id": "identity_zero_trust",
+      "domain": "Security",
+      "pain_category": "Identity security, MFA, device trust, and network access control",
+      "customer_language": [
+        "Passwords are our weakest link.",
+        "We need phishing-resistant MFA.",
+        "We do not know what devices are connecting.",
+        "Access policies are inconsistent for users and devices."
+      ],
+      "keywords": [
+        "mfa",
+        "duo",
+        "identity",
+        "device trust",
+        "nac",
+        "ise",
+        "zero trust",
+        "authentication",
+        "authorization",
+        "posture"
+      ],
+      "semantic_cues": [
+        "verify user and device trust before granting access",
+        "deploy strong or phishing-resistant authentication",
+        "discover and control devices connecting to the network"
+      ],
+      "negative_cues": [
+        "network throughput",
+        "application APM",
+        "SIEM log retention"
+      ],
+      "solution": "Cisco Duo and Cisco Identity Services Engine",
+      "primary_solutions": [
+        {
+          "name": "Cisco Duo",
+          "role": "Identity security, MFA, access, and device trust"
+        },
+        {
+          "name": "Cisco Identity Services Engine",
+          "role": "Network access control, device visibility, segmentation policy, and trust"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Identity Intelligence",
+        "Cisco Secure Access",
+        "Cisco XDR"
+      ],
+      "choose_when": [
+        "Use Duo for workforce/application authentication and identity access.",
+        "Use ISE for network access control, device profiling, and segmentation policy.",
+        "Use both for end-to-end user and device trust."
+      ],
+      "do_not_choose_when": [
+        "The need is only firewall inspection.",
+        "The problem is application performance."
+      ],
+      "corroboration_hints": [
+        "MFA gaps",
+        "NAC replacement",
+        "identity-related incident",
+        "BYOD/IoT growth",
+        "zero-trust program"
+      ],
+      "install_base_signals": [
+        "Duo",
+        "ISE",
+        "Active Directory/Entra ID integrations",
+        "Catalyst"
+      ],
+      "buying_roles": [
+        "IAM Lead",
+        "Network Security",
+        "CISO",
+        "Zero Trust Program Lead"
+      ],
+      "intent_markers": [
+        "MFA mandate",
+        "cyber-insurance requirement",
+        "NAC refresh",
+        "zero-trust initiative"
+      ],
+      "recommended_specialist": "Identity / Zero Trust specialist"
+    },
+    "sase_remote_access": {
+      "id": "sase_remote_access",
+      "domain": "Security / Networking",
+      "pain_category": "SSE, SASE, remote access, and branch-to-cloud security",
+      "customer_language": [
+        "Our VPN cannot scale.",
+        "Remote users have inconsistent access and security.",
+        "We need to secure access to SaaS and private applications.",
+        "We are building a SASE architecture."
+      ],
+      "keywords": [
+        "sase",
+        "sse",
+        "ztna",
+        "vpn",
+        "remote access",
+        "secure web gateway",
+        "casb",
+        "dns security",
+        "branch security"
+      ],
+      "semantic_cues": [
+        "provide secure, identity-aware access for users, devices, applications, and agents anywhere",
+        "replace or reduce legacy VPN dependence",
+        "combine WAN transformation with cloud-delivered security"
+      ],
+      "negative_cues": [
+        "firewall appliance refresh only",
+        "campus NAC only",
+        "application monitoring"
+      ],
+      "solution": "Cisco Secure Access with Catalyst SD-WAN or Meraki SD-WAN",
+      "primary_solutions": [
+        {
+          "name": "Cisco Secure Access",
+          "role": "Cloud-delivered SSE including secure access to internet, SaaS, and private apps"
+        },
+        {
+          "name": "Cisco Catalyst SD-WAN",
+          "role": "Enterprise WAN foundation for SASE"
+        },
+        {
+          "name": "Meraki SD-WAN",
+          "role": "Cloud-managed branch foundation for SASE"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Duo",
+        "Cisco Umbrella DNS-layer security",
+        "Cisco ThousandEyes Assurance"
+      ],
+      "choose_when": [
+        "The use case joins connectivity and cloud-delivered security.",
+        "Remote users, branches, SaaS, private apps, or VPN replacement are central."
+      ],
+      "do_not_choose_when": [
+        "The customer only needs a perimeter firewall refresh.",
+        "The problem is internal application code."
+      ],
+      "corroboration_hints": [
+        "AnyConnect/VPN footprint",
+        "Umbrella footprint",
+        "SD-WAN project",
+        "hybrid workforce",
+        "SASE roadmap"
+      ],
+      "install_base_signals": [
+        "Secure Access",
+        "Umbrella",
+        "Duo",
+        "Catalyst SD-WAN",
+        "Meraki MX"
+      ],
+      "buying_roles": [
+        "Network Security",
+        "WAN Team",
+        "CISO",
+        "End-User Computing"
+      ],
+      "intent_markers": [
+        "VPN replacement",
+        "SASE RFP",
+        "office consolidation",
+        "cloud migration"
+      ],
+      "recommended_specialist": "SASE / Secure Access specialist"
+    },
+    "endpoint_security": {
+      "id": "endpoint_security",
+      "domain": "Security",
+      "pain_category": "Endpoint prevention, detection, and response",
+      "customer_language": [
+        "We need better endpoint detection and response.",
+        "Malware keeps getting through.",
+        "We need threat hunting on endpoints.",
+        "Our endpoint tools are disconnected from the SOC."
+      ],
+      "keywords": [
+        "edr",
+        "endpoint",
+        "malware",
+        "ransomware",
+        "antivirus",
+        "threat hunting",
+        "secure endpoint"
+      ],
+      "semantic_cues": [
+        "prevent, detect, investigate, and respond to threats on endpoints",
+        "integrate endpoint telemetry into broader XDR workflows",
+        "perform endpoint threat hunting and malware analysis"
+      ],
+      "negative_cues": [
+        "network-only anomaly detection",
+        "email-only security",
+        "identity-only control"
+      ],
+      "solution": "Cisco Secure Endpoint with Cisco XDR",
+      "primary_solutions": [
+        {
+          "name": "Cisco Secure Endpoint",
+          "role": "Endpoint prevention, EDR, threat hunting, and malware protection"
+        },
+        {
+          "name": "Cisco XDR",
+          "role": "Cross-domain investigation and response"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Talos",
+        "Splunk Enterprise Security"
+      ],
+      "choose_when": [
+        "Endpoints are the named control point.",
+        "The customer wants EDR integrated with broader incident response."
+      ],
+      "do_not_choose_when": [
+        "The problem is exclusively network flow analytics.",
+        "The requirement is only MFA."
+      ],
+      "corroboration_hints": [
+        "Endpoint tool renewal",
+        "ransomware event",
+        "EDR coverage gaps",
+        "XDR initiative"
+      ],
+      "install_base_signals": [
+        "Secure Endpoint",
+        "Cisco XDR",
+        "Secure Client"
+      ],
+      "buying_roles": [
+        "Endpoint Security",
+        "SOC",
+        "CISO"
+      ],
+      "intent_markers": [
+        "EDR RFP",
+        "ransomware readiness",
+        "tool consolidation"
+      ],
+      "recommended_specialist": "Endpoint / XDR specialist"
+    },
+    "network_detection_response": {
+      "id": "network_detection_response",
+      "domain": "Security",
+      "pain_category": "Network detection, behavioral analytics, and east-west visibility",
+      "customer_language": [
+        "We cannot see lateral movement.",
+        "We need to detect anomalous network behavior.",
+        "We want to use network telemetry as a security sensor.",
+        "Agents cannot be installed everywhere."
+      ],
+      "keywords": [
+        "ndr",
+        "netflow",
+        "network behavior",
+        "lateral movement",
+        "anomaly",
+        "stealthwatch",
+        "flow analytics",
+        "east-west"
+      ],
+      "semantic_cues": [
+        "detect threats by analyzing network behavior and flow telemetry",
+        "gain agentless visibility across network and cloud traffic",
+        "identify anomalous communications and lateral movement"
+      ],
+      "negative_cues": [
+        "endpoint EDR only",
+        "application latency",
+        "campus client health"
+      ],
+      "solution": "Cisco Secure Network Analytics with Cisco XDR and Splunk integration",
+      "primary_solutions": [
+        {
+          "name": "Cisco Secure Network Analytics",
+          "role": "Network visibility, behavioral analytics, and network threat detection"
+        },
+        {
+          "name": "Cisco XDR",
+          "role": "Prioritized incident correlation and response"
+        },
+        {
+          "name": "Splunk",
+          "role": "Broader analytics and data correlation"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco ISE",
+        "Cisco Secure Firewall"
+      ],
+      "choose_when": [
+        "Network flow behavior is the primary signal.",
+        "Agentless coverage or east-west visibility is required."
+      ],
+      "do_not_choose_when": [
+        "The need is purely performance monitoring.",
+        "The issue is endpoint malware prevention only."
+      ],
+      "corroboration_hints": [
+        "NetFlow-capable Cisco network",
+        "Stealthwatch footprint",
+        "lateral-movement concern",
+        "regulated environment"
+      ],
+      "install_base_signals": [
+        "Secure Network Analytics",
+        "Stealthwatch",
+        "Catalyst",
+        "Nexus",
+        "Cisco XDR"
+      ],
+      "buying_roles": [
+        "SOC",
+        "Network Security",
+        "Threat Detection Engineering"
+      ],
+      "intent_markers": [
+        "breach assessment",
+        "NDR evaluation",
+        "east-west visibility project"
+      ],
+      "recommended_specialist": "Network Detection and Response specialist"
+    },
+    "cloud_workload_app_security": {
+      "id": "cloud_workload_app_security",
+      "domain": "Security",
+      "pain_category": "Hybrid multicloud workload, cloud network, API, and cloud-native application security",
+      "customer_language": [
+        "Security policy is inconsistent across clouds.",
+        "We need microsegmentation around workloads.",
+        "We do not know our cloud-native application or API risk.",
+        "We need protection that follows workloads across data centers and clouds."
+      ],
+      "keywords": [
+        "multicloud security",
+        "microsegmentation",
+        "workload",
+        "cnapp",
+        "cspm",
+        "cwpp",
+        "api security",
+        "east-west",
+        "hypershield",
+        "panoptica"
+      ],
+      "semantic_cues": [
+        "secure workloads and applications across hybrid and multicloud environments",
+        "apply distributed segmentation and cloud network policy",
+        "find and reduce cloud-native application, Kubernetes, API, posture, and runtime risk"
+      ],
+      "negative_cues": [
+        "general cloud orchestration",
+        "WAN routing",
+        "application performance only"
+      ],
+      "solution": "Cisco Hypershield, Secure Workload, Multicloud Defense, and Panoptica—selected by control point",
+      "primary_solutions": [
+        {
+          "name": "Cisco Hypershield",
+          "role": "Distributed security enforcement for applications, workloads, and infrastructure"
+        },
+        {
+          "name": "Cisco Secure Workload",
+          "role": "Workload visibility and zero-trust microsegmentation"
+        },
+        {
+          "name": "Cisco Multicloud Defense",
+          "role": "Cloud-native network security and consistent policy across clouds"
+        },
+        {
+          "name": "Cisco Panoptica",
+          "role": "Cloud-native application and API security, including posture and workload protection"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Security Cloud Control",
+        "Cisco Secure Firewall",
+        "Cisco XDR"
+      ],
+      "choose_when": [
+        "Use Secure Workload for workload dependency visibility and microsegmentation.",
+        "Use Multicloud Defense for cloud network security and policy across VPCs/VNets.",
+        "Use Panoptica for cloud-native application, Kubernetes, API, posture, and runtime security.",
+        "Use Hypershield for distributed enforcement and segmentation across modern infrastructure."
+      ],
+      "do_not_choose_when": [
+        "The customer is asking for cloud-resource orchestration rather than security.",
+        "The issue is remote-user access.",
+        "The issue is APM or infrastructure monitoring."
+      ],
+      "corroboration_hints": [
+        "AWS/Azure/GCP sprawl",
+        "Kubernetes footprint",
+        "microsegmentation initiative",
+        "cloud security audit",
+        "data-center modernization"
+      ],
+      "install_base_signals": [
+        "ACI",
+        "Nexus",
+        "Secure Workload",
+        "Multicloud Defense",
+        "Panoptica",
+        "Hypershield"
+      ],
+      "buying_roles": [
+        "Cloud Security",
+        "Platform Security",
+        "CISO",
+        "Data Center Security"
+      ],
+      "intent_markers": [
+        "cloud migration",
+        "Kubernetes expansion",
+        "segmentation mandate",
+        "CNAPP RFP"
+      ],
+      "recommended_specialist": "Cloud and Workload Security specialist"
+    },
+    "ai_security": {
+      "id": "ai_security",
+      "domain": "Security / AI",
+      "pain_category": "AI application, model, agent, and shadow-AI security",
+      "customer_language": [
+        "Employees are using unsanctioned AI tools.",
+        "We need guardrails for our AI applications and agents.",
+        "We do not know which models are safe.",
+        "Prompt injection and data leakage are major concerns."
+      ],
+      "keywords": [
+        "ai security",
+        "shadow ai",
+        "prompt injection",
+        "model validation",
+        "guardrails",
+        "llm",
+        "agent security",
+        "ai runtime",
+        "data leakage"
+      ],
+      "semantic_cues": [
+        "discover and control enterprise use of AI applications",
+        "validate AI models and applications before deployment",
+        "protect AI runtime against prompt, model, agent, and data risks"
+      ],
+      "negative_cues": [
+        "GPU capacity",
+        "AI infrastructure performance only",
+        "traditional malware only"
+      ],
+      "solution": "Cisco AI Defense, integrated with Cisco Secure Access and cloud controls",
+      "primary_solutions": [
+        {
+          "name": "Cisco AI Defense",
+          "role": "AI inventory, validation, runtime protection, and policy for models, applications, and agents"
+        },
+        {
+          "name": "Cisco Secure Access",
+          "role": "Control and protect workforce access to third-party AI applications"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Multicloud Defense",
+        "Cisco Secure AI Factory",
+        "Splunk Observability"
+      ],
+      "choose_when": [
+        "The risk is created by building, deploying, or using AI.",
+        "The customer references shadow AI, model validation, runtime guardrails, or AI agents."
+      ],
+      "do_not_choose_when": [
+        "The only issue is buying GPUs.",
+        "The need is general cloud workload security with no AI-specific risk."
+      ],
+      "corroboration_hints": [
+        "AI development program",
+        "GenAI acceptable-use policy",
+        "model inventory gap",
+        "AI governance initiative"
+      ],
+      "install_base_signals": [
+        "Secure Access",
+        "Multicloud Defense",
+        "AI PODs",
+        "Splunk"
+      ],
+      "buying_roles": [
+        "CISO",
+        "AI Governance",
+        "AI Platform Lead",
+        "Application Security"
+      ],
+      "intent_markers": [
+        "AI rollout",
+        "AI governance deadline",
+        "shadow-AI finding",
+        "model red-team requirement"
+      ],
+      "recommended_specialist": "AI Security specialist"
+    },
+    "ot_security": {
+      "id": "ot_security",
+      "domain": "Security / Industrial",
+      "pain_category": "OT asset visibility, industrial segmentation, and secure remote access",
+      "customer_language": [
+        "We do not know what is connected in our plants.",
+        "We need to segment OT without disrupting production.",
+        "Vendors need secure temporary access to equipment.",
+        "We need to detect industrial protocol and controller changes."
+      ],
+      "keywords": [
+        "ot security",
+        "asset inventory",
+        "industrial protocol",
+        "plc",
+        "scada",
+        "cyber vision",
+        "purdue",
+        "secure remote access"
+      ],
+      "semantic_cues": [
+        "discover industrial assets and communications without disrupting operations",
+        "assess OT risk and design segmentation",
+        "provide least-privilege remote access to industrial equipment"
+      ],
+      "negative_cues": [
+        "general office NAC",
+        "consumer IoT",
+        "application APM"
+      ],
+      "solution": "Cisco Cyber Vision with industrial networking, ISE, firewall, and Splunk/XDR integration",
+      "primary_solutions": [
+        {
+          "name": "Cisco Cyber Vision",
+          "role": "OT visibility, asset intelligence, risk, segmentation guidance, and secure remote access"
+        },
+        {
+          "name": "Cisco industrial networking",
+          "role": "Embedded sensor and enforcement foundation"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco ISE",
+        "Cisco Secure Firewall",
+        "Splunk",
+        "Cisco XDR"
+      ],
+      "choose_when": [
+        "The environment is operational technology.",
+        "Safety, uptime, passive discovery, and industrial protocols matter."
+      ],
+      "do_not_choose_when": [
+        "The environment is ordinary enterprise IT.",
+        "The need is only rugged connectivity with no security use case."
+      ],
+      "corroboration_hints": [
+        "Industrial Cisco footprint",
+        "NERC/CIP or other OT regulation",
+        "vendor remote access",
+        "unknown asset inventory"
+      ],
+      "install_base_signals": [
+        "Cisco IE switches",
+        "Cyber Vision",
+        "ISE",
+        "Secure Firewall"
+      ],
+      "buying_roles": [
+        "OT Security",
+        "Plant Operations",
+        "CISO",
+        "Industrial Network Lead"
+      ],
+      "intent_markers": [
+        "OT assessment",
+        "regulatory deadline",
+        "plant segmentation",
+        "remote vendor-access project"
+      ],
+      "recommended_specialist": "Industrial Security / Cyber Vision specialist"
+    },
+    "phishing_email_dns": {
+      "id": "phishing_email_dns",
+      "domain": "Security",
+      "pain_category": "Phishing, malicious email, DNS, and web threats",
+      "customer_language": [
+        "Phishing is our biggest user risk.",
+        "We need to stop malicious links before users click.",
+        "We need DNS-layer protection.",
+        "Email threats are bypassing our current controls."
+      ],
+      "keywords": [
+        "phishing",
+        "email security",
+        "dns security",
+        "malicious url",
+        "business email compromise",
+        "umbrella",
+        "email threat defense"
+      ],
+      "semantic_cues": [
+        "protect users from malicious email, links, domains, and web destinations",
+        "block threats at the DNS or secure-web layer",
+        "analyze and respond to sophisticated email threats"
+      ],
+      "negative_cues": [
+        "endpoint malware only",
+        "firewall policy only",
+        "application monitoring"
+      ],
+      "solution": "Cisco Email Threat Defense and Cisco Secure Access DNS/Web protection; Umbrella where applicable",
+      "primary_solutions": [
+        {
+          "name": "Cisco Email Threat Defense",
+          "role": "Email threat detection and response"
+        },
+        {
+          "name": "Cisco Secure Access DNS/Web capabilities",
+          "role": "DNS-layer and secure-web protection"
+        },
+        {
+          "name": "Cisco Umbrella DNS-layer security",
+          "role": "DNS security for applicable existing and targeted deployments"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Duo",
+        "Cisco XDR",
+        "Cisco Secure Endpoint"
+      ],
+      "choose_when": [
+        "The attack vector is email, URL, DNS, or web access.",
+        "The customer cites phishing, BEC, malicious domains, or user web protection."
+      ],
+      "do_not_choose_when": [
+        "The issue is primarily endpoint EDR.",
+        "The requirement is general SIEM."
+      ],
+      "corroboration_hints": [
+        "Umbrella footprint",
+        "phishing incident",
+        "email-security renewal",
+        "user-protection initiative"
+      ],
+      "install_base_signals": [
+        "Umbrella",
+        "Secure Access",
+        "Email Threat Defense",
+        "Duo",
+        "XDR"
+      ],
+      "buying_roles": [
+        "Email Security",
+        "Security Operations",
+        "CISO"
+      ],
+      "intent_markers": [
+        "phishing campaign",
+        "BEC incident",
+        "email gateway renewal",
+        "DNS security mandate"
+      ],
+      "recommended_specialist": "User Protection specialist"
+    },
+    "cloud_native_observability": {
+      "id": "cloud_native_observability",
+      "domain": "Observability",
+      "pain_category": "Cloud-native application and infrastructure observability",
+      "customer_language": [
+        "Our microservices are a black box.",
+        "We cannot correlate metrics, traces, and logs.",
+        "Kubernetes incidents take too long to resolve.",
+        "We need real-time observability across cloud environments."
+      ],
+      "keywords": [
+        "observability",
+        "opentelemetry",
+        "apm",
+        "traces",
+        "metrics",
+        "logs",
+        "kubernetes",
+        "microservices",
+        "rum",
+        "infrastructure monitoring"
+      ],
+      "semantic_cues": [
+        "instrument and troubleshoot cloud-native applications and infrastructure",
+        "correlate traces, metrics, logs, user experience, databases, and infrastructure",
+        "reduce mean time to root cause in distributed systems"
+      ],
+      "negative_cues": [
+        "only internet path analysis",
+        "only hybrid/on-prem legacy APM",
+        "only business service aggregation"
+      ],
+      "solution": "Splunk Observability Cloud",
+      "primary_solutions": [
+        {
+          "name": "Splunk Observability Cloud",
+          "role": "OpenTelemetry-native full-stack observability for cloud-native and hybrid environments"
+        }
+      ],
+      "adjacent_solutions": [
+        "Splunk Cloud Platform",
+        "Cisco ThousandEyes Assurance",
+        "Splunk ITSI"
+      ],
+      "choose_when": [
+        "Cloud-native, Kubernetes, microservices, distributed tracing, RUM, synthetics, database or infrastructure monitoring are central."
+      ],
+      "do_not_choose_when": [
+        "The only need is hop-by-hop internet path visibility.",
+        "The estate is mainly traditional on-prem applications and the buyer prefers AppDynamics."
+      ],
+      "corroboration_hints": [
+        "Kubernetes/cloud footprint",
+        "OpenTelemetry program",
+        "SRE organization",
+        "incident MTTR problem"
+      ],
+      "install_base_signals": [
+        "Splunk",
+        "OpenTelemetry",
+        "Kubernetes",
+        "public cloud"
+      ],
+      "buying_roles": [
+        "SRE",
+        "Platform Engineering",
+        "DevOps",
+        "Application Operations"
+      ],
+      "intent_markers": [
+        "observability consolidation",
+        "cloud migration",
+        "APM renewal",
+        "major incident review"
+      ],
+      "recommended_specialist": "Splunk Observability specialist"
+    },
+    "hybrid_onprem_apm": {
+      "id": "hybrid_onprem_apm",
+      "domain": "Observability",
+      "pain_category": "Hybrid and on-premises application performance linked to business impact",
+      "customer_language": [
+        "We need code-level visibility into a critical application.",
+        "Our ERP or Java/.NET application is slow.",
+        "We need to connect application performance to business transactions.",
+        "Our application estate is hybrid and not fully cloud-native."
+      ],
+      "keywords": [
+        "appdynamics",
+        "apm",
+        "business transaction",
+        "java",
+        ".net",
+        "sap",
+        "hybrid app",
+        "on-prem app",
+        "code level"
+      ],
+      "semantic_cues": [
+        "monitor and troubleshoot traditional, hybrid, or on-premises applications",
+        "connect code-level application performance to business transactions",
+        "find application bottlenecks in mature enterprise application estates"
+      ],
+      "negative_cues": [
+        "internet path only",
+        "pure cloud-native OTel-first environment",
+        "IT service aggregation only"
+      ],
+      "solution": "Splunk AppDynamics",
+      "primary_solutions": [
+        {
+          "name": "Splunk AppDynamics",
+          "role": "Hybrid and on-prem application performance monitoring tied to business performance"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco ThousandEyes Assurance",
+        "Splunk Observability Cloud",
+        "Splunk ITSI"
+      ],
+      "choose_when": [
+        "The estate includes critical traditional, hybrid, or on-prem applications.",
+        "Business transactions and code-level application diagnostics are central."
+      ],
+      "do_not_choose_when": [
+        "The need is purely internet/SaaS path visibility.",
+        "The customer is standardizing exclusively on OpenTelemetry-native cloud monitoring."
+      ],
+      "corroboration_hints": [
+        "Existing AppDynamics",
+        "ERP/core application",
+        "Java/.NET estate",
+        "business transaction SLA"
+      ],
+      "install_base_signals": [
+        "AppDynamics",
+        "Java/.NET APM",
+        "ERP applications"
+      ],
+      "buying_roles": [
+        "Application Operations",
+        "APM Owner",
+        "SRE",
+        "Business Application Owner"
+      ],
+      "intent_markers": [
+        "APM renewal",
+        "critical app incident",
+        "ERP modernization",
+        "digital-experience complaint"
+      ],
+      "recommended_specialist": "Splunk AppDynamics specialist"
+    },
+    "service_health_aiops": {
+      "id": "service_health_aiops",
+      "domain": "Observability / IT Operations",
+      "pain_category": "AIOps, alert-noise reduction, service health, and business-impact visibility",
+      "customer_language": [
+        "We have thousands of infrastructure alerts but no service context.",
+        "We need to know which technical issue is affecting revenue.",
+        "The NOC cannot see dependencies across services.",
+        "We need event correlation and probable root cause."
+      ],
+      "keywords": [
+        "itsi",
+        "aiops",
+        "service health",
+        "event correlation",
+        "kpi",
+        "episode",
+        "business service",
+        "alert noise",
+        "root cause"
+      ],
+      "semantic_cues": [
+        "connect technical telemetry to business-service health",
+        "correlate and prioritize IT operations events",
+        "show service dependencies, KPIs, business impact, and likely root cause"
+      ],
+      "negative_cues": [
+        "security incident triage",
+        "code-level APM only",
+        "network path only"
+      ],
+      "solution": "Splunk IT Service Intelligence",
+      "primary_solutions": [
+        {
+          "name": "Splunk IT Service Intelligence",
+          "role": "AIOps, service health, event intelligence, and business-impact correlation"
+        }
+      ],
+      "adjacent_solutions": [
+        "Splunk Platform",
+        "Splunk Observability Cloud",
+        "Cisco ThousandEyes",
+        "Splunk AppDynamics"
+      ],
+      "choose_when": [
+        "The buyer needs a manager-of-managers operational view.",
+        "Alert noise, service health, dependency mapping, and business impact are central."
+      ],
+      "do_not_choose_when": [
+        "The alerts are cybersecurity incidents.",
+        "The need is only application instrumentation."
+      ],
+      "corroboration_hints": [
+        "Many monitoring tools",
+        "NOC transformation",
+        "Splunk platform footprint",
+        "service-level reporting problem"
+      ],
+      "install_base_signals": [
+        "Splunk Platform",
+        "ITSI",
+        "multiple monitoring tools"
+      ],
+      "buying_roles": [
+        "IT Operations",
+        "NOC",
+        "Service Management",
+        "Infrastructure Operations"
+      ],
+      "intent_markers": [
+        "AIOps project",
+        "NOC consolidation",
+        "major incident program",
+        "tool-sprawl reduction"
+      ],
+      "recommended_specialist": "Splunk ITSI / AIOps specialist"
+    },
+    "digital_experience": {
+      "id": "digital_experience",
+      "domain": "Observability / Networking",
+      "pain_category": "End-user and digital experience across application and network layers",
+      "customer_language": [
+        "Customers say the site is slow, but backend metrics look healthy.",
+        "We need to test critical user journeys before users complain.",
+        "Remote employees have inconsistent application experience.",
+        "We need to connect front-end experience to network and backend causes."
+      ],
+      "keywords": [
+        "digital experience",
+        "rum",
+        "synthetic",
+        "user journey",
+        "frontend",
+        "core web vitals",
+        "remote user",
+        "sla",
+        "page load"
+      ],
+      "semantic_cues": [
+        "measure real and synthetic user experience",
+        "test websites, APIs, and business transactions proactively",
+        "correlate front-end, backend, and network causes of poor experience"
+      ],
+      "negative_cues": [
+        "only campus provisioning",
+        "only SIEM",
+        "only server firmware"
+      ],
+      "solution": "Splunk RUM/Synthetic Monitoring plus ThousandEyes; AppDynamics where hybrid application context is required",
+      "primary_solutions": [
+        {
+          "name": "Splunk Real User Monitoring and Synthetic Monitoring",
+          "role": "Front-end and proactive user-journey monitoring"
+        },
+        {
+          "name": "Cisco ThousandEyes Assurance",
+          "role": "Network, internet, SaaS, DNS, and path assurance"
+        },
+        {
+          "name": "Splunk AppDynamics or Splunk APM",
+          "role": "Backend application context"
+        }
+      ],
+      "adjacent_solutions": [
+        "Splunk ITSI",
+        "Webex Control Hub diagnostics"
+      ],
+      "choose_when": [
+        "The business outcome is end-user experience and multiple fault domains are possible.",
+        "User journeys, remote users, websites, APIs, SaaS, or frontend performance are discussed."
+      ],
+      "do_not_choose_when": [
+        "The need is only a network hardware refresh.",
+        "The issue is security threat detection."
+      ],
+      "corroboration_hints": [
+        "Digital revenue dependency",
+        "remote workforce",
+        "SLA/SLO program",
+        "customer-experience complaints"
+      ],
+      "install_base_signals": [
+        "ThousandEyes",
+        "Splunk Observability",
+        "AppDynamics"
+      ],
+      "buying_roles": [
+        "Digital Experience",
+        "SRE",
+        "Application Owner",
+        "Network Operations"
+      ],
+      "intent_markers": [
+        "revenue-impacting incident",
+        "website launch",
+        "SLA breach",
+        "remote-work complaints"
+      ],
+      "recommended_specialist": "Cross-domain Observability / ThousandEyes specialist"
+    },
+    "extensible_observability": {
+      "id": "extensible_observability",
+      "domain": "Observability Platform",
+      "pain_category": "Custom observability solutions and telemetry extensibility",
+      "customer_language": [
+        "We need to build a domain-specific observability solution.",
+        "We want an OpenTelemetry-based extensible platform.",
+        "Partners need to build custom modules on top of Cisco telemetry.",
+        "Our use case does not fit an out-of-box observability product."
+      ],
+      "keywords": [
+        "cisco observability platform",
+        "extension",
+        "custom observability",
+        "opentelemetry",
+        "melt",
+        "solution sdk",
+        "developer platform"
+      ],
+      "semantic_cues": [
+        "build custom observability applications or extensions",
+        "ingest and model metrics, events, logs, and traces on an extensible platform",
+        "create partner or industry-specific observability solutions"
+      ],
+      "negative_cues": [
+        "standard APM purchase",
+        "simple network monitoring",
+        "basic log analytics"
+      ],
+      "solution": "Cisco Observability Platform",
+      "primary_solutions": [
+        {
+          "name": "Cisco Observability Platform",
+          "role": "Developer platform for custom OpenTelemetry-based observability solutions"
+        }
+      ],
+      "adjacent_solutions": [
+        "Splunk Observability Cloud",
+        "Splunk Platform"
+      ],
+      "choose_when": [
+        "The explicit requirement is to build or extend an observability solution.",
+        "The buyer is a developer, partner, platform team, or solution builder."
+      ],
+      "do_not_choose_when": [
+        "The customer wants an immediately deployable standard APM or ITSI solution.",
+        "The term platform is being used loosely for dashboard consolidation."
+      ],
+      "corroboration_hints": [
+        "Developer/partner motion",
+        "custom industry telemetry",
+        "OpenTelemetry architecture",
+        "extension requirement"
+      ],
+      "install_base_signals": [
+        "Cisco Observability Platform",
+        "OpenTelemetry",
+        "Cisco FSO solutions"
+      ],
+      "buying_roles": [
+        "Platform Engineering",
+        "Developers",
+        "Cisco Partner",
+        "Enterprise Architecture"
+      ],
+      "intent_markers": [
+        "custom solution build",
+        "SDK evaluation",
+        "partner-developed module"
+      ],
+      "recommended_specialist": "Observability Platform / Developer specialist"
+    },
+    "collaboration_productivity": {
+      "id": "collaboration_productivity",
+      "domain": "Collaboration",
+      "pain_category": "Meetings, messaging, events, and hybrid-work productivity",
+      "customer_language": [
+        "Meetings are fragmented across tools.",
+        "Teams need a common collaboration experience.",
+        "We want AI summaries, messaging, meetings, and events together.",
+        "Hybrid work is inconsistent."
+      ],
+      "keywords": [
+        "webex",
+        "meetings",
+        "messaging",
+        "hybrid work",
+        "events",
+        "collaboration",
+        "ai assistant",
+        "team collaboration"
+      ],
+      "semantic_cues": [
+        "provide an integrated collaboration suite for meetings, messaging, events, and teamwork",
+        "improve hybrid-work productivity and meeting experience",
+        "standardize employee collaboration on an enterprise platform"
+      ],
+      "negative_cues": [
+        "contact center customer service",
+        "PSTN calling only",
+        "room-device management only"
+      ],
+      "solution": "Webex Suite",
+      "primary_solutions": [
+        {
+          "name": "Webex Suite",
+          "role": "Integrated collaboration for meetings, messaging, events, and employee experience"
+        }
+      ],
+      "adjacent_solutions": [
+        "Webex Calling",
+        "Cisco Collaboration Devices",
+        "Webex Control Hub"
+      ],
+      "choose_when": [
+        "Employee collaboration is the primary outcome.",
+        "The customer wants suite consolidation and AI-enabled teamwork."
+      ],
+      "do_not_choose_when": [
+        "The use case is contact-center transformation.",
+        "The only requirement is telephony migration."
+      ],
+      "corroboration_hints": [
+        "Existing Webex or collaboration estate",
+        "tool consolidation",
+        "hybrid-work program",
+        "Microsoft interoperability need"
+      ],
+      "install_base_signals": [
+        "Webex Meetings",
+        "Webex App",
+        "Cisco collaboration devices"
+      ],
+      "buying_roles": [
+        "Collaboration Lead",
+        "CIO",
+        "Workplace Technology",
+        "HR/Employee Experience"
+      ],
+      "intent_markers": [
+        "collaboration renewal",
+        "hybrid-work redesign",
+        "tool-consolidation initiative"
+      ],
+      "recommended_specialist": "Collaboration / Webex specialist"
+    },
+    "cloud_calling": {
+      "id": "cloud_calling",
+      "domain": "Collaboration",
+      "pain_category": "Enterprise calling and PBX modernization",
+      "customer_language": [
+        "Our PBX is aging.",
+        "We need cloud calling across locations.",
+        "We want to migrate from on-prem voice at our own pace.",
+        "Calling must integrate with Microsoft Teams or Webex."
+      ],
+      "keywords": [
+        "calling",
+        "pbx",
+        "voip",
+        "ucm",
+        "webex calling",
+        "pstn",
+        "phone system",
+        "cloud voice"
+      ],
+      "semantic_cues": [
+        "modernize enterprise telephony and calling",
+        "migrate from on-premises call control to cloud calling",
+        "provide enterprise-grade voice integrated with collaboration tools"
+      ],
+      "negative_cues": [
+        "contact center",
+        "meetings-only",
+        "network performance"
+      ],
+      "solution": "Webex Calling, with Cisco Unified Communications Manager for hybrid/on-premises needs",
+      "primary_solutions": [
+        {
+          "name": "Webex Calling",
+          "role": "Cloud enterprise calling and PBX"
+        },
+        {
+          "name": "Cisco Unified Communications Manager",
+          "role": "On-premises or hybrid call control"
+        }
+      ],
+      "adjacent_solutions": [
+        "Webex Suite",
+        "Cisco phones and collaboration devices",
+        "Webex Control Hub"
+      ],
+      "choose_when": [
+        "Telephony, PBX, PSTN, calling plans, or voice migration are central."
+      ],
+      "do_not_choose_when": [
+        "The buyer is discussing customer-service routing and agents.",
+        "The need is only meetings."
+      ],
+      "corroboration_hints": [
+        "CUCM install base",
+        "PBX EOL",
+        "site consolidation",
+        "carrier contract renewal"
+      ],
+      "install_base_signals": [
+        "CUCM",
+        "Cisco IP phones",
+        "Webex Calling"
+      ],
+      "buying_roles": [
+        "Voice/UC Lead",
+        "Collaboration Director",
+        "Telecom Manager"
+      ],
+      "intent_markers": [
+        "PBX refresh",
+        "carrier renewal",
+        "office move",
+        "cloud-calling RFP"
+      ],
+      "recommended_specialist": "Calling specialist"
+    },
+    "contact_center": {
+      "id": "contact_center",
+      "domain": "Collaboration / Customer Experience",
+      "pain_category": "Contact-center modernization and customer experience",
+      "customer_language": [
+        "Customers wait too long for support.",
+        "Agents switch between too many systems.",
+        "We need an omnichannel cloud contact center.",
+        "We want AI-assisted customer service."
+      ],
+      "keywords": [
+        "contact center",
+        "ccaas",
+        "agent",
+        "customer service",
+        "omnichannel",
+        "ivr",
+        "queue",
+        "workforce optimization"
+      ],
+      "semantic_cues": [
+        "modernize customer-service routing, agent workflows, and channels",
+        "move contact-center operations to a cloud platform",
+        "use AI and analytics to improve customer and agent experience"
+      ],
+      "negative_cues": [
+        "employee meetings",
+        "PBX only",
+        "room devices"
+      ],
+      "solution": "Webex Contact Center",
+      "primary_solutions": [
+        {
+          "name": "Webex Contact Center",
+          "role": "Cloud contact center and customer-experience platform"
+        },
+        {
+          "name": "Webex Contact Center Enterprise",
+          "role": "Feature-rich cloud contact center for large enterprises"
+        }
+      ],
+      "adjacent_solutions": [
+        "Webex Calling",
+        "Webex Connect / CPaaS",
+        "Splunk"
+      ],
+      "choose_when": [
+        "Agents, queues, IVR, omnichannel service, or customer experience are central."
+      ],
+      "do_not_choose_when": [
+        "The use case is internal employee collaboration.",
+        "The need is basic enterprise calling only."
+      ],
+      "corroboration_hints": [
+        "Existing Cisco contact center",
+        "CCaaS evaluation",
+        "customer-service KPI issues",
+        "agent desktop fragmentation"
+      ],
+      "install_base_signals": [
+        "UCCX",
+        "UCCE",
+        "Webex Contact Center"
+      ],
+      "buying_roles": [
+        "Customer Experience",
+        "Contact Center Operations",
+        "CIO",
+        "Customer Service"
+      ],
+      "intent_markers": [
+        "CCaaS RFP",
+        "contact-center EOL",
+        "agent-experience project",
+        "AI customer-service initiative"
+      ],
+      "recommended_specialist": "Contact Center specialist"
+    },
+    "room_devices_management": {
+      "id": "room_devices_management",
+      "domain": "Collaboration / Workplace",
+      "pain_category": "Meeting-room devices, workspace readiness, and centralized administration",
+      "customer_language": [
+        "Conference-room devices are hard to manage.",
+        "We do not know which rooms are ready or failing.",
+        "We need consistent video and audio experiences.",
+        "Remote troubleshooting of room systems is too difficult."
+      ],
+      "keywords": [
+        "room devices",
+        "conference room",
+        "video device",
+        "control hub",
+        "roomos",
+        "workspace",
+        "device management",
+        "room readiness"
+      ],
+      "semantic_cues": [
+        "deploy and centrally manage collaboration devices and workspaces",
+        "remotely troubleshoot room systems and monitor readiness",
+        "standardize meeting-room audio, video, and device experience"
+      ],
+      "negative_cues": [
+        "building occupancy analytics only",
+        "calling-only",
+        "network switching"
+      ],
+      "solution": "Cisco Collaboration Devices with Webex Control Hub",
+      "primary_solutions": [
+        {
+          "name": "Cisco Collaboration Devices",
+          "role": "Room, desk, board, camera, and peripheral portfolio"
+        },
+        {
+          "name": "Webex Control Hub",
+          "role": "Centralized provisioning, administration, analytics, and troubleshooting"
+        }
+      ],
+      "adjacent_solutions": [
+        "Cisco Spaces",
+        "Webex Suite",
+        "Cisco ThousandEyes"
+      ],
+      "choose_when": [
+        "The pain is physical collaboration spaces or device operations.",
+        "Room readiness, device health, deployment, or remote troubleshooting are central."
+      ],
+      "do_not_choose_when": [
+        "The need is only occupancy analytics.",
+        "The problem is contact-center operations."
+      ],
+      "corroboration_hints": [
+        "Cisco room-device footprint",
+        "office redesign",
+        "hybrid-work rollout",
+        "device EOL"
+      ],
+      "install_base_signals": [
+        "Cisco Room devices",
+        "Boards",
+        "Desk devices",
+        "Control Hub"
+      ],
+      "buying_roles": [
+        "AV/Collaboration Engineering",
+        "Workplace Technology",
+        "Facilities IT"
+      ],
+      "intent_markers": [
+        "room refresh",
+        "office opening",
+        "hybrid-work standardization",
+        "device-management consolidation"
+      ],
+      "recommended_specialist": "Collaboration Devices specialist"
+    },
+    "lifecycle_services_support": {
+      "id": "lifecycle_services_support",
+      "domain": "Services",
+      "pain_category": "Technology lifecycle, adoption, support, and operational readiness",
+      "customer_language": [
+        "We bought the technology but adoption is low.",
+        "We need help planning and de-risking the transformation.",
+        "We need proactive support and lifecycle insights.",
+        "Our team lacks the expertise to deploy and operate this at scale."
+      ],
+      "keywords": [
+        "professional services",
+        "support",
+        "adoption",
+        "lifecycle",
+        "tac",
+        "success",
+        "assessment",
+        "migration",
+        "managed services",
+        "cisco iq"
+      ],
+      "semantic_cues": [
+        "plan, design, deploy, adopt, optimize, and support Cisco technology",
+        "reduce transformation risk and accelerate time to value",
+        "use proactive insights and expert guidance across the technology lifecycle"
+      ],
+      "negative_cues": [
+        "specific product capability already clearly identified with no services need"
+      ],
+      "solution": "Cisco Professional Services, Cisco Support, and Cisco IQ",
+      "primary_solutions": [
+        {
+          "name": "Cisco Professional Services",
+          "role": "Planning, design, migration, deployment, and optimization expertise"
+        },
+        {
+          "name": "Cisco Support",
+          "role": "Technical support, troubleshooting, and lifecycle assistance"
+        },
+        {
+          "name": "Cisco IQ",
+          "role": "AI-powered digital support and lifecycle experience"
+        }
+      ],
+      "adjacent_solutions": [
+        "Partner managed services",
+        "Cisco Success Tracks where applicable"
+      ],
+      "choose_when": [
+        "Skills, adoption, migration risk, or operational readiness are blocking value.",
+        "The customer requests help beyond product acquisition."
+      ],
+      "do_not_choose_when": [
+        "The conversation contains no services, adoption, skills, or lifecycle signal."
+      ],
+      "corroboration_hints": [
+        "Complex transformation",
+        "limited internal staff",
+        "poor adoption",
+        "multiple technologies",
+        "high business criticality"
+      ],
+      "install_base_signals": [
+        "Any Cisco technology footprint"
+      ],
+      "buying_roles": [
+        "CIO",
+        "Program Lead",
+        "Operations Leadership",
+        "Procurement"
+      ],
+      "intent_markers": [
+        "migration deadline",
+        "deployment backlog",
+        "skills gap",
+        "support renewal"
+      ],
+      "recommended_specialist": "Cisco Customer Experience / Services specialist"
+    }
+  },
+  "source_catalog": {
+    "Cisco Networking Platform": "https://www.cisco.com/site/us/en/products/networking/networking-cloud/index.html",
+    "Cisco Catalyst Center": "https://www.cisco.com/site/us/en/products/networking/catalyst-center/index.html",
+    "Cisco ThousandEyes Assurance": "https://www.cisco.com/site/us/en/products/networking/software/internet-cloud-intelligence/index.html",
+    "Cisco Catalyst SD-WAN": "https://www.cisco.com/site/us/en/solutions/networking/sdwan/catalyst/index.html",
+    "Cisco Meraki MX": "https://www.cisco.com/site/us/en/products/networking/sdwan-routers/meraki-security-appliances/index.html",
+    "Cisco Wireless": "https://www.cisco.com/site/us/en/products/networking/wireless/access-points/index.html",
+    "Cisco Spaces": "https://spaces.cisco.com/",
+    "Cisco Nexus Dashboard": "https://www.cisco.com/site/us/en/products/networking/cloud-networking/nexus-platform/index.html",
+    "Cisco Data Center Modernization": "https://www.cisco.com/site/us/en/solutions/data-center/index.html",
+    "Cisco Intersight": "https://www.cisco.com/site/us/en/products/computing/hybrid-cloud-operations/intersight-platform/index.html",
+    "Cisco Secure AI Factory with NVIDIA": "https://www.cisco.com/site/us/en/solutions/artificial-intelligence/secure-ai-factory/index.html",
+    "Cisco AI PODs": "https://www.cisco.com/site/us/en/solutions/artificial-intelligence/infrastructure/ai-pods.html",
+    "Cisco MDS": "https://www.cisco.com/site/us/en/products/networking/cloud-networking-switches/storage-area-networking/index.html",
+    "Cisco Industrial IoT": "https://www.cisco.com/site/us/en/solutions/networking/industrial-iot/index.html",
+    "Cisco 8000 Series": "https://www.cisco.com/site/us/en/products/networking/sdwan-routers/8000-series/index.html",
+    "Cisco Routed Optical Networking": "https://www.cisco.com/site/us/en/solutions/routed-optical-networking/index.html",
+    "Cisco XDR": "https://www.cisco.com/c/en/us/products/collateral/security/xdr/xdr-ds.html",
+    "Splunk Enterprise Security": "https://www.splunk.com/en_us/products/enterprise-security.html",
+    "Cisco Secure Firewall": "https://www.cisco.com/site/us/en/products/security/firewalls/index.html",
+    "Cisco Security Cloud Control": "https://www.cisco.com/c/en/us/products/collateral/security/security-cloud/security-cloud-control-aag.html",
+    "Cisco Duo": "https://www.cisco.com/site/us/en/products/security/duo/index.html",
+    "Cisco ISE": "https://www.cisco.com/site/us/en/products/security/identity-services-engine/index.html",
+    "Cisco Secure Access": "https://www.cisco.com/site/us/en/products/security/secure-access/index.html",
+    "Cisco Secure Endpoint": "https://www.cisco.com/site/us/en/products/security/endpoint-security/secure-endpoint/index.html",
+    "Cisco Secure Network Analytics": "https://www.cisco.com/site/us/en/products/security/security-analytics/secure-network-analytics/index.html",
+    "Cisco Security Cloud": "https://www.cisco.com/site/us/en/products/security/security-cloud/index.html",
+    "Cisco AI Defense": "https://www.cisco.com/site/us/en/products/security/ai-defense/index.html",
+    "Cisco Cyber Vision": "https://www.cisco.com/site/us/en/products/security/industrial-security/cyber-vision/index.html",
+    "Splunk Observability Cloud": "https://www.splunk.com/en_us/products/observability-cloud.html",
+    "Splunk AppDynamics": "https://www.cisco.com/c/en/us/solutions/data-center/appdynamics-application-performance-monitoring.html",
+    "Splunk IT Service Intelligence": "https://www.splunk.com/en_us/products/it-service-intelligence.html",
+    "Cisco Observability Platform": "https://developer.cisco.com/docs/cisco-observability-platform/",
+    "Webex Suite": "https://www.cisco.com/c/en/us/products/conferencing/webex-support/index.html",
+    "Webex Calling": "https://www.cisco.com/c/en/us/products/unified-communications/webex-calling/index.html",
+    "Webex Contact Center": "https://www.cisco.com/c/en/us/products/contact-center/index.html",
+    "Webex Control Hub": "https://www.cisco.com/c/en/us/products/conferencing/webex-control-hub/index.html",
+    "Cisco Professional Services": "https://www.cisco.com/site/us/en/services/professional/index.html",
+    "Cisco Services and Support": "https://www.cisco.com/site/us/en/services/index.html"
+  }
+}
