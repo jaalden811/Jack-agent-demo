@@ -17,4 +17,10 @@ Source: Gong call recording
 
 [Jordan Ellis]: Exactly. We don't want another point tool. We want a centralized orchestrator that can sit across the hubs we already have and give our ops team one place to respond from.
 
+[Jordan Ellis]: Beyond the operational side, our meetings and messaging are just as fragmented — every team is on a different collaboration tool, and it's hurting our hybrid-work experience.
+
+[Casey Tran]: Is that part of the same initiative, or a separate collaboration renewal?
+
+[Jordan Ellis]: It's the same initiative. We want to standardize our employee collaboration on a single enterprise platform instead of stitching together point tools. This is part of our FY26 collaboration renewal and hybrid-work redesign, and it's fully budgeted. Honestly, we just want one integrated collaboration suite for meetings, messaging, and events instead of five different apps for the same thing. Really this is about improving hybrid-work productivity and the overall meeting experience for every employee, company-wide.
+
 [Casey Tran]: Understood. We'll put together a proposal and loop in our collaboration specialist for a deeper technical review.

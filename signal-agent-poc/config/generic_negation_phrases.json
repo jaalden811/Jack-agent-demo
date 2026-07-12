@@ -1,0 +1,27 @@
+{
+  "description": "Domain-agnostic hedging/negation phrases applied as a penalty across every pain-point category, independent of the product-specific negative_cues stored per entry in cisco_painpoint_solution_map.json. Loaded generically by the matching engine — never hard-coded in application code.",
+  "version": "1.0",
+  "penalty_weight": 0.35,
+  "phrases": [
+    "not a priority",
+    "just curious",
+    "maybe next year",
+    "not funded",
+    "no budget",
+    "already solved",
+    "just brainstorming",
+    "no active project",
+    "tabletop only",
+    "presenter showed",
+    "not evaluating",
+    "not looking at this",
+    "nothing urgent",
+    "no immediate need",
+    "just exploring",
+    "not on our roadmap",
+    "we already have that covered",
+    "purely academic interest",
+    "not a current pain point",
+    "hypothetically speaking"
+  ]
+}
