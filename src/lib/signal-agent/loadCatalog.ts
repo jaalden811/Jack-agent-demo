@@ -4,6 +4,7 @@ import type {
   CatalogEntry,
   CatalogMetadata,
   LoadedCatalog,
+  NegationConfig,
   ParsedMatchingConfig,
   PrimarySolution,
   SourceCatalog
@@ -256,6 +257,41 @@ function normalizeLegacyEntries(rawEntries: unknown): CatalogEntry[] {
   });
 }
 
+const DEFAULT_NEGATION_CONFIG: NegationConfig = {
+  phrases: [],
+  hypotheticalMarkers: [],
+  externalNegators: ["not", "never", "isn't", "aren't", "doesn't", "don't", "won't", "can't", "cannot"],
+  resolutionMarkers: ["but", "however", "although"],
+  resolutionEvidenceTerms: ["budget", "approved", "executive", "sponsor"],
+  penaltyWeight: 0.35,
+  hypotheticalPenaltyWeight: 0.2,
+  negationWindowWords: 6
+};
+
+function parseNegationConfig(raw: unknown): NegationConfig {
+  const record = asRecord(raw);
+  return {
+    phrases: asStringArray(record.phrases),
+    hypotheticalMarkers: asStringArray(record.hypothetical_markers),
+    externalNegators: asStringArray(record.external_negators).length
+      ? asStringArray(record.external_negators)
+      : DEFAULT_NEGATION_CONFIG.externalNegators,
+    resolutionMarkers: asStringArray(record.resolution_markers).length
+      ? asStringArray(record.resolution_markers)
+      : DEFAULT_NEGATION_CONFIG.resolutionMarkers,
+    resolutionEvidenceTerms: asStringArray(record.resolution_evidence_terms).length
+      ? asStringArray(record.resolution_evidence_terms)
+      : DEFAULT_NEGATION_CONFIG.resolutionEvidenceTerms,
+    penaltyWeight: typeof record.penalty_weight === "number" ? record.penalty_weight : DEFAULT_NEGATION_CONFIG.penaltyWeight,
+    hypotheticalPenaltyWeight:
+      typeof record.hypothetical_penalty_weight === "number"
+        ? record.hypothetical_penalty_weight
+        : DEFAULT_NEGATION_CONFIG.hypotheticalPenaltyWeight,
+    negationWindowWords:
+      typeof record.negation_window_words === "number" ? record.negation_window_words : DEFAULT_NEGATION_CONFIG.negationWindowWords
+  };
+}
+
 let cachedCatalog: LoadedCatalog | null = null;
 
 /** Loads and caches the taxonomy for the lifetime of the Node process.
@@ -263,8 +299,8 @@ let cachedCatalog: LoadedCatalog | null = null;
 export function getCatalog(): LoadedCatalog {
   if (cachedCatalog) return cachedCatalog;
 
-  const negationConfig = readJson<{ phrases?: string[] }>("config/generic_negation_phrases.json");
-  const genericNegationPhrases = asStringArray(negationConfig?.phrases);
+  const negationRaw = readJson<UnknownRecord>("config/generic_negation_phrases.json");
+  const negationConfig = parseNegationConfig(negationRaw ?? {});
 
   const ciscoRaw = readJson<{
     metadata?: UnknownRecord;
@@ -293,7 +329,7 @@ export function getCatalog(): LoadedCatalog {
       rawMatchingConfig: (ciscoRaw.matching_configuration as Record<string, unknown>) ?? null,
       entries: normalizeCiscoEntries(ciscoRaw.entries),
       sourceCatalog: (ciscoRaw.source_catalog as SourceCatalog) ?? {},
-      genericNegationPhrases
+      negationConfig
     };
     return cachedCatalog;
   }
@@ -307,7 +343,7 @@ export function getCatalog(): LoadedCatalog {
     rawMatchingConfig: null,
     entries: normalizeLegacyEntries(legacyRaw ?? []),
     sourceCatalog: {},
-    genericNegationPhrases
+    negationConfig
   };
   return cachedCatalog;
 }

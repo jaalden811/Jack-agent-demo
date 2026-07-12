@@ -20,13 +20,30 @@ const FORBIDDEN_LOGIC_IMPORTS = [
   "@/lib/signal-agent/routing",
   "@/lib/signal-agent/notification",
   "@/lib/signal-agent/auditLog",
-  "@/lib/signal-agent/runAgent"
+  "@/lib/signal-agent/runAgent",
+  "@/lib/signal-agent/polarity",
+  "@/lib/signal-agent/intentExtraction",
+  "@/lib/signal-agent/ruleEvaluation",
+  "@/lib/signal-agent/commercialSignals",
+  "@/lib/signal-agent/openaiSynthesis",
+  "@/lib/signal-agent/publicSignals",
+  "@/lib/signal-agent/status"
 ];
 
 function componentFiles(): string[] {
-  return readdirSync(COMPONENTS_DIR)
-    .filter((name) => name.endsWith(".tsx"))
-    .map((name) => path.join(COMPONENTS_DIR, name));
+  const files: string[] = [];
+  function walk(dir: string) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith(".tsx")) {
+        files.push(fullPath);
+      }
+    }
+  }
+  walk(COMPONENTS_DIR);
+  return files;
 }
 
 describe("Signal-to-Solution UI components stay presentational", () => {

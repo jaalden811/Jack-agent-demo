@@ -1,6 +1,6 @@
 import { mkdir, readFile, appendFile } from "node:fs/promises";
 import path from "node:path";
-import type { AuditSummary, SignalAgentRunResult } from "@/lib/signal-agent/types";
+import type { AuditSummary, SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
 /**
  * Appends every run to signal-agent-poc/data/output/signal_log.jsonl —
@@ -16,16 +16,19 @@ function auditLogPath() {
   return path.join(process.cwd(), AUDIT_LOG_RELATIVE_PATH);
 }
 
-export async function appendAuditRecord(result: SignalAgentRunResult): Promise<{ logged: boolean; warning: string | null }> {
+export async function appendAuditRecord(result: SecureNetworkingTriageResult): Promise<{ logged: boolean; warning: string | null }> {
   try {
     const filePath = auditLogPath();
     await mkdir(path.dirname(filePath), { recursive: true });
     // Persist the record without the nested `audit` field itself (that
-    // field only becomes accurate once this write finishes) to avoid a
-    // misleading logged:false placeholder baked into the stored record.
+    // field only becomes accurate once this write finishes, so a
+    // placeholder logged:false would be misleading) and without the full
+    // raw transcript text (kept in the API response for "View transcript"
+    // but excluded here to keep the audit log compact).
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { audit, ...record } = result;
-    await appendFile(filePath, `${JSON.stringify(record)}\n`, "utf8");
+    const { audit, transcript_meta, ...record } = result;
+    const compactRecord = { ...record, transcript_meta: { ...transcript_meta, raw_text: undefined } };
+    await appendFile(filePath, `${JSON.stringify(compactRecord)}\n`, "utf8");
     return { logged: true, warning: null };
   } catch {
     return {
