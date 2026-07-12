@@ -8,7 +8,7 @@ This is a local POC of the enterprise architecture shown in the diagram:
 
 Sources → customer lookup / email triage → promote trigger → AI evaluation → notify sales members → specialist and messaging actions.
 
-> **Workspace note:** this POC lives in `signal-agent-poc/` (rather than the outer repo root) because the outer workspace already hosts an unrelated Next.js application with its own `README.md`, `.env.example`, and `.gitignore`. Every path below is relative to `signal-agent-poc/`, which is this POC's project root. See `../README.md` for a one-line pointer.
+> **Workspace note:** this POC lives in `signal-agent-poc/` (rather than the outer repo root) because the outer workspace already hosts an unrelated Next.js application with its own `README.md`, `.env.example`, and `.gitignore`. Every path below is relative to `signal-agent-poc/`, which is this POC's project root.
 
 ## Ground Rules
 
