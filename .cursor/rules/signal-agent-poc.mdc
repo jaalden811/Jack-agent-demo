@@ -1,0 +1,20 @@
+---
+description: Signal-to-Action Agent POC architecture and safety rules
+globs: signal-agent-poc/**
+alwaysApply: false
+---
+
+# Signal-to-Action Agent POC Rules
+
+- Follow `signal-agent-poc/INSTRUCTIONS.md` and `signal-agent-poc/ARCHITECTURE.md` as source of truth.
+- Keep read and write operations separated.
+- Read-only skills (`ingest_transcript`, `detect_painpoint`, `lookup_account`, `evaluate_intent`, `lookup_specialist`) must not write files or send messages.
+- Only `skills/notify.py` may append to `data/output/signal_log.jsonl`.
+- Never contact customers. Internal notifications only.
+- Start routing as console output only.
+- Do not call Webex, Outlook, Salesforce, Gong, Cisco, Hasura, or any unexposed enterprise endpoint.
+- Keep OpenAI optional and the deterministic fallback required.
+- Never hard-code secrets. Do not print API key values or partial key values.
+- Keep each skill small and single-purpose.
+- Every run must log a JSONL record, including NOISE runs.
+- Demonstrate both HIGH_INTENT and NOISE behavior when validating changes.

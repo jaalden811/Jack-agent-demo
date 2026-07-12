@@ -1,0 +1,22 @@
+{
+  "description": "Simple, readable rules for promoting a signal from raw transcript language to HIGH_INTENT.",
+  "min_pain_point_confidence": "low",
+  "require_solution_mapping": true,
+  "require_corroborating_signal": true,
+  "corroborating_signal_types": [
+    "open_opportunity",
+    "budget_signal",
+    "matching_install_base"
+  ],
+  "min_corroborating_signals": 1,
+  "scoring": {
+    "pain_point_match_points": {
+      "high": 60,
+      "medium": 45,
+      "low": 30,
+      "none": 0
+    },
+    "corroborating_signal_points": 20,
+    "high_intent_score_threshold": 50
+  }
+}

@@ -1,0 +1,18 @@
+Account: Bramblewood Retail Group
+Participants: Taylor Brooks (Customer, IT Generalist), Casey Tran (Account Executive)
+Call Date: 2026-06-04
+Source: Gong call recording
+
+[Casey Tran]: Thanks for hopping on, Taylor. What prompted this call?
+
+[Taylor Brooks]: Honestly, no urgent problem on our end. I was just at a retail tech conference and everyone was talking about AI and cloud trends, so I figured I'd take a call and see what's new.
+
+[Casey Tran]: Totally fair. Are there any specific challenges your team is running into day to day?
+
+[Taylor Brooks]: Not really anything pressing. Things are stable right now. I'm mostly just curious what other retailers in our space are doing, in case something comes up down the road.
+
+[Casey Tran]: Understood. Is there any budget allocated for exploring new tooling this year?
+
+[Taylor Brooks]: Not at the moment. We're not actively evaluating anything, this is more of a "stay in the loop" conversation than anything else.
+
+[Casey Tran]: No problem, I'll send over some general industry material and we can check back in next quarter.

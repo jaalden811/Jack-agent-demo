@@ -1,0 +1,75 @@
+[
+  {
+    "pain_point": "fragmented collaboration and tool sprawl",
+    "phrases": [
+      "centralized orchestrator",
+      "all these hubs",
+      "coordinate actions",
+      "tool sprawl",
+      "every team has their own tool"
+    ],
+    "solution": "Cisco Collaboration Orchestration",
+    "related_install_base": [
+      "Webex Calling",
+      "Webex Meetings",
+      "Webex Teams",
+      "Webex"
+    ]
+  },
+  {
+    "pain_point": "security operations overload",
+    "phrases": [
+      "too many alerts",
+      "cannot triage incidents",
+      "security operations backlog",
+      "alert fatigue"
+    ],
+    "solution": "Cisco XDR",
+    "related_install_base": [
+      "Cisco Firepower",
+      "Cisco ISE",
+      "Cisco Umbrella",
+      "Cisco XDR"
+    ]
+  },
+  {
+    "pain_point": "network visibility gaps",
+    "phrases": [
+      "no visibility",
+      "hard to see traffic",
+      "blind spots",
+      "can't see across the network"
+    ],
+    "solution": "Cisco ThousandEyes",
+    "related_install_base": [
+      "Cisco Catalyst Switching",
+      "Cisco SD-WAN"
+    ]
+  },
+  {
+    "pain_point": "contact center fragmentation",
+    "phrases": [
+      "agents switching between systems",
+      "no unified queue",
+      "disconnected contact center"
+    ],
+    "solution": "Cisco Webex Contact Center",
+    "related_install_base": [
+      "Webex Calling",
+      "Webex Contact Center"
+    ]
+  },
+  {
+    "pain_point": "remote workforce connectivity issues",
+    "phrases": [
+      "remote workers keep dropping",
+      "vpn is unreliable",
+      "hybrid work connectivity"
+    ],
+    "solution": "Cisco Secure Access",
+    "related_install_base": [
+      "Cisco AnyConnect",
+      "Cisco Umbrella"
+    ]
+  }
+]

@@ -1,0 +1,14 @@
+# Secrets — never commit runtime keys
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime audit log is generated locally; keep the folder, ignore generated content
+data/output/*.jsonl
