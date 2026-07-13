@@ -196,7 +196,7 @@ export function TranscriptCard({
       {mode !== "webex" && (
         <div className="actions">
           <button type="button" onClick={handleRun} disabled={loading || !canRun}>
-            {loading ? "Running…" : "Run analysis"}
+            {loading ? "Running…" : "Analyze & Route"}
           </button>
         </div>
       )}

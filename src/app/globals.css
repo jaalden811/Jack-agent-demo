@@ -894,6 +894,73 @@ button:disabled {
   margin-top: 12px;
 }
 
+/* ── Setup drawer ────────────────────────────────────────────────────────── */
+
+.setup-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.setup-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.setup-step {
+  padding-top: 4px;
+}
+
+/* ── Delivery result card ───────────────────────────────────────────────── */
+
+.delivery-row {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.delivery-row:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.delivery-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.delivery-channels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.delivery-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--panel-alt, rgba(0, 0, 0, 0.03));
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.delivery-channel .small {
+  font-size: 0.78rem;
+}
+
+@media (max-width: 700px) {
+  .delivery-channels {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 1000px) {
   .workspace-columns {
     grid-template-columns: 1fr;

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
@@ -115,6 +115,36 @@ describe("Peachtree pilot recipient emails are never hard-coded", () => {
 
     walk(path.join(process.cwd(), "src"));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("Webex delivery never hard-codes a room ID", () => {
+  it("messageBuilder and delivery send by toPersonEmail only — no roomId literal", () => {
+    const files = [
+      path.join(process.cwd(), "src", "lib", "webex", "messageBuilder.ts"),
+      path.join(process.cwd(), "src", "lib", "webex", "delivery.ts"),
+      path.join(process.cwd(), "src", "lib", "webex", "client.ts")
+    ];
+    for (const filePath of files) {
+      const source = readFileSync(filePath, "utf8");
+      expect(source, `${path.basename(filePath)} should not send by a hard-coded roomId`).not.toMatch(/roomId:\s*["'`]/);
+    }
+  });
+});
+
+describe("The main signal-agent page no longer shows the large integration diagnostics panel", () => {
+  it("SignalAgentWorkspace renders a compact Setup drawer instead of always-on integration panels", () => {
+    const source = readFileSync(path.join(COMPONENTS_DIR, "SignalAgentWorkspace.tsx"), "utf8");
+    expect(source).toContain("SetupDrawer");
+    expect(source).not.toContain("IntegrationsPanel");
+    expect(source).not.toContain("WebexIntegrationPanel");
+  });
+
+  it("removed the old always-expanded WebexIntegrationPanel and IntegrationsPanel components", () => {
+    const removedFiles = [path.join(COMPONENTS_DIR, "IntegrationsPanel.tsx"), path.join(COMPONENTS_DIR, "webex", "WebexIntegrationPanel.tsx")];
+    for (const filePath of removedFiles) {
+      expect(existsSync(filePath), `${filePath} should have been removed in favor of SetupDrawer`).toBe(false);
+    }
   });
 });
 

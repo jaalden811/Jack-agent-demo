@@ -1,4 +1,5 @@
-import type { SignalAgentStatus } from "@/lib/signal-agent/types";
+import type { WebexStatus } from "@/lib/webex/types";
+import type { OutlookStatus } from "@/lib/outlook/types";
 
 function StatusPill({ label, ok, detail }: { label: string; ok: boolean | null; detail?: string }) {
   const cls = ok === null ? "topbar-pill pending" : ok ? "topbar-pill ok" : "topbar-pill off";
@@ -11,10 +12,12 @@ function StatusPill({ label, ok, detail }: { label: string; ok: boolean | null; 
 
 export function TopBar({
   status,
+  outlookStatus,
   loading,
   onToggleSettings
 }: {
-  status: SignalAgentStatus | null;
+  status: WebexStatus | null;
+  outlookStatus: OutlookStatus | null;
   loading: boolean;
   onToggleSettings: () => void;
 }) {
@@ -22,26 +25,24 @@ export function TopBar({
     <header className="topbar">
       <div>
         <h1>Signal-to-Solution Triage</h1>
-        <p className="muted">Secure Networking opportunity detection using transcript evidence, Cisco portfolio taxonomy, and configured AI services.</p>
+        <p className="muted">Secure Networking opportunity detection with automatic Webex + Outlook routing for the Peachtree Select pilot.</p>
       </div>
       <div className="topbar-status">
         <StatusPill label={loading ? "Running…" : "Idle"} ok={loading ? null : true} />
         <StatusPill
-          label={status ? `OpenAI: ${status.openai.configured ? "configured" : "not configured"}` : "OpenAI: checking…"}
-          ok={status ? status.openai.configured : null}
-          detail={status?.openai.message}
+          label={`Webex: ${status?.connected ? "Connected" : "Action required"}`}
+          ok={status ? status.connected : null}
+          detail={status?.last_error_message ?? undefined}
         />
         <StatusPill
-          label={status ? `Search: ${status.search.configured ? "configured" : "not configured"}` : "Search: checking…"}
-          ok={status ? status.search.configured : null}
-          detail={status?.search.message}
+          label={`Outlook: ${outlookStatus?.connected ? "Connected" : "Action required"}`}
+          ok={outlookStatus ? outlookStatus.connected : null}
+          detail={outlookStatus?.last_error_message ?? undefined}
         />
-        <StatusPill
-          label={status ? `Taxonomy v${status.taxonomy.version}` : "Taxonomy: checking…"}
-          ok={status ? status.taxonomy.loaded : null}
-        />
+        <StatusPill label={`Auto-send: ${status?.auto_send_enabled ? "On" : "Off"}`} ok={status ? status.auto_send_enabled : null} />
+        <StatusPill label={`Autopilot: ${status?.autopilot_enabled ? "On" : "Off"}`} ok={status ? status.autopilot_enabled : null} />
         <button type="button" className="button secondary" onClick={onToggleSettings}>
-          Settings
+          Setup
         </button>
       </div>
     </header>
