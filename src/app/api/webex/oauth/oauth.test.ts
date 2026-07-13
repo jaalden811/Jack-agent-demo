@@ -15,8 +15,9 @@ import { exchangeCodeForToken, getMyIdentity, refreshAccessToken } from "@/lib/w
 import { GET as startGet } from "@/app/api/webex/oauth/start/route";
 import { GET as callbackGet } from "@/app/api/webex/oauth/callback/route";
 import { POST as disconnectPost } from "@/app/api/webex/oauth/disconnect/route";
+import { GET as diagnosticsGet } from "@/app/api/webex/diagnostics/route";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
-import { readTokenRecord, saveOAuthState } from "@/lib/webex/store";
+import { readTokenRecord, saveOAuthState, readLastOAuthError } from "@/lib/webex/store";
 
 let isolate: { cleanup: () => void };
 
@@ -77,12 +78,77 @@ describe("GET /api/webex/oauth/callback", () => {
     expect(record?.refreshToken).toBe("RT-1");
   });
 
-  it("redirects to ?webex=error when the state does not match (CSRF protection)", async () => {
+  it("redirects to ?webex=error when the state does not match (CSRF protection), and records state_mismatch — not a generic failure", async () => {
     await saveOAuthState("real-state");
     const request = new Request("http://localhost/api/webex/oauth/callback?code=abc&state=wrong-state");
     const response = await callbackGet(request);
     expect(response.headers.get("location")).toContain("webex=error");
     expect(exchangeCodeForToken).not.toHaveBeenCalled();
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("state_mismatch");
+  });
+
+  it("surfaces the specific reason (not just 'Could not connect Webex') when the token exchange is rejected", async () => {
+    await saveOAuthState("state-reject");
+    vi.mocked(exchangeCodeForToken).mockRejectedValue(new Error("Webex API error (400): The redirect_uri provided does not match the registered redirect URI"));
+
+    const request = new Request("http://localhost/api/webex/oauth/callback?code=abc&state=state-reject");
+    const response = await callbackGet(request);
+    expect(response.headers.get("location")).toContain("webex=error");
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("redirect_uri_mismatch");
+    expect(lastError?.message).toContain("redirect_uri");
+  });
+
+  it("classifies user_denied when Webex redirects back with error=access_denied", async () => {
+    const request = new Request("http://localhost/api/webex/oauth/callback?error=access_denied&error_description=User+declined");
+    const response = await callbackGet(request);
+    expect(response.headers.get("location")).toContain("webex=error");
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("user_denied");
+  });
+
+  it("classifies identity_lookup_failed when the token exchange succeeds but GET /people/me fails", async () => {
+    await saveOAuthState("state-identity-fail");
+    vi.mocked(exchangeCodeForToken).mockResolvedValue({
+      access_token: "AT-3",
+      refresh_token: "RT-3",
+      expires_in: 3600,
+      refresh_token_expires_in: 7200,
+      token_type: "Bearer",
+      scope: "meeting:transcripts_read"
+    });
+    vi.mocked(getMyIdentity).mockRejectedValue(new Error("Webex API error (401): missing spark:people_read scope"));
+
+    const request = new Request("http://localhost/api/webex/oauth/callback?code=abc&state=state-identity-fail");
+    const response = await callbackGet(request);
+    expect(response.headers.get("location")).toContain("webex=error");
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("identity_lookup_failed");
+  });
+});
+
+describe("GET /api/webex/diagnostics", () => {
+  it("returns the exact configured redirect URI, requested scopes, and last error code/message — never a token", async () => {
+    process.env.WEBEX_REDIRECT_URI = "http://localhost:3010/api/webex/oauth/callback";
+    process.env.WEBEX_SCOPES = "meeting:transcripts_read spark:messages_write";
+    await saveOAuthState("state-diag");
+    vi.mocked(exchangeCodeForToken).mockRejectedValue(new Error("Webex API error (400): redirect_uri mismatch"));
+    await callbackGet(new Request("http://localhost/api/webex/oauth/callback?code=abc&state=state-diag"));
+
+    const response = await diagnosticsGet();
+    const data = await response.json();
+
+    expect(data.configured).toBe(true);
+    expect(data.connected).toBe(false);
+    expect(data.redirect_uri).toBe("http://localhost:3010/api/webex/oauth/callback");
+    expect(data.requested_scopes).toEqual(["meeting:transcripts_read", "spark:messages_write"]);
+    expect(data.last_error_code).toBe("redirect_uri_mismatch");
+    expect(JSON.stringify(data)).not.toMatch(/AT-|RT-|access_token|refresh_token/i);
   });
 });
 

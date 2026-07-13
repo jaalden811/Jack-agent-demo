@@ -1,25 +1,52 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import type { WebexOAuthErrorCode } from "@/lib/webex/store";
+
+export type WebexLane = "sales" | "technical";
+export type DeliveryChannel = "webex" | "email";
+export type WebexSenderMode = "connected_user" | "bot" | "unavailable";
 
 /** Wire shape for GET /api/webex/status. Never includes access tokens,
  * refresh tokens, client secrets, or bot tokens. */
 export type WebexStatus = {
+  configured: boolean;
   connected: boolean;
   connected_user: { name: string | null; email: string | null };
+  redirect_uri: string;
+  requested_scopes: string[];
   granted_scopes: string[];
   token_refresh_health: "healthy" | "refreshing_soon" | "expired" | "refresh_failed" | "not_connected";
+  webex_delivery: {
+    available: boolean;
+    sender_mode: WebexSenderMode;
+    sender_identity: string | null;
+    message_scope_granted: boolean;
+  };
   bot_configured: boolean;
-  sales_recipient_configured: boolean;
-  technical_recipient_configured: boolean;
   webhook_registered: boolean;
   webhook_target: string | null;
   autopilot_enabled: boolean;
   autopilot_available: boolean;
   autopilot_unavailable_reason: string | null;
+  auto_send_enabled: boolean;
   last_transcript_processed: { transcript_id: string; processed_at: string; verdict: string } | null;
   last_messages_sent: Array<{ lane: string; recipient_email: string; message_id: string; sent_at: string }>;
+  last_error_code: WebexOAuthErrorCode | null;
+  last_error_message: string | null;
 };
 
-export type WebexLane = "sales" | "technical";
+/** Shape shared with GET /api/webex/diagnostics — a minimal, focused view
+ * of exactly the fields called for when diagnosing a failed connection. */
+export type WebexDiagnostics = {
+  configured: boolean;
+  connected: boolean;
+  redirect_uri: string;
+  requested_scopes: string[];
+  granted_scopes: string[];
+  connected_user: { name: string | null; email: string | null } | null;
+  token_refresh_status: WebexStatus["token_refresh_health"];
+  last_error_code: WebexOAuthErrorCode | null;
+  last_error_message: string | null;
+};
 
 export type RuleEvaluationStatusLite = "matched" | "contradicted" | "not_evidenced";
 
@@ -51,14 +78,32 @@ export type WebexMessagePreview = {
   character_count: number;
 };
 
-export type WebexDeliveryResult = {
+export type EmailMessagePreview = {
   lane: WebexLane;
+  recipient_name: string;
   recipient_email: string | null;
+  subject: string;
+  html: string;
+  text: string;
+};
+
+/** One delivery attempt/result for a single (lane, channel) pair. The
+ * dedupe key is `runId:lane:channel` (also `transcriptId:lane:channel`
+ * for autonomous Webex-webhook transcripts) — see @/lib/webex/automation. */
+export type ChannelDeliveryResult = {
+  lane: WebexLane;
+  channel: DeliveryChannel;
+  recipient_name: string;
+  recipient_email: string | null;
+  applicable: boolean;
   attempted: boolean;
   delivered: boolean;
   message_id: string | null;
+  status_code: number | null;
   error: string | null;
+  error_code: string | null;
   sent_at: string | null;
+  delivery_key: string;
 };
 
 /** Full routing + delivery result attached to a Signal Agent run for the
@@ -67,8 +112,10 @@ export type PeachtreePilotResult = {
   lifecycle: LifecycleClassification;
   routing: LaneRoutingDecision[];
   messages: WebexMessagePreview[];
-  delivery: WebexDeliveryResult[];
+  emails: EmailMessagePreview[];
+  delivery: ChannelDeliveryResult[];
   routing_config_version: string;
+  auto_send_enabled: boolean;
 };
 
 export type WebexTranscriptSource = {

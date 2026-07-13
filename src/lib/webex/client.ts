@@ -53,7 +53,15 @@ async function webexFetch<T>(
     let detail = "";
     try {
       const body = await response.json();
-      detail = body?.message ?? JSON.stringify(body);
+      // Webex's token endpoint returns standard OAuth2 error bodies
+      // (`error` / `error_description`); other endpoints return `message`
+      // or `errors[]`. Surface whichever is present instead of discarding it.
+      detail =
+        body?.error_description ??
+        body?.message ??
+        (Array.isArray(body?.errors) ? body.errors.map((e: { description?: string }) => e?.description).join("; ") : null) ??
+        body?.error ??
+        JSON.stringify(body);
     } catch {
       detail = await response.text().catch(() => "");
     }
