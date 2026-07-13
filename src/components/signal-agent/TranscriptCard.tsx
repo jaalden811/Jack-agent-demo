@@ -2,10 +2,13 @@
 
 import { useRef, useState } from "react";
 import type { TranscriptMeta } from "@/lib/signal-agent/types";
+import type { WebexTranscriptSource } from "@/lib/webex/types";
+import { WebexTranscriptMode } from "@/components/signal-agent/webex/WebexTranscriptMode";
 
 export type TranscriptRunPayload = {
   transcriptId?: "high_intent" | "noise" | "secure_networking_triage";
   customTranscript?: string;
+  webexSource?: WebexTranscriptSource;
 };
 
 const DEMO_OPTIONS: Array<{ id: "secure_networking_triage" | "high_intent" | "noise"; label: string }> = [
@@ -25,7 +28,7 @@ export function TranscriptCard({
   lastTranscriptMeta: TranscriptMeta | null;
   onViewTranscript: () => void;
 }) {
-  const [mode, setMode] = useState<"demo" | "paste">("demo");
+  const [mode, setMode] = useState<"demo" | "paste" | "webex">("demo");
   const [demoId, setDemoId] = useState<"secure_networking_triage" | "high_intent" | "noise">("secure_networking_triage");
   const [pastedText, setPastedText] = useState("");
   const [title, setTitle] = useState("");
@@ -115,10 +118,13 @@ export function TranscriptCard({
 
       <div className="mode-toggle">
         <button type="button" className={`button secondary ${mode === "demo" ? "active" : ""}`} onClick={() => setMode("demo")}>
-          Demo selector
+          Demo
         </button>
         <button type="button" className={`button secondary ${mode === "paste" ? "active" : ""}`} onClick={() => setMode("paste")}>
           Paste / upload
+        </button>
+        <button type="button" className={`button secondary ${mode === "webex" ? "active" : ""}`} onClick={() => setMode("webex")}>
+          Webex
         </button>
       </div>
 
@@ -180,11 +186,20 @@ export function TranscriptCard({
         </>
       )}
 
-      <div className="actions">
-        <button type="button" onClick={handleRun} disabled={loading || !canRun}>
-          {loading ? "Running…" : "Run analysis"}
-        </button>
-      </div>
+      {mode === "webex" && (
+        <WebexTranscriptMode
+          loading={loading}
+          onAnalyze={(customTranscript, webexSource) => onRun({ customTranscript, webexSource })}
+        />
+      )}
+
+      {mode !== "webex" && (
+        <div className="actions">
+          <button type="button" onClick={handleRun} disabled={loading || !canRun}>
+            {loading ? "Running…" : "Run analysis"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { CatalogResponse, SecureNetworkingTriageResult, SignalAgentStatus } from "@/lib/signal-agent/types";
+import type { CatalogResponse, SignalAgentStatus } from "@/lib/signal-agent/types";
+import type { WebexAutomationRunResult } from "@/lib/webex/types";
 import { TopBar } from "@/components/signal-agent/TopBar";
 import { IntegrationsPanel } from "@/components/signal-agent/IntegrationsPanel";
 import { ReferencePackPanel } from "@/components/signal-agent/ReferencePackPanel";
+import { WebexIntegrationPanel } from "@/components/signal-agent/webex/WebexIntegrationPanel";
 import { UseCaseCard } from "@/components/signal-agent/UseCaseCard";
 import { TranscriptCard, type TranscriptRunPayload } from "@/components/signal-agent/TranscriptCard";
 import { ContextCard } from "@/components/signal-agent/ContextCard";
@@ -18,8 +20,10 @@ export function SignalAgentWorkspace() {
   const [status, setStatus] = useState<SignalAgentStatus | null>(null);
   const [testingIntegrations, setTestingIntegrations] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [webexRefreshToken, setWebexRefreshToken] = useState(0);
+  const [webexNotice, setWebexNotice] = useState<string | null>(null);
 
-  const [result, setResult] = useState<SecureNetworkingTriageResult | null>(null);
+  const [result, setResult] = useState<WebexAutomationRunResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -50,6 +54,27 @@ export function SignalAgentWorkspace() {
   useEffect(() => {
     void loadCatalog();
     void fetchStatus();
+
+    // Deferred to a microtask so these are not synchronous setState calls
+    // within the effect body itself (avoids cascading-render warnings)
+    // while still running once, right after mount.
+    void Promise.resolve().then(() => {
+      const params = new URLSearchParams(window.location.search);
+      const webexParam = params.get("webex");
+      if (webexParam === "connected") {
+        setWebexNotice("Webex connected successfully.");
+        setShowSettings(true);
+        setWebexRefreshToken((token) => token + 1);
+      } else if (webexParam === "error") {
+        setWebexNotice("Could not connect Webex. Please try again.");
+        setShowSettings(true);
+      }
+      if (webexParam) {
+        params.delete("webex");
+        const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", newUrl);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -85,13 +110,14 @@ export function SignalAgentWorkspace() {
         setRunError(data?.detail ?? data?.error ?? "The run failed.");
         setResult(null);
       } else {
-        setResult(data as SecureNetworkingTriageResult);
+        setResult(data as WebexAutomationRunResult);
       }
     } catch {
       setRunError("Could not reach the signal agent API.");
     } finally {
       setLoading(false);
       void fetchStatus();
+      setWebexRefreshToken((token) => token + 1);
     }
   }
 
@@ -99,9 +125,12 @@ export function SignalAgentWorkspace() {
     <>
       <TopBar status={status} loading={loading} onToggleSettings={() => setShowSettings((value) => !value)} />
 
+      {webexNotice && <div className="warning slim">{webexNotice}</div>}
+
       {showSettings && (
         <>
           <IntegrationsPanel status={status} lastRun={result} onTestIntegrations={testIntegrations} testing={testingIntegrations} />
+          <WebexIntegrationPanel refreshToken={webexRefreshToken} />
           <ReferencePackPanel catalog={catalog} reportLoaded={status?.reference_report.loaded ?? false} onReload={loadCatalog} />
         </>
       )}
@@ -137,7 +166,7 @@ export function SignalAgentWorkspace() {
           {result && !loading ? (
             <>
               <SummaryCard result={result} />
-              <ResultTabs result={result} status={status} />
+              <ResultTabs result={result} status={status} onResultUpdate={setResult} />
             </>
           ) : (
             !loading && (

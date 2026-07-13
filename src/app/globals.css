@@ -872,6 +872,28 @@ button:disabled {
   border-top: 2px solid var(--border);
 }
 
+/* ── Webex integration ──────────────────────────────────────────────────── */
+
+.webex-subsection {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.webex-subsection:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.webex-subsection h3 {
+  margin: 0 0 10px;
+}
+
+.webex-transcript-mode label {
+  margin-top: 12px;
+}
+
 @media (max-width: 1000px) {
   .workspace-columns {
     grid-template-columns: 1fr;
