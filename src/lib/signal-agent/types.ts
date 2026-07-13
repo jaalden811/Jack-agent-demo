@@ -268,16 +268,27 @@ export type AuditSummary = {
   warning: string | null;
 };
 
+export const webexSourceSchema = z.object({
+  transcriptId: z.string(),
+  meetingId: z.string().nullable().optional(),
+  meetingTitle: z.string().nullable().optional(),
+  host: z.string().nullable().optional(),
+  meetingDate: z.string().nullable().optional(),
+  source: z.literal("webex").optional().default("webex")
+});
+
 export const runRequestSchema = z.object({
   transcriptId: z.enum(["high_intent", "noise", "secure_networking_triage"]).optional(),
   customTranscript: z.string().trim().max(20000).optional(),
   accountOverride: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  webexSource: webexSourceSchema.optional(),
   options: z
     .object({
       useOpenAIEmbeddings: z.boolean().optional(),
       useOpenAISynthesis: z.boolean().optional(),
       enrichPublicSignals: z.boolean().optional(),
-      maxLabels: z.number().int().min(1).max(5).optional()
+      maxLabels: z.number().int().min(1).max(5).optional(),
+      deliverToWebex: z.boolean().optional()
     })
     .optional()
 });

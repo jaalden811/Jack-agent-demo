@@ -27,7 +27,15 @@ const FORBIDDEN_LOGIC_IMPORTS = [
   "@/lib/signal-agent/commercialSignals",
   "@/lib/signal-agent/openaiSynthesis",
   "@/lib/signal-agent/publicSignals",
-  "@/lib/signal-agent/status"
+  "@/lib/signal-agent/status",
+  "@/lib/webex/client",
+  "@/lib/webex/store",
+  "@/lib/webex/tokenManager",
+  "@/lib/webex/peachtreeRouting",
+  "@/lib/webex/automation",
+  "@/lib/webex/delivery",
+  "@/lib/webex/messageBuilder",
+  "@/lib/webex/transcriptNormalizer"
 ];
 
 function componentFiles(): string[] {
@@ -82,6 +90,31 @@ describe("Signal-to-Solution UI components stay presentational", () => {
         expect(source, `${path.basename(filePath)} should not hard-code specialist "${specialist}"`).not.toContain(specialist);
       }
     }
+  });
+});
+
+describe("Peachtree pilot recipient emails are never hard-coded", () => {
+  it("no source file under src/ contains the pilot recipient emails literally", () => {
+    const offenders: string[] = [];
+    const forbiddenEmails = ["belrobin@cisco.com", "jaalden@cisco.com"];
+
+    function walk(dir: string) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fullPath);
+          continue;
+        }
+        if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+        if (/\.test\.tsx?$/.test(entry.name)) continue; // this assertion's own literals don't count
+        const source = readFileSync(fullPath, "utf8");
+        if (forbiddenEmails.some((email) => source.includes(email))) offenders.push(fullPath);
+      }
+    }
+
+    walk(path.join(process.cwd(), "src"));
+    expect(offenders).toEqual([]);
   });
 });
 

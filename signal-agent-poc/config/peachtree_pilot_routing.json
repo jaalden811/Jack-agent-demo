@@ -1,0 +1,132 @@
+{
+  "metadata": {
+    "team": "Peachtree Select Commercial",
+    "version": "1.0",
+    "purpose": "Two-lane pilot routing for transcript-derived account actions"
+  },
+  "recipients": {
+    "sales": {
+      "name": "Bella Robinson",
+      "email_env": "WEBEX_SALES_RECIPIENT_EMAIL",
+      "assignment_label": "Sales / Commercial owner"
+    },
+    "technical": {
+      "name": "Jack Alden",
+      "email_env": "WEBEX_TECHNICAL_RECIPIENT_EMAIL",
+      "assignment_label": "Technical / Specialist owner"
+    }
+  },
+  "lanes": {
+    "sales": {
+      "role_patterns": [
+        "sales leader",
+        "director",
+        "account executive",
+        "account manager",
+        "portfolio ae",
+        "architecture ae",
+        "inside account executive",
+        "splunk commercial ae",
+        "software buying programs",
+        "partner account executive",
+        "business development",
+        "product sales specialist",
+        "renewals",
+        "deal desk",
+        "commercial finance",
+        "business value"
+      ],
+      "signal_types": [
+        "budget",
+        "funding",
+        "competitor",
+        "refresh",
+        "expansion",
+        "timeline",
+        "renewal",
+        "procurement",
+        "commercial interest",
+        "opportunity progression",
+        "stakeholder engagement"
+      ],
+      "action_types": [
+        "commercial qualification",
+        "account strategy",
+        "opportunity creation",
+        "opportunity progression",
+        "stakeholder follow-up",
+        "renewal strategy",
+        "commercial next step"
+      ]
+    },
+    "technical": {
+      "role_patterns": [
+        "solutions engineer",
+        "sales engineer",
+        "technical specialist",
+        "technical account manager",
+        "support lead",
+        "implementation consultant",
+        "professional services",
+        "technical architect",
+        "security architect",
+        "network architect",
+        "observability specialist"
+      ],
+      "signal_types": [
+        "architecture",
+        "technical discovery",
+        "network refresh",
+        "security",
+        "ai initiative",
+        "current environment",
+        "install base",
+        "integration",
+        "proof of concept",
+        "workshop",
+        "technical validation",
+        "migration",
+        "operational risk"
+      ],
+      "action_types": [
+        "technical discovery",
+        "architecture review",
+        "solution validation",
+        "demo",
+        "proof of concept",
+        "workshop",
+        "integration review",
+        "technical risk validation"
+      ]
+    }
+  },
+  "signal_routes": {
+    "network_refresh": ["sales", "technical"],
+    "splunk_opportunity": ["sales", "technical"],
+    "software_buying": ["sales"],
+    "security_initiative": ["sales", "technical"],
+    "ai_initiative": ["sales", "technical"],
+    "expansion": ["sales", "technical"],
+    "competitor_displacement": ["sales", "technical"],
+    "budget": ["sales"],
+    "timeline": ["sales"],
+    "renewal": ["sales"],
+    "technical_validation": ["technical"],
+    "architecture_workshop": ["technical"]
+  },
+  "delivery_policy": {
+    "HIGH_INTENT": {
+      "automatic": true
+    },
+    "REVIEW": {
+      "automatic": true,
+      "default_lanes": ["technical"],
+      "message_prefix": "Needs technical review"
+    },
+    "NOISE": {
+      "automatic": false
+    },
+    "one_message_per_lane_per_transcript": true,
+    "dedupe_key": "transcript_id:lane"
+  }
+}
