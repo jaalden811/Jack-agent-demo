@@ -303,6 +303,12 @@ export type ProviderStatusEntry = {
   used_for: string;
   last_check?: string;
   message: string;
+  /** OpenAI-only: whether this key/model would currently be used for
+   * semantic matching / executive-brief synthesis respectively. Both
+   * default to the same live probe result (`usable`) since both uses
+   * share the same configured key and model. */
+  embeddings_enabled?: boolean;
+  synthesis_enabled?: boolean;
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of

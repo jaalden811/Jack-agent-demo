@@ -132,6 +132,35 @@ describe("Webex delivery never hard-codes a room ID", () => {
   });
 });
 
+describe("Setup drawer surfaces OpenAI configured status and the Webex scope diagnostics", () => {
+  it("SetupDrawer's AI providers tab shows OpenAI configured/model/embeddings/synthesis/last-test/last-result", () => {
+    const source = readFileSync(path.join(COMPONENTS_DIR, "SetupDrawer.tsx"), "utf8");
+    expect(source).toContain("agentStatus?.openai.configured");
+    expect(source).toContain("agentStatus?.openai.model");
+    expect(source).toContain("agentStatus?.openai.embeddings_enabled");
+    expect(source).toContain("agentStatus?.openai.synthesis_enabled");
+    expect(source).toContain("agentStatus?.openai.last_check");
+    expect(source).toContain("Test OpenAI");
+    expect(source).toContain("Test Search");
+  });
+
+  it("SetupDrawer's Webex tab shows requested scopes, copy/reset actions, and the incremental scope tests", () => {
+    const source = readFileSync(path.join(COMPONENTS_DIR, "SetupDrawer.tsx"), "utf8");
+    expect(source).toContain("Requested scopes");
+    expect(source).toContain("Copy requested scopes");
+    expect(source).toContain("Copy redirect URI");
+    expect(source).toContain("Retry connection");
+    expect(source).toContain("Reset Webex OAuth state");
+    expect(source).toContain("Test basic Webex connection");
+    expect(source).toContain("Server configuration");
+  });
+
+  it("TopBar shows a top-level AI readiness badge", () => {
+    const source = readFileSync(path.join(COMPONENTS_DIR, "TopBar.tsx"), "utf8");
+    expect(source).toContain("AI:");
+  });
+});
+
 describe("The main signal-agent page no longer shows the large integration diagnostics panel", () => {
   it("SignalAgentWorkspace renders a compact Setup drawer instead of always-on integration panels", () => {
     const source = readFileSync(path.join(COMPONENTS_DIR, "SignalAgentWorkspace.tsx"), "utf8");

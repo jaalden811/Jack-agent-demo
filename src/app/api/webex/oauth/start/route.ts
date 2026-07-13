@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getConfig } from "@/lib/config";
 import { buildAuthorizeUrl } from "@/lib/webex/client";
+import { normalizeScopes } from "@/lib/webex/scopes";
 import { saveOAuthState } from "@/lib/webex/store";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function GET() {
   const authorizeUrl = buildAuthorizeUrl({
     clientId: config.WEBEX_CLIENT_ID,
     redirectUri: config.WEBEX_REDIRECT_URI,
-    scopes: config.WEBEX_SCOPES,
+    scopes: normalizeScopes(config.WEBEX_SCOPES),
     state
   });
 
