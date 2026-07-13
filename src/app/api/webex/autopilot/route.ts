@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getConfig } from "@/lib/config";
 import { readAutopilotOverride, writeAutopilotOverride } from "@/lib/webex/store";
+import { resolveWebexSender } from "@/lib/webex/senderResolution";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,8 +12,9 @@ const bodySchema = z.object({ enabled: z.boolean() });
 export async function GET() {
   const override = await readAutopilotOverride();
   const config = getConfig();
+  const sender = await resolveWebexSender();
   const enabled = override ?? config.WEBEX_AUTOPILOT_ENABLED;
-  return NextResponse.json({ enabled, available: config.webexPublicBaseUrlUsable && config.hasWebexBot });
+  return NextResponse.json({ enabled, available: config.webexPublicBaseUrlUsable && sender.mode !== "unavailable" });
 }
 
 export async function POST(request: Request) {

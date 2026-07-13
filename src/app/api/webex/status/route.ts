@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
-import { readIdentityRecord, readTokenRecord, readWebhookRecord, readRecentWebexAudit, readAutopilotOverride } from "@/lib/webex/store";
+import { resolveWebexSender } from "@/lib/webex/senderResolution";
+import { getAutomationReadiness } from "@/lib/webex/automationSettings";
+import { readIdentityRecord, readTokenRecord, readWebhookRecord, readRecentWebexAudit, readLastOAuthError } from "@/lib/webex/store";
 import type { WebexStatus } from "@/lib/webex/types";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +11,15 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const config = getConfig();
-  const [tokenRecord, identity, webhook, { health }, recentAudit, autopilotOverride] = await Promise.all([
+  const [tokenRecord, identity, webhook, { health }, recentAudit, lastError, sender, automation] = await Promise.all([
     readTokenRecord(),
     readIdentityRecord(),
     readWebhookRecord(),
     getValidAccessToken(),
     readRecentWebexAudit(20),
-    readAutopilotOverride()
+    readLastOAuthError(),
+    resolveWebexSender(),
+    getAutomationReadiness()
   ]);
 
   const connected = Boolean(tokenRecord);
@@ -35,23 +39,31 @@ export async function GET() {
     ? "A public URL is required for Webex transcript webhooks."
     : !connected
       ? "Connect Webex before enabling autopilot."
-      : !config.hasWebexBot
-        ? "Configure WEBEX_BOT_ACCESS_TOKEN before enabling autopilot."
+      : sender.mode === "unavailable"
+        ? "Connect Webex (or configure an optional bot token) before enabling autopilot."
         : null;
 
   const status: WebexStatus = {
+    configured: config.hasWebexOAuth,
     connected,
     connected_user: { name: identity?.displayName ?? null, email: identity?.email ?? null },
+    redirect_uri: config.WEBEX_REDIRECT_URI,
+    requested_scopes: config.WEBEX_SCOPES.split(/\s+/).filter(Boolean),
     granted_scopes: tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [],
     token_refresh_health: health,
+    webex_delivery: {
+      available: sender.mode !== "unavailable",
+      sender_mode: sender.mode,
+      sender_identity: sender.senderIdentity,
+      message_scope_granted: sender.messageScopeGranted
+    },
     bot_configured: config.hasWebexBot,
-    sales_recipient_configured: config.hasSalesRecipient,
-    technical_recipient_configured: config.hasTechnicalRecipient,
     webhook_registered: Boolean(webhook),
     webhook_target: webhook?.targetUrl ?? null,
-    autopilot_enabled: autopilotOverride ?? config.WEBEX_AUTOPILOT_ENABLED,
+    autopilot_enabled: automation.autopilotEnabled,
     autopilot_available: autopilotUnavailableReason === null,
     autopilot_unavailable_reason: autopilotUnavailableReason,
+    auto_send_enabled: automation.autoSendEnabled,
     last_transcript_processed: lastTranscriptRecord
       ? {
           transcript_id: String(lastTranscriptRecord.transcriptId ?? ""),
@@ -59,7 +71,9 @@ export async function GET() {
           verdict: String(lastTranscriptRecord.verdict ?? "")
         }
       : null,
-    last_messages_sent: lastMessages
+    last_messages_sent: lastMessages,
+    last_error_code: lastError?.code ?? null,
+    last_error_message: lastError?.message ?? null
   };
 
   return NextResponse.json(status, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });

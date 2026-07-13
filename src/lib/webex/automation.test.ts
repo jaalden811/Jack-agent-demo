@@ -6,17 +6,35 @@ vi.mock("@/lib/webex/client", async () => {
   return { ...actual, sendDirectMessage: vi.fn() };
 });
 
+vi.mock("@/lib/outlook/send", () => ({ sendOutlookEmail: vi.fn() }));
+
 import { sendDirectMessage } from "@/lib/webex/client";
-import { deliverPeachtreePipeline, computeTranscriptId } from "@/lib/webex/automation";
-import { getProcessedTranscript, readRecentWebexAudit } from "@/lib/webex/store";
+import { sendOutlookEmail } from "@/lib/outlook/send";
+import { deliverPeachtreePipeline, computePeachtreePreview } from "@/lib/webex/automation";
+import { getProcessedTranscript, readRecentWebexAudit, writeTokenRecord as writeWebexTokenRecord } from "@/lib/webex/store";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 
 let isolate: { cleanup: () => void };
 
+async function connectWebex() {
+  await writeWebexTokenRecord({
+    accessToken: "webex-connected-user-token",
+    refreshToken: "RT-1",
+    tokenType: "Bearer",
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    refreshExpiresAt: null,
+    scope: "meeting:transcripts_read spark:people_read spark:messages_write",
+    obtainedAt: new Date().toISOString(),
+    lastRefreshedAt: null,
+    lastRefreshError: null
+  });
+}
+
 beforeEach(() => {
   isolate = useIsolatedDataDir();
-  process.env.WEBEX_BOT_ACCESS_TOKEN = "bot-token";
   vi.mocked(sendDirectMessage).mockReset();
+  vi.mocked(sendOutlookEmail).mockReset();
+  vi.mocked(sendOutlookEmail).mockResolvedValue({ accepted: true, status_code: 202, error: null, error_code: null, sent_at: new Date().toISOString() });
 });
 
 afterEach(() => {
@@ -32,55 +50,176 @@ const HIGH_INTENT_TRANSCRIPT = [
   "[Dana Whitfield]: We already got board approval for a $1.4M budget for this. We need an architecture workshop this quarter, and we are prepared to purchase this quarter if the pilot metrics are met."
 ].join("\n");
 
-describe("deliverPeachtreePipeline — idempotency and audit", () => {
-  it("persists the returned Webex message IDs", async () => {
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => ({
+describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", () => {
+  it("sends Webex DMs using the connected user's own OAuth token by default (no WEBEX_BOT_ACCESS_TOKEN needed)", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockImplementation(async (token, params) => ({
       id: params.toPersonEmail.includes("belrobin") ? "msg-sales-1" : "msg-technical-1",
       toPersonEmail: params.toPersonEmail
     }));
-    process.env.WEBEX_SALES_RECIPIENT_EMAIL = "belrobin@cisco.com";
-    process.env.WEBEX_TECHNICAL_RECIPIENT_EMAIL = "jaalden@cisco.com";
 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
-    const delivered = peachtree.delivery.filter((item) => item.delivered);
-    expect(delivered.length).toBeGreaterThan(0);
-    for (const item of delivered) {
-      expect(item.message_id).toBeTruthy();
-    }
-
-    const transcriptId = computeTranscriptId(HIGH_INTENT_TRANSCRIPT, null);
-    const record = await getProcessedTranscript(transcriptId);
-    expect(record).not.toBeNull();
-
-    const audit = await readRecentWebexAudit(20);
-    const messageSentEvents = audit.filter((entry) => entry.event === "message_sent");
-    expect(messageSentEvents.length).toBeGreaterThan(0);
-    expect(messageSentEvents.every((entry) => Boolean(entry.message_id))).toBe(true);
+    expect(sendDirectMessage).toHaveBeenCalledWith("webex-connected-user-token", expect.anything());
+    const webexDelivered = peachtree.delivery.filter((item) => item.channel === "webex" && item.delivered);
+    expect(webexDelivered.length).toBeGreaterThan(0);
   });
 
-  it("never delivers to the same lane twice for the same transcript (idempotency guard)", async () => {
-    let callCount = 0;
+  it("also sends an email to each routed lane via Outlook, independent of Webex", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "belrobin@cisco.com" });
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    expect(sendOutlookEmail).toHaveBeenCalled();
+    const emailDelivered = peachtree.delivery.filter((item) => item.channel === "email" && item.delivered);
+    expect(emailDelivered.length).toBeGreaterThan(0);
+  });
+
+  it("loads Bella (sales) and Jack (technical) recipient emails from the routing JSON, not environment variables", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    const salesDecision = peachtree.routing.find((item) => item.lane === "sales");
+    const technicalDecision = peachtree.routing.find((item) => item.lane === "technical");
+    expect(salesDecision?.recipient_email).toBe("belrobin@cisco.com");
+    expect(technicalDecision?.recipient_email).toBe("jaalden@cisco.com");
+  });
+
+  it("a Webex delivery failure does not block the email for the same lane, or the other lane", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockRejectedValue(new Error("Webex API rejected the request"));
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    const webexResults = peachtree.delivery.filter((item) => item.channel === "webex");
+    const emailResults = peachtree.delivery.filter((item) => item.channel === "email");
+    expect(webexResults.every((item) => !item.delivered)).toBe(true);
+    expect(emailResults.some((item) => item.delivered)).toBe(true);
+  });
+
+  it("an email failure does not block the Webex message for the same lane, or the other lane", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    vi.mocked(sendOutlookEmail).mockResolvedValue({ accepted: false, status_code: null, error: "Outlook is not connected", error_code: "token_exchange_failed", sent_at: null });
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    const webexResults = peachtree.delivery.filter((item) => item.channel === "webex");
+    const emailResults = peachtree.delivery.filter((item) => item.channel === "email");
+    expect(emailResults.every((item) => !item.delivered)).toBe(true);
+    expect(webexResults.some((item) => item.delivered)).toBe(true);
+  });
+
+  it("Bella (sales) failing does not block Jack (technical), and vice versa", async () => {
+    await connectWebex();
     vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
-      callCount += 1;
-      return { id: `msg-${callCount}`, toPersonEmail: params.toPersonEmail };
+      if (params.toPersonEmail.includes("belrobin")) throw new Error("Could not resolve recipient");
+      return { id: "msg-technical-1", toPersonEmail: params.toPersonEmail };
     });
-    process.env.WEBEX_SALES_RECIPIENT_EMAIL = "belrobin@cisco.com";
-    process.env.WEBEX_TECHNICAL_RECIPIENT_EMAIL = "jaalden@cisco.com";
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    const salesWebex = peachtree.delivery.find((item) => item.lane === "sales" && item.channel === "webex");
+    const technicalWebex = peachtree.delivery.find((item) => item.lane === "technical" && item.channel === "webex");
+    expect(salesWebex?.delivered).toBe(false);
+    expect(technicalWebex?.delivered).toBe(true);
+  });
+});
+
+describe("deliverPeachtreePipeline — per-channel idempotency and audit", () => {
+  it("persists a distinct delivery_key of <id>:lane:channel for every delivery result", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    for (const item of peachtree.delivery) {
+      expect(item.delivery_key).toMatch(/:(sales|technical):(webex|email)$/);
+    }
+  });
+
+  it("never delivers to the same lane/channel twice for the same transcript (idempotency guard)", async () => {
+    await connectWebex();
+    let webexCalls = 0;
+    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+      webexCalls += 1;
+      return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
+    });
 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
 
     const first = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
     const firstDeliveredCount = first.delivery.filter((item) => item.delivered).length;
     expect(firstDeliveredCount).toBeGreaterThan(0);
-    const callsAfterFirst = callCount;
+    const webexCallsAfterFirst = webexCalls;
+    const emailCallsAfterFirst = vi.mocked(sendOutlookEmail).mock.calls.length;
 
-    // Re-running the exact same transcript must not send again to lanes
-    // that already succeeded.
+    // Re-running the exact same transcript must not send again to
+    // lane/channel pairs that already succeeded.
     const second = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
-    expect(callCount).toBe(callsAfterFirst); // no new sendDirectMessage calls
+    expect(webexCalls).toBe(webexCallsAfterFirst);
+    expect(vi.mocked(sendOutlookEmail).mock.calls.length).toBe(emailCallsAfterFirst);
     expect(second.delivery.every((item) => item.delivered)).toBe(true);
-    expect(second.delivery.some((item) => item.error?.includes("already delivered") || item.error?.includes("Already delivered"))).toBe(true);
+    expect(second.delivery.some((item) => item.error?.toLowerCase().includes("already delivered"))).toBe(true);
+  });
+
+  it("retrying only re-attempts previously failed lane/channel pairs, not already-succeeded ones", async () => {
+    await connectWebex();
+    let webexCalls = 0;
+    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+      webexCalls += 1;
+      if (params.toPersonEmail.includes("belrobin")) throw new Error("Temporary failure");
+      return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
+    });
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const first = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+    const salesWebexFirst = first.delivery.find((item) => item.lane === "sales" && item.channel === "webex");
+    expect(salesWebexFirst?.delivered).toBe(false);
+    const webexCallsAfterFirst = webexCalls;
+
+    // Fix the transient failure, then retry.
+    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+      webexCalls += 1;
+      return { id: "msg-retry", toPersonEmail: params.toPersonEmail };
+    });
+    const second = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    // Only the previously-failed sales:webex pair should have been retried.
+    expect(webexCalls).toBe(webexCallsAfterFirst + 1);
+    const salesWebexSecond = second.delivery.find((item) => item.lane === "sales" && item.channel === "webex");
+    expect(salesWebexSecond?.delivered).toBe(true);
+  });
+
+  it("computeTranscriptId is stable for identical demo/pasted content and provides the dedupe anchor", async () => {
+    await connectWebex();
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
+
+    const audit = await readRecentWebexAudit(50);
+    const processedEvent = audit.find((entry) => entry.event === "transcript_processed");
+    expect(processedEvent?.transcriptId).toBeTruthy();
+    const record = await getProcessedTranscript(String(processedEvent?.transcriptId));
+    expect(record).not.toBeNull();
+  });
+});
+
+describe("computePeachtreePreview — no delivery attempted", () => {
+  it("returns delivery entries with attempted:false and auto_send_enabled:false", async () => {
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const preview = computePeachtreePreview(result);
+    expect(preview.auto_send_enabled).toBe(false);
+    expect(preview.delivery.every((item) => item.attempted === false)).toBe(true);
+    expect(sendDirectMessage).not.toHaveBeenCalled();
+    expect(sendOutlookEmail).not.toHaveBeenCalled();
   });
 });
