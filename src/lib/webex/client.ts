@@ -74,12 +74,16 @@ async function webexFetch<T>(
 
 // ─── OAuth ──────────────────────────────────────────────────────────────────
 
-export function buildAuthorizeUrl(params: { clientId: string; redirectUri: string; scopes: string; state: string }): string {
+/** `scopes` must already be a normalized, de-duplicated list (see
+ * @/lib/webex/scopes) — this joins them with a single space and lets
+ * URLSearchParams percent-encode the result exactly once. Never pass a
+ * raw, unnormalized scope string here. */
+export function buildAuthorizeUrl(params: { clientId: string; redirectUri: string; scopes: string[]; state: string }): string {
   const url = new URL(WEBEX_AUTHORIZE_URL);
   url.searchParams.set("client_id", params.clientId);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("redirect_uri", params.redirectUri);
-  url.searchParams.set("scope", params.scopes);
+  url.searchParams.set("scope", params.scopes.join(" "));
   url.searchParams.set("state", params.state);
   return url.toString();
 }

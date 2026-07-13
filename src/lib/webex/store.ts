@@ -86,18 +86,33 @@ export async function clearIdentityRecord(): Promise<void> {
 }
 
 // ─── OAuth CSRF state (short-lived) ────────────────────────────────────────
+//
+// A pending state can optionally be tagged as a scope diagnostic test
+// (see @/app/api/webex/diagnostics/{minimal-scope,scope-test}) so the
+// shared OAuth callback route can tell a real "Connect Webex" attempt
+// apart from a throw-away diagnostic probe and never let a diagnostic
+// probe overwrite the main connection's token/identity/last-error state.
 
-type OAuthStateRecord = { state: string; createdAt: string };
+export type PendingOAuthDiagnostic = { testId: string; scopes: string[] };
 
-export async function saveOAuthState(state: string): Promise<void> {
-  await writeJsonFile("oauth-state.json", { state, createdAt: new Date().toISOString() } satisfies OAuthStateRecord);
+type OAuthStateRecord = { state: string; createdAt: string; diagnostic: PendingOAuthDiagnostic | null };
+
+export async function saveOAuthState(state: string, diagnostic: PendingOAuthDiagnostic | null = null): Promise<void> {
+  await writeJsonFile("oauth-state.json", { state, createdAt: new Date().toISOString(), diagnostic } satisfies OAuthStateRecord);
 }
 
-export async function consumeOAuthState(candidate: string): Promise<boolean> {
+export async function consumeOAuthState(candidate: string): Promise<{ valid: boolean; diagnostic: PendingOAuthDiagnostic | null }> {
   const record = await readJsonFile<OAuthStateRecord | null>("oauth-state.json", null);
-  if (!record || record.state !== candidate) return false;
+  if (!record || record.state !== candidate) return { valid: false, diagnostic: null };
   await writeJsonFile("oauth-state.json", null);
-  return true;
+  return { valid: true, diagnostic: record.diagnostic ?? null };
+}
+
+/** Clears a stuck/pending OAuth state (and the last recorded error) so
+ * the user can retry a clean connection attempt from Setup. */
+export async function resetOAuthHandshakeState(): Promise<void> {
+  await writeJsonFile("oauth-state.json", null);
+  await writeJsonFile("last-oauth-error.json", null);
 }
 
 // ─── Last OAuth error (for surfacing a specific reason, never a token) ────
@@ -117,6 +132,10 @@ export type WebexOAuthErrorRecord = {
   code: WebexOAuthErrorCode;
   message: string;
   occurredAt: string;
+  /** The exact normalized scope set that was requested in the attempt
+   * that produced this error — lets the UI point at what to change,
+   * without ever needing to re-derive it from possibly-changed config. */
+  scopes?: string[];
 };
 
 export async function readLastOAuthError(): Promise<WebexOAuthErrorRecord | null> {
@@ -125,6 +144,35 @@ export async function readLastOAuthError(): Promise<WebexOAuthErrorRecord | null
 
 export async function writeLastOAuthError(record: WebexOAuthErrorRecord | null): Promise<void> {
   await writeJsonFile("last-oauth-error.json", record);
+}
+
+// ─── Scope diagnostic test results ─────────────────────────────────────────
+// Results of the throw-away incremental scope probes (Setup → Webex →
+// "Test identity/messaging/meetings/transcripts"). Never touches the
+// main tokens.json/identity.json — see @/app/api/webex/oauth/callback.
+
+export type ScopeTestStatus = "success" | "failed";
+
+export type ScopeTestRecord = {
+  testId: string;
+  scopes: string[];
+  status: ScopeTestStatus;
+  errorCode: WebexOAuthErrorCode | null;
+  errorMessage: string | null;
+  occurredAt: string;
+};
+
+type ScopeTestStore = Record<string, ScopeTestRecord>;
+
+export async function readScopeTestResults(): Promise<ScopeTestRecord[]> {
+  const store = await readJsonFile<ScopeTestStore>("scope-tests.json", {});
+  return Object.values(store);
+}
+
+export async function writeScopeTestResult(record: ScopeTestRecord): Promise<void> {
+  const store = await readJsonFile<ScopeTestStore>("scope-tests.json", {});
+  store[record.testId] = record;
+  await writeJsonFile("scope-tests.json", store);
 }
 
 // ─── Webhook registration state ────────────────────────────────────────────

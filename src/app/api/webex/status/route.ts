@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
+import { normalizeScopes } from "@/lib/webex/scopes";
 import { getAutomationReadiness } from "@/lib/webex/automationSettings";
 import { readIdentityRecord, readTokenRecord, readWebhookRecord, readRecentWebexAudit, readLastOAuthError } from "@/lib/webex/store";
 import type { WebexStatus } from "@/lib/webex/types";
@@ -48,7 +49,7 @@ export async function GET() {
     connected,
     connected_user: { name: identity?.displayName ?? null, email: identity?.email ?? null },
     redirect_uri: config.WEBEX_REDIRECT_URI,
-    requested_scopes: config.WEBEX_SCOPES.split(/\s+/).filter(Boolean),
+    requested_scopes: normalizeScopes(config.WEBEX_SCOPES),
     granted_scopes: tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [],
     token_refresh_health: health,
     webex_delivery: {

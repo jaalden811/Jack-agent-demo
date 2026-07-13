@@ -15,9 +15,12 @@ import { exchangeCodeForToken, getMyIdentity, refreshAccessToken } from "@/lib/w
 import { GET as startGet } from "@/app/api/webex/oauth/start/route";
 import { GET as callbackGet } from "@/app/api/webex/oauth/callback/route";
 import { POST as disconnectPost } from "@/app/api/webex/oauth/disconnect/route";
+import { POST as resetPost } from "@/app/api/webex/oauth/reset/route";
 import { GET as diagnosticsGet } from "@/app/api/webex/diagnostics/route";
+import { POST as minimalScopePost } from "@/app/api/webex/diagnostics/minimal-scope/route";
+import { POST as scopeTestPost } from "@/app/api/webex/diagnostics/scope-test/route";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
-import { readTokenRecord, saveOAuthState, readLastOAuthError } from "@/lib/webex/store";
+import { readTokenRecord, readIdentityRecord, saveOAuthState, readLastOAuthError } from "@/lib/webex/store";
 
 let isolate: { cleanup: () => void };
 
@@ -51,6 +54,16 @@ describe("GET /api/webex/oauth/start", () => {
     delete process.env.WEBEX_CLIENT_ID;
     const response = await startGet();
     expect(response.status).toBe(400);
+  });
+
+  it("normalizes a comma-separated, quoted WEBEX_SCOPES into a clean space-separated scope param with no quotes/commas/duplicates", async () => {
+    process.env.WEBEX_SCOPES = '"spark:people_read","spark:people_read","spark:messages_write"';
+    const response = await startGet();
+    const location = new URL(response.headers.get("location")!);
+    const scopeParam = location.searchParams.get("scope")!;
+    expect(scopeParam).toBe("spark:people_read spark:messages_write");
+    expect(scopeParam).not.toContain('"');
+    expect(scopeParam).not.toContain(",");
   });
 });
 
@@ -130,6 +143,29 @@ describe("GET /api/webex/oauth/callback", () => {
     const lastError = await readLastOAuthError();
     expect(lastError?.code).toBe("identity_lookup_failed");
   });
+
+  it("classifies invalid_scope when Webex's authorize redirect reports error=invalid_scope (the live failure this repair targets)", async () => {
+    const request = new Request(
+      "http://localhost/api/webex/oauth/callback?error=invalid_scope&error_description=The+requested+scope+is+invalid."
+    );
+    const response = await callbackGet(request);
+    expect(response.headers.get("location")).toContain("webex=error");
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("invalid_scope");
+    expect(lastError?.message).toBe("The requested scope is invalid.");
+  });
+
+  it("also classifies invalid_scope when it only surfaces from the token endpoint's error body", async () => {
+    await saveOAuthState("state-invalid-scope-token");
+    vi.mocked(exchangeCodeForToken).mockRejectedValue(new Error("Webex API error (400): invalid_scope: one or more scopes are not enabled"));
+    const request = new Request("http://localhost/api/webex/oauth/callback?code=abc&state=state-invalid-scope-token");
+    const response = await callbackGet(request);
+    expect(response.headers.get("location")).toContain("webex=error");
+
+    const lastError = await readLastOAuthError();
+    expect(lastError?.code).toBe("invalid_scope");
+  });
 });
 
 describe("GET /api/webex/diagnostics", () => {
@@ -149,6 +185,133 @@ describe("GET /api/webex/diagnostics", () => {
     expect(data.requested_scopes).toEqual(["meeting:transcripts_read", "spark:messages_write"]);
     expect(data.last_error_code).toBe("redirect_uri_mismatch");
     expect(JSON.stringify(data)).not.toMatch(/AT-|RT-|access_token|refresh_token/i);
+  });
+
+  it("returns requested_scopes_raw, client_id/secret configured booleans, authorization_url_origin, and the failing scope set — never the client id/secret values", async () => {
+    process.env.WEBEX_SCOPES = '"meeting:transcripts_read","spark:messages_write"';
+    await saveOAuthState("state-diag-2");
+    vi.mocked(exchangeCodeForToken).mockRejectedValue(new Error("Webex API error (400): invalid_scope: one or more scopes are not enabled"));
+    await callbackGet(new Request("http://localhost/api/webex/oauth/callback?code=abc&state=state-diag-2"));
+
+    const response = await diagnosticsGet();
+    const data = await response.json();
+
+    expect(data.requested_scopes_raw).toBe('"meeting:transcripts_read","spark:messages_write"');
+    expect(data.requested_scopes).toEqual(["meeting:transcripts_read", "spark:messages_write"]);
+    expect(data.authorization_url_origin).toBe("https://webexapis.com");
+    expect(data.client_id_configured).toBe(true);
+    expect(data.client_secret_configured).toBe(true);
+    expect(data.last_error_code).toBe("invalid_scope");
+    expect(data.last_failed_scope_set).toEqual(["meeting:transcripts_read", "spark:messages_write"]);
+    expect(JSON.stringify(data)).not.toContain("test-client-id");
+    expect(JSON.stringify(data)).not.toContain("test-client-secret");
+  });
+
+  it("includes all four incremental scope diagnostic tests, defaulting to not_run", async () => {
+    const response = await diagnosticsGet();
+    const data = await response.json();
+    const testIds = data.scope_tests.map((t: { test_id: string }) => t.test_id);
+    expect(testIds).toEqual(["identity", "messaging", "meetings", "transcripts"]);
+    expect(data.scope_tests.every((t: { status: string }) => t.status === "not_run")).toBe(true);
+  });
+});
+
+describe("POST /api/webex/oauth/reset", () => {
+  it("clears the pending OAuth state and last error so a stuck handshake can be retried cleanly", async () => {
+    await saveOAuthState("stuck-state");
+    await callbackGet(new Request("http://localhost/api/webex/oauth/callback?error=invalid_scope&error_description=bad"));
+    expect((await readLastOAuthError())?.code).toBe("invalid_scope");
+
+    const response = await resetPost();
+    expect(response.status).toBe(200);
+    expect(await readLastOAuthError()).toBeNull();
+
+    // The old state (even if somehow replayed) is no longer valid.
+    const replay = await callbackGet(new Request("http://localhost/api/webex/oauth/callback?code=abc&state=stuck-state"));
+    expect(replay.headers.get("location")).toContain("webex=error");
+  });
+});
+
+describe("POST /api/webex/diagnostics/minimal-scope", () => {
+  it("initiates OAuth using only spark:people_read, independent of the configured production scope set", async () => {
+    process.env.WEBEX_SCOPES = "meeting:transcripts_read meeting:schedules_read spark:people_read spark:rooms_read spark:messages_write";
+    const response = await minimalScopePost();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.scopes).toEqual(["spark:people_read"]);
+
+    const authorizeUrl = new URL(data.authorize_url);
+    expect(authorizeUrl.searchParams.get("scope")).toBe("spark:people_read");
+  });
+
+  it("a successful minimal-scope probe never overwrites the main connection's token/identity state", async () => {
+    const startResponse = await minimalScopePost();
+    const { authorize_url } = await startResponse.json();
+    const state = new URL(authorize_url).searchParams.get("state")!;
+
+    vi.mocked(exchangeCodeForToken).mockResolvedValue({
+      access_token: "DIAGNOSTIC-AT",
+      refresh_token: "DIAGNOSTIC-RT",
+      expires_in: 3600,
+      refresh_token_expires_in: 7200,
+      token_type: "Bearer",
+      scope: "spark:people_read"
+    });
+    vi.mocked(getMyIdentity).mockResolvedValue({ id: "diag-person", displayName: "Diagnostic User", emails: ["diag@example.com"] });
+
+    const response = await callbackGet(new Request(`http://localhost/api/webex/oauth/callback?code=diag-code&state=${state}`));
+    expect(response.headers.get("location")).toContain("webex=diagnostic");
+    expect(response.headers.get("location")).toContain("test=identity");
+    expect(response.headers.get("location")).toContain("result=success");
+
+    // Main connection state must remain untouched.
+    expect(await readTokenRecord()).toBeNull();
+    expect(await readIdentityRecord()).toBeNull();
+
+    const diagnostics = await (await diagnosticsGet()).json();
+    const identityTest = diagnostics.scope_tests.find((t: { test_id: string }) => t.test_id === "identity");
+    expect(identityTest.status).toBe("success");
+  });
+
+  it("a failed minimal-scope probe records the failure on the scope test only, not on the main last-oauth-error", async () => {
+    const startResponse = await minimalScopePost();
+    const { authorize_url } = await startResponse.json();
+    const state = new URL(authorize_url).searchParams.get("state")!;
+
+    const response = await callbackGet(
+      new Request(`http://localhost/api/webex/oauth/callback?error=invalid_scope&error_description=bad&state=${state}`)
+    );
+    expect(response.headers.get("location")).toContain("webex=diagnostic");
+    expect(response.headers.get("location")).toContain("result=failed");
+
+    expect(await readLastOAuthError()).toBeNull();
+    const diagnostics = await (await diagnosticsGet()).json();
+    const identityTest = diagnostics.scope_tests.find((t: { test_id: string }) => t.test_id === "identity");
+    expect(identityTest.status).toBe("failed");
+    expect(identityTest.error_code).toBe("invalid_scope");
+  });
+});
+
+describe("POST /api/webex/diagnostics/scope-test", () => {
+  it("uses the expected cumulative scope set for each incremental test", async () => {
+    const identity = await (await scopeTestPost(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ testId: "identity" }) }))).json();
+    expect(identity.scopes).toEqual(["spark:people_read"]);
+
+    const messaging = await (await scopeTestPost(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ testId: "messaging" }) }))).json();
+    expect(messaging.scopes).toEqual(["spark:people_read", "spark:messages_write"]);
+
+    const meetings = await (await scopeTestPost(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ testId: "meetings" }) }))).json();
+    expect(meetings.scopes).toEqual(["spark:people_read", "spark:messages_write", "meeting:schedules_read"]);
+
+    const transcripts = await (
+      await scopeTestPost(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ testId: "transcripts" }) }))
+    ).json();
+    expect(transcripts.scopes).toEqual(["spark:people_read", "spark:messages_write", "meeting:schedules_read", "meeting:transcripts_read"]);
+  });
+
+  it("rejects an unknown testId", async () => {
+    const response = await scopeTestPost(new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ testId: "bogus" }) }));
+    expect(response.status).toBe(400);
   });
 });
 

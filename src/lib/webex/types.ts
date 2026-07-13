@@ -1,5 +1,5 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
-import type { WebexOAuthErrorCode } from "@/lib/webex/store";
+import type { WebexOAuthErrorCode, ScopeTestStatus } from "@/lib/webex/store";
 
 export type WebexLane = "sales" | "technical";
 export type DeliveryChannel = "webex" | "email";
@@ -34,18 +34,35 @@ export type WebexStatus = {
   last_error_message: string | null;
 };
 
-/** Shape shared with GET /api/webex/diagnostics — a minimal, focused view
- * of exactly the fields called for when diagnosing a failed connection. */
+export type WebexScopeTestResult = {
+  test_id: string;
+  label: string;
+  scopes: string[];
+  status: ScopeTestStatus | "not_run";
+  error_code: WebexOAuthErrorCode | null;
+  error_message: string | null;
+  occurred_at: string | null;
+};
+
+/** Shape returned by GET /api/webex/diagnostics — everything needed to
+ * diagnose and complete a failed Webex connection without ever exposing
+ * a client ID/secret value, access token, or refresh token. */
 export type WebexDiagnostics = {
   configured: boolean;
   connected: boolean;
   redirect_uri: string;
+  requested_scopes_raw: string;
   requested_scopes: string[];
+  authorization_url_origin: string;
+  client_id_configured: boolean;
+  client_secret_configured: boolean;
   granted_scopes: string[];
   connected_user: { name: string | null; email: string | null } | null;
   token_refresh_status: WebexStatus["token_refresh_health"];
   last_error_code: WebexOAuthErrorCode | null;
   last_error_message: string | null;
+  last_failed_scope_set: string[];
+  scope_tests: WebexScopeTestResult[];
 };
 
 export type RuleEvaluationStatusLite = "matched" | "contradicted" | "not_evidenced";

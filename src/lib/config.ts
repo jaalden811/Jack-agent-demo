@@ -25,10 +25,12 @@ const envSchema = z.object({
   WEBEX_CLIENT_ID: trimmedString,
   WEBEX_CLIENT_SECRET: trimmedString,
   WEBEX_REDIRECT_URI: z.string().optional().default("http://localhost:3010/api/webex/oauth/callback"),
-  WEBEX_SCOPES: z
-    .string()
-    .optional()
-    .default("meeting:transcripts_read meeting:schedules_read spark:people_read spark:rooms_read spark:messages_write"),
+  // Raw value only, trimmed with an empty/whitespace-only value treated
+  // as unset (falls back to DEFAULT_WEBEX_SCOPES below in getConfig()).
+  // The value is never sent to Webex as-is — every caller normalizes it
+  // via @/lib/webex/scopes#normalizeScopes to strip quotes/commas/
+  // duplicates before it ever reaches the `/authorize` request.
+  WEBEX_SCOPES: trimmedString,
 
   // Webex Bot — optional fallback sender only. Delivery defaults to the
   // connected user's own OAuth token (spark:messages_write); the bot is
@@ -59,6 +61,8 @@ const envSchema = z.object({
   MICROSOFT_SCOPES: z.string().optional().default("openid profile offline_access User.Read Mail.Send")
 });
 
+const DEFAULT_WEBEX_SCOPES = "meeting:transcripts_read meeting:schedules_read spark:people_read spark:rooms_read spark:messages_write";
+
 export function getConfig() {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
@@ -67,6 +71,7 @@ export function getConfig() {
 
   return {
     ...parsed.data,
+    WEBEX_SCOPES: parsed.data.WEBEX_SCOPES ?? DEFAULT_WEBEX_SCOPES,
     hasSearch: Boolean(parsed.data.SEARCH_API_KEY),
     hasEmbeddings: Boolean(parsed.data.OPENAI_API_KEY),
     hasFirecrawl: Boolean(parsed.data.FIRECRAWL_API_KEY),

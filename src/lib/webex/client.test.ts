@@ -7,7 +7,7 @@ describe("buildAuthorizeUrl", () => {
     const url = buildAuthorizeUrl({
       clientId: "abc123",
       redirectUri: "http://localhost:3010/api/webex/oauth/callback",
-      scopes: "meeting:transcripts_read spark:people_read",
+      scopes: ["meeting:transcripts_read", "spark:people_read"],
       state: "state-xyz"
     });
 
