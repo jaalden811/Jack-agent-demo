@@ -51,4 +51,17 @@ describe("GET /api/signal-agent/status", () => {
       delete process.env.OPENAI_API_KEY;
     }
   });
+
+  it("exposes configured/model/embeddings_enabled/synthesis_enabled/last_check for the Setup drawer's AI providers tab", async () => {
+    const response = await GET(new Request("http://localhost/api/signal-agent/status"));
+    const json = await response.json();
+    expect(json.openai).toHaveProperty("configured");
+    expect(json.openai).toHaveProperty("model");
+    expect(json.openai).toHaveProperty("embeddings_enabled");
+    expect(json.openai).toHaveProperty("synthesis_enabled");
+    expect(json.openai).toHaveProperty("last_check");
+    expect(json.openai.embeddings_enabled).toBe(false);
+    expect(json.openai.synthesis_enabled).toBe(false);
+  });
+
 });

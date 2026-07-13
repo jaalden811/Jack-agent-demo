@@ -151,7 +151,13 @@ export function SignalAgentWorkspace() {
 
   return (
     <>
-      <TopBar status={webexStatus} outlookStatus={outlookStatus} loading={loading} onToggleSettings={() => setShowSettings((value) => !value)} />
+      <TopBar
+        status={webexStatus}
+        outlookStatus={outlookStatus}
+        agentStatus={agentStatus}
+        loading={loading}
+        onToggleSettings={() => setShowSettings((value) => !value)}
+      />
 
       {connectionNotice && <div className="warning slim">{connectionNotice}</div>}
 

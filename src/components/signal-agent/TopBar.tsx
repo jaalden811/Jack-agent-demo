@@ -1,5 +1,6 @@
 import type { WebexStatus } from "@/lib/webex/types";
 import type { OutlookStatus } from "@/lib/outlook/types";
+import type { SignalAgentStatus } from "@/lib/signal-agent/types";
 
 function StatusPill({ label, ok, detail }: { label: string; ok: boolean | null; detail?: string }) {
   const cls = ok === null ? "topbar-pill pending" : ok ? "topbar-pill ok" : "topbar-pill off";
@@ -10,17 +11,29 @@ function StatusPill({ label, ok, detail }: { label: string; ok: boolean | null; 
   );
 }
 
+/** AI is "Action required" only when a key is configured but broken
+ * (a genuine problem to fix); an unconfigured key is not an error —
+ * the app degrades gracefully to deterministic matching. */
+function aiReady(agentStatus: SignalAgentStatus | null): boolean | null {
+  if (!agentStatus) return null;
+  if (!agentStatus.openai.configured) return true;
+  return agentStatus.openai.usable;
+}
+
 export function TopBar({
   status,
   outlookStatus,
+  agentStatus,
   loading,
   onToggleSettings
 }: {
   status: WebexStatus | null;
   outlookStatus: OutlookStatus | null;
+  agentStatus: SignalAgentStatus | null;
   loading: boolean;
   onToggleSettings: () => void;
 }) {
+  const aiOk = aiReady(agentStatus);
   return (
     <header className="topbar">
       <div>
@@ -39,6 +52,7 @@ export function TopBar({
           ok={outlookStatus ? outlookStatus.connected : null}
           detail={outlookStatus?.last_error_message ?? undefined}
         />
+        <StatusPill label={`AI: ${aiOk ? "Ready" : "Action required"}`} ok={aiOk} detail={agentStatus?.openai.message} />
         <StatusPill label={`Auto-send: ${status?.auto_send_enabled ? "On" : "Off"}`} ok={status ? status.auto_send_enabled : null} />
         <StatusPill label={`Autopilot: ${status?.autopilot_enabled ? "On" : "Off"}`} ok={status ? status.autopilot_enabled : null} />
         <button type="button" className="button secondary" onClick={onToggleSettings}>

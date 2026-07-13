@@ -915,6 +915,35 @@ button:disabled {
   padding-top: 4px;
 }
 
+.scope-test-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scope-test-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.scope-test-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+}
+
+@media (max-width: 700px) {
+  .scope-test-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Delivery result card ───────────────────────────────────────────────── */
 
 .delivery-row {

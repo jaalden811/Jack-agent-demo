@@ -44,7 +44,7 @@ async function probeOpenAi(apiKey: string, model: string): Promise<ProviderStatu
   }
 }
 
-function describeOpenAiFailure(error: unknown): string {
+export function describeOpenAiFailure(error: unknown): string {
   const status = (error as { status?: number })?.status;
   const code = (error as { code?: string })?.code;
   const name = (error as { name?: string })?.name;
@@ -100,7 +100,7 @@ export async function getSignalAgentStatus(options: { useOpenAI?: boolean } = {}
   const config = getConfig();
   const catalog = getCatalog();
 
-  const openai: ProviderStatusEntry =
+  const openaiBase: ProviderStatusEntry =
     !config.OPENAI_API_KEY
       ? {
           configured: false,
@@ -120,6 +120,14 @@ export async function getSignalAgentStatus(options: { useOpenAI?: boolean } = {}
             message: "embeddings disabled by user"
           }
         : await probeOpenAi(config.OPENAI_API_KEY, config.OPENAI_EMBEDDING_MODEL);
+
+  // Embeddings (semantic matching) and synthesis (executive brief) share
+  // the same configured key/model, so both reflect the same live probe.
+  const openai: ProviderStatusEntry = {
+    ...openaiBase,
+    embeddings_enabled: openaiBase.usable,
+    synthesis_enabled: openaiBase.usable
+  };
 
   const search: ProviderStatusEntry = !config.SEARCH_API_KEY
     ? {
