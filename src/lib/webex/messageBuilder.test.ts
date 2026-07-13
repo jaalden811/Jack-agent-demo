@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSalesMessage, buildTechnicalMessage } from "@/lib/webex/messageBuilder";
+import { buildSalesMessage, buildTechnicalMessage, buildSalesEmail, buildTechnicalEmail } from "@/lib/webex/messageBuilder";
 import type { LaneRoutingDecision } from "@/lib/webex/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
@@ -126,12 +126,13 @@ describe("Webex message templates", () => {
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
-    expect(salesMessage.markdown).toContain("Sales signal");
-    expect(salesMessage.markdown).toContain("Buying signals");
+    expect(salesMessage.markdown).toContain("Sales action");
+    expect(salesMessage.markdown).toContain("Customer stakeholders");
+    expect(salesMessage.markdown).toContain("Technical counterpart");
     expect(technicalMessage.markdown).toContain("Technical action");
     expect(technicalMessage.markdown).toContain("Current environment");
     expect(salesMessage.markdown).not.toContain("Current environment");
-    expect(technicalMessage.markdown).not.toContain("Buying signals");
+    expect(technicalMessage.markdown).not.toContain("Customer stakeholders");
   });
 
   it("never pastes the full transcript into a message", () => {
@@ -153,7 +154,30 @@ describe("Webex message templates", () => {
     const result = buildResult();
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
-    expect(salesMessage.markdown).toContain("sales action for the Peachtree Select pilot");
-    expect(technicalMessage.markdown).toContain("technical action for the Peachtree Select pilot");
+    expect(salesMessage.markdown).toContain("Sales / Commercial action for the Peachtree Select pilot");
+    expect(technicalMessage.markdown).toContain("Technical / Specialist action for the Peachtree Select pilot");
+  });
+});
+
+describe("Outlook email templates", () => {
+  it("builds distinct sales and technical emails with the required subject format", () => {
+    const result = buildResult();
+    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
+    const technicalEmail = buildTechnicalEmail({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
+
+    expect(salesEmail.subject).toBe("[HIGH_INTENT] Sales action — Acme Retail — Fragmented network operations");
+    expect(technicalEmail.subject).toBe("[HIGH_INTENT] Technical action — Acme Retail — Fragmented network operations");
+    expect(salesEmail.html).not.toEqual(technicalEmail.html);
+    expect(salesEmail.text).toContain("Recommended sales action");
+    expect(technicalEmail.text).toContain("Recommended action");
+    expect(technicalEmail.text).toContain("Technical evidence");
+  });
+
+  it("never pastes the full transcript into an email", () => {
+    const result = buildResult();
+    result.transcript_meta.raw_text = "SENTENCE-MARKER-XYZ ".repeat(500);
+    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
+    expect(salesEmail.text).not.toContain("SENTENCE-MARKER-XYZ");
+    expect(salesEmail.html).not.toContain("SENTENCE-MARKER-XYZ");
   });
 });

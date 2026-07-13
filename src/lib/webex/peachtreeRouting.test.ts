@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLaneRouting, classifyLifecycle, detectSignalTypes, loadRoutingConfig, getRoutingConfigPath } from "@/lib/webex/peachtreeRouting";
+import { buildLaneRouting, classifyLifecycle, detectSignalTypes, loadRoutingConfig, getRoutingConfigPath, getRecipientEmail } from "@/lib/webex/peachtreeRouting";
 import type { SecureNetworkingTriageResult, MatchOutput } from "@/lib/signal-agent/types";
 
 /** Minimal, type-valid fixture builder — lets each test override only the
@@ -123,6 +123,18 @@ describe("Peachtree routing config loading", () => {
     expect(config.metadata.team).toBe("Peachtree Select Commercial");
     expect(config.recipients.sales.name).toBe("Bella Robinson");
     expect(config.recipients.technical.name).toBe("Jack Alden");
+  });
+
+  it("loads Bella's (sales) email directly as a data field — no environment variable required", () => {
+    const config = loadRoutingConfig();
+    expect(config.recipients.sales.email).toBe("belrobin@cisco.com");
+    expect(getRecipientEmail("sales", config)).toBe("belrobin@cisco.com");
+  });
+
+  it("loads Jack's (technical) email directly as a data field — no environment variable required", () => {
+    const config = loadRoutingConfig();
+    expect(config.recipients.technical.email).toBe("jaalden@cisco.com");
+    expect(getRecipientEmail("technical", config)).toBe("jaalden@cisco.com");
   });
 });
 

@@ -1,18 +1,18 @@
 {
   "metadata": {
     "team": "Peachtree Select Commercial",
-    "version": "1.0",
+    "version": "2.0",
     "purpose": "Two-lane pilot routing for transcript-derived account actions"
   },
   "recipients": {
     "sales": {
       "name": "Bella Robinson",
-      "email_env": "WEBEX_SALES_RECIPIENT_EMAIL",
+      "email": "belrobin@cisco.com",
       "assignment_label": "Sales / Commercial owner"
     },
     "technical": {
       "name": "Jack Alden",
-      "email_env": "WEBEX_TECHNICAL_RECIPIENT_EMAIL",
+      "email": "jaalden@cisco.com",
       "assignment_label": "Technical / Specialist owner"
     }
   },
@@ -127,6 +127,6 @@
       "automatic": false
     },
     "one_message_per_lane_per_transcript": true,
-    "dedupe_key": "transcript_id:lane"
+    "dedupe_key": "run_id:lane:channel"
   }
 }

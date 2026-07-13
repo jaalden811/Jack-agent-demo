@@ -27,7 +27,11 @@ function toRecord(response: WebexTokenResponse, now: Date): WebexTokenRecord {
   };
 }
 
-export async function completeOAuthExchange(code: string): Promise<WebexTokenRecord> {
+/** Exchanges the code for tokens. Kept separate from the store write below
+ * so callers (the OAuth callback route) can classify a failure here as
+ * `token_exchange_failed`/`redirect_uri_mismatch`/etc., distinct from a
+ * later `token_store_failed` if persistence itself fails. */
+export async function exchangeAndBuildRecord(code: string): Promise<WebexTokenRecord> {
   const config = getConfig();
   if (!config.WEBEX_CLIENT_ID || !config.WEBEX_CLIENT_SECRET) {
     throw new Error("WEBEX_CLIENT_ID/WEBEX_CLIENT_SECRET are not configured.");
@@ -38,7 +42,11 @@ export async function completeOAuthExchange(code: string): Promise<WebexTokenRec
     code,
     redirectUri: config.WEBEX_REDIRECT_URI
   });
-  const record = toRecord(response, new Date());
+  return toRecord(response, new Date());
+}
+
+export async function completeOAuthExchange(code: string): Promise<WebexTokenRecord> {
+  const record = await exchangeAndBuildRecord(code);
   await writeTokenRecord(record);
   return record;
 }

@@ -30,12 +30,10 @@ const envSchema = z.object({
     .optional()
     .default("meeting:transcripts_read meeting:schedules_read spark:people_read spark:rooms_read spark:messages_write"),
 
-  // Webex Bot (outbound alert identity — separate from the OAuth Integration)
+  // Webex Bot — optional fallback sender only. Delivery defaults to the
+  // connected user's own OAuth token (spark:messages_write); the bot is
+  // never required.
   WEBEX_BOT_ACCESS_TOKEN: trimmedString,
-
-  // Peachtree pilot routing recipients
-  WEBEX_SALES_RECIPIENT_EMAIL: trimmedString,
-  WEBEX_TECHNICAL_RECIPIENT_EMAIL: trimmedString,
 
   // Autonomous webhook mode
   WEBEX_PUBLIC_BASE_URL: trimmedString,
@@ -44,7 +42,21 @@ const envSchema = z.object({
     .optional()
     .default("false")
     .transform((v) => v.trim().toLowerCase() === "true"),
-  WEBEX_WEBHOOK_SECRET: trimmedString
+  WEBEX_WEBHOOK_SECRET: trimmedString,
+
+  // Auto-send after analysis (Demo/Paste/Upload/manually-selected Webex
+  // transcripts) — distinct from the webhook-triggered autopilot above.
+  SIGNAL_AGENT_AUTO_SEND_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v.trim().toLowerCase() === "true")),
+
+  // Outlook / Microsoft Graph OAuth (real email delivery via Mail.Send)
+  MICROSOFT_CLIENT_ID: trimmedString,
+  MICROSOFT_CLIENT_SECRET: trimmedString,
+  MICROSOFT_TENANT_ID: z.string().optional().default("organizations"),
+  MICROSOFT_REDIRECT_URI: z.string().optional().default("http://localhost:3010/api/outlook/oauth/callback"),
+  MICROSOFT_SCOPES: z.string().optional().default("openid profile offline_access User.Read Mail.Send")
 });
 
 export function getConfig() {
@@ -66,8 +78,7 @@ export function getConfig() {
     ),
     hasWebexOAuth: Boolean(parsed.data.WEBEX_CLIENT_ID && parsed.data.WEBEX_CLIENT_SECRET),
     hasWebexBot: Boolean(parsed.data.WEBEX_BOT_ACCESS_TOKEN),
-    hasSalesRecipient: Boolean(parsed.data.WEBEX_SALES_RECIPIENT_EMAIL),
-    hasTechnicalRecipient: Boolean(parsed.data.WEBEX_TECHNICAL_RECIPIENT_EMAIL),
+    hasMicrosoftOAuth: Boolean(parsed.data.MICROSOFT_CLIENT_ID && parsed.data.MICROSOFT_CLIENT_SECRET),
     webexPublicBaseUrlUsable: Boolean(
       parsed.data.WEBEX_PUBLIC_BASE_URL &&
         /^https:\/\//i.test(parsed.data.WEBEX_PUBLIC_BASE_URL) &&

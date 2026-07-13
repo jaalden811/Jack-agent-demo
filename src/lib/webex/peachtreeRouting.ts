@@ -12,7 +12,7 @@ import type { LaneRoutingDecision, LifecycleClassification, LifecycleStage, Webe
 
 export type RoutingConfig = {
   metadata: { team: string; version: string; purpose: string };
-  recipients: Record<WebexLane, { name: string; email_env: string; assignment_label: string }>;
+  recipients: Record<WebexLane, { name: string; email: string; assignment_label: string }>;
   lanes: Record<WebexLane, { role_patterns: string[]; signal_types: string[]; action_types: string[] }>;
   signal_routes: Record<string, WebexLane[]>;
   delivery_policy: {
@@ -43,10 +43,10 @@ export function clearRoutingConfigCache() {
   cachedConfig = null;
 }
 
+/** Recipient emails for this pilot are direct data fields in
+ * peachtree_pilot_routing.json — no environment variables required. */
 export function getRecipientEmail(lane: WebexLane, config: RoutingConfig): string | null {
-  const envVarName = config.recipients[lane].email_env;
-  const value = (process.env as Record<string, string | undefined>)[envVarName];
-  return value?.trim() || null;
+  return config.recipients[lane]?.email?.trim() || null;
 }
 
 // ─── Signal-type detection ──────────────────────────────────────────────────

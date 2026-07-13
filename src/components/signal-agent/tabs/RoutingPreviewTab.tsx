@@ -13,7 +13,7 @@ export function RoutingPreviewTab({
   const [retrying, setRetrying] = useState(false);
   const { peachtree } = result;
 
-  const hasFailedOrUndelivered = peachtree.delivery.some((item) => !item.delivered);
+  const hasFailedOrUndelivered = peachtree.delivery.some((item) => item.attempted && !item.delivered);
 
   async function retryDelivery() {
     setRetrying(true);
@@ -45,6 +45,10 @@ export function RoutingPreviewTab({
           <span className="muted">Routing config</span>
           <p>v{peachtree.routing_config_version}</p>
         </div>
+        <div>
+          <span className="muted">Auto-send</span>
+          <p>{peachtree.auto_send_enabled ? "Enabled for this run" : "Off — preview only"}</p>
+        </div>
       </div>
 
       {peachtree.routing.length === 0 ? (
@@ -75,7 +79,7 @@ export function RoutingPreviewTab({
 
           <h3>Webex message preview</h3>
           {peachtree.messages.map((message) => (
-            <div key={message.lane} className="signal-row" style={{ marginBottom: 10 }}>
+            <div key={`webex-${message.lane}`} className="signal-row" style={{ marginBottom: 10 }}>
               <strong>{message.subject}</strong>
               <p className="muted" style={{ fontSize: "0.82rem" }}>
                 To: {message.recipient_email ?? "not configured"} · {message.character_count} characters
@@ -84,14 +88,26 @@ export function RoutingPreviewTab({
             </div>
           ))}
 
+          <h3>Email preview</h3>
+          {peachtree.emails.map((email) => (
+            <div key={`email-${email.lane}`} className="signal-row" style={{ marginBottom: 10 }}>
+              <strong>{email.subject}</strong>
+              <p className="muted" style={{ fontSize: "0.82rem" }}>
+                To: {email.recipient_email ?? "not configured"}
+              </p>
+              <pre className="internal-brief">{email.text}</pre>
+            </div>
+          ))}
+
           <h3>Delivery status</h3>
           <table className="evidence-table">
             <thead>
               <tr>
                 <th>Lane</th>
+                <th>Channel</th>
                 <th>Recipient</th>
                 <th>Status</th>
-                <th>Message ID</th>
+                <th>Message ID / code</th>
                 <th>Detail</th>
               </tr>
             </thead>
@@ -99,9 +115,10 @@ export function RoutingPreviewTab({
               {peachtree.delivery.map((item, index) => (
                 <tr key={index}>
                   <td>{item.lane}</td>
+                  <td>{item.channel}</td>
                   <td>{item.recipient_email ?? "—"}</td>
                   <td>{item.delivered ? "Delivered" : item.attempted ? "Failed" : "Not sent"}</td>
-                  <td>{item.message_id ?? "—"}</td>
+                  <td>{item.message_id ?? item.status_code ?? "—"}</td>
                   <td>{item.error ?? "—"}</td>
                 </tr>
               ))}

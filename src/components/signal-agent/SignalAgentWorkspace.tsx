@@ -2,26 +2,27 @@
 
 import { useEffect, useState } from "react";
 import type { CatalogResponse, SignalAgentStatus } from "@/lib/signal-agent/types";
-import type { WebexAutomationRunResult } from "@/lib/webex/types";
+import type { WebexAutomationRunResult, WebexStatus } from "@/lib/webex/types";
+import type { OutlookStatus } from "@/lib/outlook/types";
 import { TopBar } from "@/components/signal-agent/TopBar";
-import { IntegrationsPanel } from "@/components/signal-agent/IntegrationsPanel";
 import { ReferencePackPanel } from "@/components/signal-agent/ReferencePackPanel";
-import { WebexIntegrationPanel } from "@/components/signal-agent/webex/WebexIntegrationPanel";
+import { SetupDrawer } from "@/components/signal-agent/SetupDrawer";
 import { UseCaseCard } from "@/components/signal-agent/UseCaseCard";
 import { TranscriptCard, type TranscriptRunPayload } from "@/components/signal-agent/TranscriptCard";
 import { ContextCard } from "@/components/signal-agent/ContextCard";
 import { SummaryCard } from "@/components/signal-agent/SummaryCard";
+import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
 import { TranscriptViewModal } from "@/components/signal-agent/TranscriptViewModal";
 
 export function SignalAgentWorkspace() {
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [status, setStatus] = useState<SignalAgentStatus | null>(null);
-  const [testingIntegrations, setTestingIntegrations] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<SignalAgentStatus | null>(null);
+  const [webexStatus, setWebexStatus] = useState<WebexStatus | null>(null);
+  const [outlookStatus, setOutlookStatus] = useState<OutlookStatus | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [webexRefreshToken, setWebexRefreshToken] = useState(0);
-  const [webexNotice, setWebexNotice] = useState<string | null>(null);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
 
   const [result, setResult] = useState<WebexAutomationRunResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,21 +40,37 @@ export function SignalAgentWorkspace() {
       .catch(() => setCatalogError("Could not load the taxonomy catalog."));
   }
 
-  function fetchStatus(): Promise<void> {
+  function fetchAgentStatus(): Promise<void> {
     return fetch(`/api/signal-agent/status?useOpenAI=${useOpenAI}`)
       .then((response) => response.json())
-      .then((data: SignalAgentStatus) => setStatus(data))
+      .then((data: SignalAgentStatus) => setAgentStatus(data))
       .catch(() => undefined);
   }
 
-  function testIntegrations() {
-    setTestingIntegrations(true);
-    fetchStatus().finally(() => setTestingIntegrations(false));
+  function fetchWebexStatus(): Promise<void> {
+    return fetch("/api/webex/status")
+      .then((response) => response.json())
+      .then((data: WebexStatus) => setWebexStatus(data))
+      .catch(() => undefined);
+  }
+
+  function fetchOutlookStatus(): Promise<void> {
+    return fetch("/api/outlook/status")
+      .then((response) => response.json())
+      .then((data: OutlookStatus) => setOutlookStatus(data))
+      .catch(() => undefined);
+  }
+
+  function refreshConnections() {
+    void fetchWebexStatus();
+    void fetchOutlookStatus();
   }
 
   useEffect(() => {
     void loadCatalog();
-    void fetchStatus();
+    void fetchAgentStatus();
+    void fetchWebexStatus();
+    void fetchOutlookStatus();
 
     // Deferred to a microtask so these are not synchronous setState calls
     // within the effect body itself (avoids cascading-render warnings)
@@ -61,18 +78,29 @@ export function SignalAgentWorkspace() {
     void Promise.resolve().then(() => {
       const params = new URLSearchParams(window.location.search);
       const webexParam = params.get("webex");
+      const outlookParam = params.get("outlook");
+
       if (webexParam === "connected") {
-        setWebexNotice("Webex connected successfully.");
+        setConnectionNotice("Webex connected successfully.");
         setShowSettings(true);
-        setWebexRefreshToken((token) => token + 1);
       } else if (webexParam === "error") {
-        setWebexNotice("Could not connect Webex. Please try again.");
+        setConnectionNotice("Could not connect Webex — see Setup → Webex for the specific reason.");
         setShowSettings(true);
       }
-      if (webexParam) {
+      if (outlookParam === "connected") {
+        setConnectionNotice("Outlook connected successfully.");
+        setShowSettings(true);
+      } else if (outlookParam === "error") {
+        setConnectionNotice("Could not connect Outlook — see Setup → Outlook for the specific reason.");
+        setShowSettings(true);
+      }
+
+      if (webexParam || outlookParam) {
         params.delete("webex");
+        params.delete("outlook");
         const newUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
         window.history.replaceState({}, "", newUrl);
+        refreshConnections();
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,23 +144,27 @@ export function SignalAgentWorkspace() {
       setRunError("Could not reach the signal agent API.");
     } finally {
       setLoading(false);
-      void fetchStatus();
-      setWebexRefreshToken((token) => token + 1);
+      void fetchAgentStatus();
+      refreshConnections();
     }
   }
 
   return (
     <>
-      <TopBar status={status} loading={loading} onToggleSettings={() => setShowSettings((value) => !value)} />
+      <TopBar status={webexStatus} outlookStatus={outlookStatus} loading={loading} onToggleSettings={() => setShowSettings((value) => !value)} />
 
-      {webexNotice && <div className="warning slim">{webexNotice}</div>}
+      {connectionNotice && <div className="warning slim">{connectionNotice}</div>}
 
       {showSettings && (
-        <>
-          <IntegrationsPanel status={status} lastRun={result} onTestIntegrations={testIntegrations} testing={testingIntegrations} />
-          <WebexIntegrationPanel refreshToken={webexRefreshToken} />
-          <ReferencePackPanel catalog={catalog} reportLoaded={status?.reference_report.loaded ?? false} onReload={loadCatalog} />
-        </>
+        <SetupDrawer
+          onClose={() => setShowSettings(false)}
+          status={webexStatus}
+          agentStatus={agentStatus}
+          onRefresh={() => {
+            refreshConnections();
+            void fetchAgentStatus();
+          }}
+        />
       )}
 
       {catalogError && <div className="warning">{catalogError}</div>}
@@ -155,6 +187,7 @@ export function SignalAgentWorkspace() {
             useOpenAI={useOpenAI}
             onToggleOpenAI={setUseOpenAI}
           />
+          <ReferencePackPanel catalog={catalog} reportLoaded={agentStatus?.reference_report.loaded ?? false} onReload={loadCatalog} />
         </div>
 
         <div className="workspace-column">
@@ -166,7 +199,8 @@ export function SignalAgentWorkspace() {
           {result && !loading ? (
             <>
               <SummaryCard result={result} />
-              <ResultTabs result={result} status={status} onResultUpdate={setResult} />
+              <DeliveryResultCard result={result} onResultUpdate={setResult} />
+              <ResultTabs result={result} status={agentStatus} onResultUpdate={setResult} />
             </>
           ) : (
             !loading && (

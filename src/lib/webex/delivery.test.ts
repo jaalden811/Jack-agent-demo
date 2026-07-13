@@ -13,8 +13,8 @@ const salesMessage: WebexMessagePreview = {
   lane: "sales",
   recipient_name: "Bella Robinson",
   recipient_email: "belrobin@cisco.com",
-  subject: "Sales signal",
-  markdown: "**Sales signal**",
+  subject: "Sales action",
+  markdown: "**Sales action**",
   character_count: 20
 };
 
@@ -32,14 +32,14 @@ beforeEach(() => {
 });
 
 describe("deliverMessages", () => {
-  it("sends via toPersonEmail (no room ID) and records the returned message ID", async () => {
+  it("sends via toPersonEmail (no room ID) using the connected user's own access token by default", async () => {
     vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-123", toPersonEmail: "belrobin@cisco.com" });
 
-    const results = await deliverMessages([salesMessage], "bot-token");
+    const results = await deliverMessages([salesMessage], { accessToken: "connected-user-token", mode: "connected_user" }, "run-1");
 
-    expect(sendDirectMessage).toHaveBeenCalledWith("bot-token", {
+    expect(sendDirectMessage).toHaveBeenCalledWith("connected-user-token", {
       toPersonEmail: "belrobin@cisco.com",
-      markdown: "**Sales signal**"
+      markdown: "**Sales action**"
     });
     expect(sendDirectMessage).toHaveBeenCalledTimes(1);
     const [, params] = vi.mocked(sendDirectMessage).mock.calls[0];
@@ -47,6 +47,15 @@ describe("deliverMessages", () => {
 
     expect(results[0].delivered).toBe(true);
     expect(results[0].message_id).toBe("msg-123");
+    expect(results[0].channel).toBe("webex");
+    expect(results[0].delivery_key).toBe("run-1:sales:webex");
+  });
+
+  it("also works with an optional bot token as the sender", async () => {
+    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-bot-1", toPersonEmail: "belrobin@cisco.com" });
+    const results = await deliverMessages([salesMessage], { accessToken: "bot-token", mode: "bot" }, "run-1");
+    expect(sendDirectMessage).toHaveBeenCalledWith("bot-token", { toPersonEmail: "belrobin@cisco.com", markdown: "**Sales action**" });
+    expect(results[0].delivered).toBe(true);
   });
 
   it("one recipient failing does not block the other lane's delivery", async () => {
@@ -57,7 +66,7 @@ describe("deliverMessages", () => {
       return { id: "msg-technical-456", toPersonEmail: params.toPersonEmail };
     });
 
-    const results = await deliverMessages([salesMessage, technicalMessage], "bot-token");
+    const results = await deliverMessages([salesMessage, technicalMessage], { accessToken: "connected-user-token", mode: "connected_user" }, "run-1");
 
     const salesResult = results.find((r) => r.lane === "sales")!;
     const technicalResult = results.find((r) => r.lane === "technical")!;
@@ -68,11 +77,11 @@ describe("deliverMessages", () => {
     expect(technicalResult.message_id).toBe("msg-technical-456");
   });
 
-  it("shows delivery as unavailable (not a crash) when the bot token is missing", async () => {
-    const results = await deliverMessages([salesMessage], null);
+  it("shows delivery as unavailable (not a crash) when no sender token is available — the bot is never required", async () => {
+    const results = await deliverMessages([salesMessage], { accessToken: null, mode: "unavailable" }, "run-1");
     expect(results[0].attempted).toBe(false);
     expect(results[0].delivered).toBe(false);
-    expect(results[0].error).toContain("bot token not configured");
+    expect(results[0].error).toContain("connect Webex");
     expect(sendDirectMessage).not.toHaveBeenCalled();
   });
 
@@ -80,7 +89,7 @@ describe("deliverMessages", () => {
     vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-technical-789", toPersonEmail: "jaalden@cisco.com" });
     const salesWithoutEmail: WebexMessagePreview = { ...salesMessage, recipient_email: null };
 
-    const results = await deliverMessages([salesWithoutEmail, technicalMessage], "bot-token");
+    const results = await deliverMessages([salesWithoutEmail, technicalMessage], { accessToken: "connected-user-token", mode: "connected_user" }, "run-1");
 
     const salesResult = results.find((r) => r.lane === "sales")!;
     const technicalResult = results.find((r) => r.lane === "technical")!;

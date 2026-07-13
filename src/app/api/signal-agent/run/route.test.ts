@@ -1,12 +1,30 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/signal-agent/run/route";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
 import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
+import { useIsolatedDataDir } from "@/lib/webex/testUtils";
+import { writeTokenRecord as writeWebexTokenRecord } from "@/lib/webex/store";
+import { writeTokenRecord as writeOutlookTokenRecord } from "@/lib/outlook/store";
+
+vi.mock("@/lib/webex/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/webex/client")>("@/lib/webex/client");
+  return { ...actual, sendDirectMessage: vi.fn().mockResolvedValue({ id: "msg-1", toPersonEmail: "x" }) };
+});
+vi.mock("@/lib/outlook/send", () => ({
+  sendOutlookEmail: vi.fn().mockResolvedValue({ accepted: true, status_code: 202, error: null, error_code: null, sent_at: new Date().toISOString() })
+}));
+
+let isolate: { cleanup: () => void };
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
   clearCatalogCache();
   clearAccountsCache();
+  isolate = useIsolatedDataDir();
+});
+
+afterEach(() => {
+  isolate.cleanup();
 });
 
 function post(body: unknown) {
@@ -65,6 +83,55 @@ describe("POST /api/signal-agent/run", () => {
     expect(json.peachtree).toBeDefined();
     expect(json.peachtree.delivery.every((item: { attempted: boolean }) => item.attempted === false)).toBe(true);
     expect(json.webex_source).toBeNull();
+  });
+
+  it("auto-send fires after analysis once both messaging channels are ready (no explicit deliverToWebex flag needed)", async () => {
+    await writeWebexTokenRecord({
+      accessToken: "webex-token",
+      refreshToken: "RT",
+      tokenType: "Bearer",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      refreshExpiresAt: null,
+      scope: "spark:messages_write",
+      obtainedAt: new Date().toISOString(),
+      lastRefreshedAt: null,
+      lastRefreshError: null
+    });
+    await writeOutlookTokenRecord({
+      accessToken: "outlook-token",
+      refreshToken: "RT",
+      tokenType: "Bearer",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      scope: "openid profile offline_access User.Read Mail.Send",
+      obtainedAt: new Date().toISOString(),
+      lastRefreshedAt: null,
+      lastRefreshError: null
+    });
+
+    const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const json = await response.json();
+    if (json.peachtree.routing.length > 0) {
+      expect(json.peachtree.auto_send_enabled).toBe(true);
+      expect(json.peachtree.delivery.some((item: { attempted: boolean }) => item.attempted)).toBe(true);
+    }
+  });
+
+  it("auto-send can be explicitly disabled via options.deliverToWebex:false even when channels are ready", async () => {
+    await writeWebexTokenRecord({
+      accessToken: "webex-token",
+      refreshToken: "RT",
+      tokenType: "Bearer",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      refreshExpiresAt: null,
+      scope: "spark:messages_write",
+      obtainedAt: new Date().toISOString(),
+      lastRefreshedAt: null,
+      lastRefreshError: null
+    });
+
+    const response = await post({ transcriptId: "high_intent", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false, deliverToWebex: false } });
+    const json = await response.json();
+    expect(json.peachtree.delivery.every((item: { attempted: boolean }) => item.attempted === false)).toBe(true);
   });
 
   it("never returns an API key or key-shaped value anywhere in the JSON payload", async () => {

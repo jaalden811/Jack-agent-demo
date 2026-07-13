@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runRequestSchema } from "@/lib/signal-agent/types";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { computePeachtreePreview, deliverPeachtreePipeline } from "@/lib/webex/automation";
+import { getAutomationReadiness } from "@/lib/webex/automationSettings";
 import type { WebexAutomationRunResult } from "@/lib/webex/types";
 
 // Env vars (OPENAI_API_KEY) must be read live, never baked in at build time.
@@ -40,12 +41,15 @@ export async function POST(request: Request) {
       : null;
     const transcriptText = result.transcript_meta.raw_text;
 
-    // Manual analysis (any input mode, including an imported Webex
-    // transcript) only ever previews the Peachtree routing/messages by
-    // default — real delivery is reserved for the autonomous webhook and
-    // the explicit "Retry / Send via Webex" action, so re-running a demo
-    // or pasted transcript never causes an unexpected send.
-    const peachtree = parsed.data.options?.deliverToWebex
+    // "Auto-send after analysis" (distinct from the webhook-triggered
+    // autopilot) fires immediately after every completed analysis —
+    // Demo, Paste, Upload, or a manually-selected Webex transcript —
+    // once both messaging channels are ready, unless the user has
+    // explicitly disabled it. An explicit per-run override
+    // (`options.deliverToWebex`) can also force delivery/preview.
+    const readiness = await getAutomationReadiness();
+    const shouldDeliver = parsed.data.options?.deliverToWebex ?? readiness.autoSendEnabled;
+    const peachtree = shouldDeliver
       ? await deliverPeachtreePipeline(result, transcriptText, webexSource)
       : computePeachtreePreview(result);
 

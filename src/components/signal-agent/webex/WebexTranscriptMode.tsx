@@ -45,19 +45,7 @@ export function WebexTranscriptMode({
     refreshStatus();
   }, []);
 
-  async function testConnection() {
-    setBusy("test");
-    try {
-      const response = await fetch("/api/webex/status");
-      const data: WebexStatus = await response.json();
-      setStatus(data);
-      setNotice(data.connected ? `Connected as ${data.connected_user.name ?? data.connected_user.email ?? "unknown"}.` : "Not connected.");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function loadMeetingsAndTranscripts() {
+  async function loadMeetingsAndTranscripts(): Promise<TranscriptItem[]> {
     setBusy("load");
     setNotice(null);
     try {
@@ -66,16 +54,28 @@ export function WebexTranscriptMode({
       const transcriptsData = await transcriptsResponse.json();
       if (!meetingsResponse.ok || !transcriptsResponse.ok) {
         setNotice(meetingsData.error ?? transcriptsData.error ?? "Could not load meetings/transcripts.");
-        return;
+        return [];
       }
       setMeetings(meetingsData.items ?? []);
-      setTranscripts(transcriptsData.items ?? []);
-      if ((transcriptsData.items ?? []).length === 0) {
+      const items: TranscriptItem[] = transcriptsData.items ?? [];
+      setTranscripts(items);
+      if (items.length === 0) {
         setNotice("No transcripts are available yet for the connected user.");
       }
+      return items;
     } finally {
       setBusy(null);
     }
+  }
+
+  async function fetchDetail(transcriptId: string): Promise<TranscriptDetail | null> {
+    const response = await fetch(`/api/webex/transcripts/${encodeURIComponent(transcriptId)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      setNotice(data.detail ?? data.error ?? "Could not load transcript.");
+      return null;
+    }
+    return data as TranscriptDetail;
   }
 
   async function previewTranscript() {
@@ -83,13 +83,41 @@ export function WebexTranscriptMode({
     setBusy("preview");
     setNotice(null);
     try {
-      const response = await fetch(`/api/webex/transcripts/${encodeURIComponent(selectedTranscriptId)}`);
-      const data = await response.json();
-      if (!response.ok) {
-        setNotice(data.detail ?? data.error ?? "Could not load transcript.");
+      const data = await fetchDetail(selectedTranscriptId);
+      if (data) setDetail(data);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function latestTranscript(items: TranscriptItem[]): TranscriptItem | null {
+    if (items.length === 0) return null;
+    return [...items].sort((a, b) => (b.startTime ?? "").localeCompare(a.startTime ?? ""))[0];
+  }
+
+  async function analyzeLatest() {
+    setBusy("latest");
+    setNotice(null);
+    try {
+      const items = transcripts.length > 0 ? transcripts : await loadMeetingsAndTranscripts();
+      const latest = latestTranscript(items);
+      if (!latest) {
+        setNotice("No Webex transcripts are available yet for the connected user.");
         return;
       }
+      setSelectedTranscriptId(latest.id);
+      const data = await fetchDetail(latest.id);
+      if (!data) return;
       setDetail(data);
+      setNotice(`Loaded latest transcript: ${data.meetingTitle ?? latest.id} (${data.meetingDate ?? "date unknown"}).`);
+      onAnalyze(data.transcriptText, {
+        transcriptId: data.transcriptId,
+        meetingId: data.meetingId,
+        meetingTitle: data.meetingTitle,
+        host: data.host,
+        meetingDate: data.meetingDate,
+        source: "webex"
+      });
     } finally {
       setBusy(null);
     }
@@ -128,11 +156,11 @@ export function WebexTranscriptMode({
             1. Connect Webex
           </a>
         )}
-        <button type="button" className="button secondary" onClick={testConnection} disabled={busy === "test"}>
-          2. Test connection
+        <button type="button" className="button secondary" onClick={() => void loadMeetingsAndTranscripts()} disabled={busy === "load" || !status?.connected}>
+          2. Load recent meetings/transcripts
         </button>
-        <button type="button" className="button secondary" onClick={loadMeetingsAndTranscripts} disabled={busy === "load" || !status?.connected}>
-          3. Load recent meetings/transcripts
+        <button type="button" onClick={analyzeLatest} disabled={busy === "latest" || !status?.connected || loading}>
+          {busy === "latest" ? "Loading…" : "Analyze latest available transcript"}
         </button>
       </div>
 
@@ -151,7 +179,7 @@ export function WebexTranscriptMode({
           </label>
 
           <label htmlFor="webex-transcript-select">
-            4. Select transcript
+            3. Select transcript
             <select id="webex-transcript-select" value={selectedTranscriptId} onChange={(event) => setSelectedTranscriptId(event.target.value)}>
               <option value="">Choose a transcript…</option>
               {transcripts
@@ -166,7 +194,7 @@ export function WebexTranscriptMode({
 
           <div className="actions">
             <button type="button" className="button secondary" onClick={previewTranscript} disabled={busy === "preview" || !selectedTranscriptId}>
-              5. Preview transcript
+              4. Preview transcript
             </button>
           </div>
         </>
@@ -189,7 +217,7 @@ export function WebexTranscriptMode({
           <pre className="raw-json transcript-view">{detail.transcriptText}</pre>
           <div className="actions">
             <button type="button" onClick={analyze} disabled={loading}>
-              {loading ? "Running…" : "6. Analyze transcript"}
+              {loading ? "Running…" : "5. Analyze & Route"}
             </button>
           </div>
         </>

@@ -100,6 +100,33 @@ export async function consumeOAuthState(candidate: string): Promise<boolean> {
   return true;
 }
 
+// ─── Last OAuth error (for surfacing a specific reason, never a token) ────
+
+export type WebexOAuthErrorCode =
+  | "redirect_uri_mismatch"
+  | "invalid_client"
+  | "invalid_client_secret"
+  | "invalid_scope"
+  | "user_denied"
+  | "state_mismatch"
+  | "token_exchange_failed"
+  | "identity_lookup_failed"
+  | "token_store_failed";
+
+export type WebexOAuthErrorRecord = {
+  code: WebexOAuthErrorCode;
+  message: string;
+  occurredAt: string;
+};
+
+export async function readLastOAuthError(): Promise<WebexOAuthErrorRecord | null> {
+  return readJsonFile<WebexOAuthErrorRecord | null>("last-oauth-error.json", null);
+}
+
+export async function writeLastOAuthError(record: WebexOAuthErrorRecord | null): Promise<void> {
+  await writeJsonFile("last-oauth-error.json", record);
+}
+
 // ─── Webhook registration state ────────────────────────────────────────────
 
 export type WebexWebhookRecord = {
@@ -165,6 +192,21 @@ export async function readAutopilotOverride(): Promise<boolean | null> {
 
 export async function writeAutopilotOverride(enabled: boolean): Promise<void> {
   await writeJsonFile("autopilot.json", enabled);
+}
+
+// ─── Auto-send-after-analysis override (distinct from webhook autopilot) ───
+// Auto-send fires immediately after any completed analysis (Demo, Paste,
+// Upload, or a manually-selected Webex transcript) with no public URL
+// required. Default (when no override is stored) is computed from
+// whether both messaging channels are ready — see
+// @/lib/webex/automationSettings.
+
+export async function readAutoSendOverride(): Promise<boolean | null> {
+  return readJsonFile<boolean | null>("auto-send.json", null);
+}
+
+export async function writeAutoSendOverride(enabled: boolean): Promise<void> {
+  await writeJsonFile("auto-send.json", enabled);
 }
 
 // ─── Audit trail (append-only JSONL) ───────────────────────────────────────
