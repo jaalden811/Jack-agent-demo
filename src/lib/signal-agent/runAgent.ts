@@ -13,6 +13,8 @@ import { extractNamedStakeholders, inferFunctionalOwners } from "@/lib/signal-ag
 import { buildCommercialSignals } from "@/lib/signal-agent/commercialSignals";
 import { synthesizeExecutiveBrief } from "@/lib/signal-agent/openaiSynthesis";
 import { fetchPublicSignals } from "@/lib/signal-agent/publicSignals";
+import { randomUUID } from "node:crypto";
+import { runQualificationPipeline } from "@/lib/qualification/runQualification";
 import type {
   CorroborationSummary,
   EntryEvaluation,
@@ -262,6 +264,25 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   const enrichPublicSignals = request.options?.enrichPublicSignals ?? false;
   const publicSignals = await fetchPublicSignals(account.matched ? account.account : transcript.account, enrichPublicSignals);
 
+  const useQualification = request.options?.useQualification ?? true;
+  const lifecycleStageGuess = commercialSignals.renewal_events.length > 0 ? "RENEW" : "ADOPT";
+  const qualification = await runQualificationPipeline({
+    transcript,
+    accountMatchedInCrm: account.matched,
+    webexMeetingTitle: request.webexSource?.meetingTitle ?? null,
+    intentEvidence,
+    namedStakeholders,
+    quantifiedImpact: commercialSignals.quantified_impact,
+    businessProblem: finalExecutiveSummary.business_problem,
+    renewalEvents: commercialSignals.renewal_events,
+    purchaseLanguage: commercialSignals.purchase_language,
+    matches,
+    verdict: primaryEvaluation.intentLabel,
+    lifecycleStageGuess,
+    enrichPublicSignals,
+    useQualification
+  });
+
   const corroborationSummary: CorroborationSummary = {
     transcript_score: Math.round(primaryEvaluation.transcriptCorroborationScore * 1000) / 1000,
     structured_account_score: Math.round(primaryEvaluation.corroborationScore * 1000) / 1000,
@@ -317,7 +338,15 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       sentence_count: selectRelevantChunks(transcript).length,
       raw_text: transcript.rawText
     },
-    timestamp
+    timestamp,
+    run_id: randomUUID(),
+    account_resolution: qualification.account_resolution,
+    meddpicc: qualification.meddpicc,
+    public_enrichment: qualification.public_enrichment,
+    ai_processing: qualification.ai_processing,
+    // Built (and persisted) once messages exist — see
+    // @/lib/webex/automation.ts#resolveAnalysisLink. Not yet known here.
+    analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null }
   };
 
   const auditOutcome = await appendAuditRecord(result);

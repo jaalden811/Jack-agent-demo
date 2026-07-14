@@ -1,0 +1,186 @@
+import { getConfig } from "@/lib/config";
+import { buildTranscriptEvidenceItems } from "@/lib/qualification/evidenceIds";
+import { extractTranscriptEvidence } from "@/lib/qualification/openaiEvidenceExtraction";
+import { classifyPublicEvidence } from "@/lib/qualification/openaiPublicEvidence";
+import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
+import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
+import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
+import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/serpapi/runEnrichment";
+import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
+import type { QueryPlannerInput } from "@/lib/connectors/serpapi/types";
+
+/**
+ * Orchestrates account resolution, SerpAPI enrichment (query planning
+ * -> execution -> normalization -> acceptance), OpenAI Stage A
+ * (transcript evidence extraction) and Stage B (public evidence
+ * classification), and the deterministic Stage C MEDDPICC merge — the
+ * full qualification layer that sits alongside (never replaces) the
+ * existing deterministic taxonomy scoring/routing pipeline.
+ */
+
+export type QualificationPipelineResult = {
+  account_resolution: AccountResolution;
+  meddpicc: Meddpicc;
+  public_enrichment: PublicEnrichmentStatus;
+  ai_processing: AiProcessingStatus;
+  named_stakeholders_for_messaging: StakeholderRecord[];
+};
+
+export async function runQualificationPipeline(params: {
+  transcript: IngestedTranscript;
+  accountMatchedInCrm: boolean;
+  webexMeetingTitle: string | null;
+  intentEvidence: BuyingIntentEvidence[];
+  namedStakeholders: StakeholderRecord[];
+  quantifiedImpact: string[];
+  businessProblem: string;
+  renewalEvents: string[];
+  purchaseLanguage: string[];
+  matches: MatchOutput[];
+  verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
+  lifecycleStageGuess: "LAND" | "ADOPT" | "EXPAND" | "RENEW";
+  enrichPublicSignals: boolean;
+  useQualification: boolean;
+}): Promise<QualificationPipelineResult> {
+  const config = getConfig();
+  const openAiConfigured = Boolean(config.OPENAI_API_KEY);
+  let fallbackReason: string | null = null;
+
+  // Stage A: transcript + stakeholder extraction.
+  const evidenceItems = buildTranscriptEvidenceItems(params.transcript);
+  const selectedTaxonomyCandidates = params.matches.slice(0, 3).map((m) => ({ id: m.entry_id, pain_category: m.pain_category }));
+  const extraction = await extractTranscriptEvidence(
+    {
+      evidence_items: evidenceItems,
+      webex_meeting_title: params.webexMeetingTitle,
+      webex_meeting_date: null,
+      webex_host: null,
+      user_entered_account: null,
+      uploaded_account_context: null,
+      deterministic_intent_signals: params.intentEvidence.map((e) => e.text),
+      deterministic_negative_cues: [],
+      selected_taxonomy_candidates: selectedTaxonomyCandidates,
+      lifecycle_candidate: params.lifecycleStageGuess
+    },
+    params.useQualification
+  );
+  fallbackReason = extraction.fallback_reason;
+
+  // Account resolution — Section 2/7 priority order.
+  const dialogueMention = extraction.result?.account_candidates.find((c) => c.confidence >= 0.5)?.name ?? null;
+  const accountResolution = resolveAccountIdentity({
+    transcriptAccountLine: params.transcript.account,
+    transcriptAccountMatchedInCrm: params.accountMatchedInCrm,
+    userEnteredAccount: null,
+    webexMeetingTitle: params.webexMeetingTitle,
+    outlookCalendarSubject: null,
+    attendeeEmailDomains: [],
+    uploadedAccountContextName: null,
+    dialogueMentionedCompany: dialogueMention,
+    openAiAccountCandidates: extraction.result?.account_candidates ?? []
+  });
+
+  // Search-enrichment decision logic (Section 2/6).
+  const gate = gateSearchEnrichment({
+    enrichmentEnabled: params.enrichPublicSignals,
+    verdict: params.verdict,
+    accountCandidateName: accountResolution.name,
+    hasStakeholderCandidate: params.namedStakeholders.length > 0
+  });
+
+  let publicEnrichment: PublicEnrichmentStatus;
+  let classifiedPublicResults: ClassifiedPublicResult[] = [];
+  let usedPublicClassification = false;
+
+  if (gate.allowed && accountResolution.confidence >= 0.65 && accountResolution.name) {
+    const detectedProducts = Array.from(new Set(params.matches.flatMap((m) => m.recommended_solutions)));
+    const plannerInput: QueryPlannerInput = {
+      account_candidates: [{ name: accountResolution.name, domain: accountResolution.domain, confidence: accountResolution.confidence }],
+      company_domains: accountResolution.domain ? [accountResolution.domain] : [],
+      stakeholders: params.namedStakeholders.filter((s) => s.name).map((s) => ({ name: s.name as string, title: s.function_or_role ?? null })),
+      selected_taxonomy_entries: params.matches.slice(0, 3).map((m) => m.pain_category),
+      detected_products: detectedProducts,
+      buying_signals: params.intentEvidence.map((e) => e.text),
+      commercial_signals: [...params.renewalEvents, ...params.purchaseLanguage],
+      lifecycle_stage: params.lifecycleStageGuess,
+      meddpicc_gaps: [],
+      mentions_incident: params.intentEvidence.some((e) => e.type === "impact" && /outage|incident|breach|disruption/i.test(e.text)),
+      mentions_competitor: (extraction.result?.commercial_signals.competitor_mentions.length ?? 0) > 0,
+      location: null
+    };
+
+    publicEnrichment = await runSerpApiEnrichment({ ...plannerInput, accountName: accountResolution.name, accountDomain: accountResolution.domain });
+    fallbackReason = fallbackReason ?? publicEnrichment.fallback_reason;
+
+    if (publicEnrichment.sources.length > 0 && params.useQualification) {
+      const classification = await classifyPublicEvidence(
+        publicEnrichment.sources.map((s) => ({
+          source_id: s.source_id,
+          provider: "serpapi" as const,
+          query_id: "",
+          query: "",
+          purpose: "strategic_initiative" as const,
+          title: s.title ?? "",
+          url: s.url ?? "",
+          canonical_url: s.url ?? "",
+          domain: s.url ? new URL(s.url).hostname : "",
+          snippet: s.quote_or_snippet,
+          position: 0,
+          published_at: s.published_at,
+          retrieved_at: new Date().toISOString(),
+          result_type: "organic" as const,
+          account_match_confidence: s.confidence,
+          stakeholder_match_confidence: 0,
+          signal_relevance: s.confidence,
+          authority_score: s.confidence,
+          recency_score: s.confidence,
+          public_evidence_score: s.confidence
+        })),
+        { account_candidate: accountResolution.name, transcript_signal: params.businessProblem },
+        params.useQualification
+      );
+      usedPublicClassification = classification.used;
+      classifiedPublicResults = classification.classified;
+      if (!classification.used) fallbackReason = fallbackReason ?? classification.fallback_reason;
+    }
+  } else {
+    publicEnrichment = buildDefaultPublicEnrichment(gate.reason);
+  }
+
+  // Stage C (deterministic): baseline MEDDPICC, then merge accepted
+  // public evidence into only the fields it may ever influence.
+  const baseMeddpicc =
+    extraction.used && extraction.result
+      ? (extraction.result.preliminary_meddpicc as Meddpicc)
+      : buildDeterministicMeddpicc({
+          intentEvidence: params.intentEvidence,
+          quantifiedImpact: params.quantifiedImpact,
+          namedStakeholders: params.namedStakeholders
+            .filter((s): s is typeof s & { name: string } => s.name !== null)
+            .map((s) => ({ name: s.name, role: s.function_or_role, ownership_type: s.ownership_type })),
+          businessProblem: params.businessProblem,
+          renewalEvents: params.renewalEvents,
+          purchaseLanguage: params.purchaseLanguage
+        });
+  const meddpicc = classifiedPublicResults.length > 0 ? mergePublicEvidenceIntoMeddpicc(baseMeddpicc, classifiedPublicResults) : baseMeddpicc;
+
+  const aiProcessing: AiProcessingStatus = {
+    openai_configured: openAiConfigured,
+    transcript_extraction_used: extraction.used,
+    public_evidence_classification_used: usedPublicClassification,
+    qualification_synthesis_used: extraction.used,
+    message_synthesis_used: false,
+    embedding_model: config.OPENAI_EMBEDDING_MODEL,
+    synthesis_model: config.OPENAI_SYNTHESIS_MODEL,
+    fallback_reason: fallbackReason
+  };
+
+  return {
+    account_resolution: accountResolution,
+    meddpicc,
+    public_enrichment: publicEnrichment,
+    ai_processing: aiProcessing,
+    named_stakeholders_for_messaging: params.namedStakeholders
+  };
+}

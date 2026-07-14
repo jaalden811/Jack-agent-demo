@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLaneRouting, classifyLifecycle, detectSignalTypes, loadRoutingConfig, getRoutingConfigPath, getRecipientEmail } from "@/lib/webex/peachtreeRouting";
+import { buildDefaultAccountResolution, buildDefaultAiProcessing, buildDefaultMeddpicc, buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
 import type { SecureNetworkingTriageResult, MatchOutput } from "@/lib/signal-agent/types";
 
 /** Minimal, type-valid fixture builder — lets each test override only the
@@ -106,7 +107,13 @@ function buildResult(overrides: {
     public_signals: [],
     audit: { logged: false, path: "", warning: null },
     transcript_meta: { title: null, account: "Test Account", participant_count: 1, sentence_count: 1, raw_text: "" },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    run_id: "test-run-id",
+    account_resolution: { ...buildDefaultAccountResolution(), name: "Test Account", status: "resolved", confidence: 0.9, action_required: null },
+    meddpicc: buildDefaultMeddpicc(),
+    public_enrichment: buildDefaultPublicEnrichment(),
+    ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),
+    analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null }
   };
 }
 

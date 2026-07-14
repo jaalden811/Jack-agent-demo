@@ -82,7 +82,7 @@ export function ContextCard({
 
       <label className="checkbox-row" htmlFor="enrich-signals">
         <input id="enrich-signals" type="checkbox" checked={enrichPublicSignals} onChange={(event) => onToggleEnrich(event.target.checked)} />
-        <span>Enrich with public account signals (optional, never blocks analysis)</span>
+        <span>Enrich with public account and stakeholder signals (SerpAPI; optional, never blocks analysis)</span>
       </label>
 
       <label className="checkbox-row" htmlFor="use-openai-context">

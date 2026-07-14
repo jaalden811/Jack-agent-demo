@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
-import { getConfig } from "@/lib/config";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import { buildAnalysisLink } from "@/lib/signal-agent/analysisLink";
+import { persistRunResult } from "@/lib/signal-agent/resultStore";
 import { loadRoutingConfig, classifyLifecycle, buildLaneRouting } from "@/lib/webex/peachtreeRouting";
 import { buildMessagesForRouting, buildEmailsForRouting } from "@/lib/webex/messageBuilder";
 import { deliverMessages } from "@/lib/webex/delivery";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
-import type { ChannelDeliveryResult, PeachtreePilotResult, WebexLane, WebexTranscriptSource } from "@/lib/webex/types";
+import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
+import type { AnalysisLink } from "@/lib/qualification/types";
+import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
  * Shared pipeline that turns a completed Signal-to-Solution result into
@@ -31,8 +34,155 @@ export function computeTranscriptId(transcriptText: string, webexSource: WebexTr
   return `local-${createHash("sha256").update(transcriptText).digest("hex").slice(0, 16)}`;
 }
 
+/** Builds (and persists) the "Open full analysis" link for this result,
+ * before any message is constructed — see @/lib/signal-agent/analysisLink
+ * for the full validation checklist. Never derives the link from a
+ * request Host header or localhost; only from the configured
+ * APP_PUBLIC_BASE_URL. */
+async function resolveAnalysisLink(result: SecureNetworkingTriageResult): Promise<AnalysisLink> {
+  return buildAnalysisLink({
+    run_id: result.run_id,
+    created_at: result.timestamp,
+    account: result.executive_summary.account,
+    verdict: result.executive_summary.verdict,
+    confidence: result.executive_summary.confidence,
+    qualification_json: result as unknown as Record<string, unknown>,
+    sales_message: null,
+    technical_message: null,
+    source_summary: (result.public_enrichment?.accepted_evidence ?? [])
+      .filter((item) => item.url)
+      .map((item) => ({ title: item.title ?? item.url ?? "Source", url: item.url as string, domain: item.url ? new URL(item.url).hostname : "" })),
+    delivery_summary: {}
+  });
+}
+
+/** Re-persists the run record with the final built messages/emails and
+ * delivery summary once they exist, so the shared results page reflects
+ * exactly what was sent — without changing the already-issued link
+ * (same run_id, same token). */
+async function finalizeRunPersistence(params: {
+  result: SecureNetworkingTriageResult;
+  analysisLink: AnalysisLink;
+  messages: Array<{ lane: string; markdown: string }>;
+  delivery: ChannelDeliveryResult[];
+}): Promise<void> {
+  if (!params.analysisLink.included) return;
+  const sales = params.messages.find((m) => m.lane === "sales")?.markdown ?? null;
+  const technical = params.messages.find((m) => m.lane === "technical")?.markdown ?? null;
+  await persistRunResult({
+    run_id: params.result.run_id,
+    created_at: params.result.timestamp,
+    expires_at: params.analysisLink.expires_at ?? new Date().toISOString(),
+    account: params.result.executive_summary.account,
+    verdict: params.result.executive_summary.verdict,
+    confidence: params.result.executive_summary.confidence,
+    qualification_json: params.result as unknown as Record<string, unknown>,
+    sales_message: sales,
+    technical_message: technical,
+    source_summary: (params.result.public_enrichment?.accepted_evidence ?? [])
+      .filter((item) => item.url)
+      .map((item) => ({ title: item.title ?? item.url ?? "Source", url: item.url as string, domain: item.url ? new URL(item.url).hostname : "" })),
+    delivery_summary: { channels: params.delivery }
+  });
+}
+
 function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
   return `${lane}:${channel}`;
+}
+
+const WEBEX_HARD_CHAR_CEILING = 2400; // 2x the ~1,200 target — safety net, not the target itself
+const SYNTHESIS_CHAR_LIMIT = 1800;
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Section 14 "Validation before delivery" (subset enforced in code —
+ * evidence-ID/product-provenance checks live in the deterministic
+ * MEDDPICC merge and are never delegated to the model). Any failure
+ * here means the deterministic template is used instead — synthesis
+ * failing safely never blocks delivery. */
+function validateSynthesizedMessages(messages: { sales_webex_markdown: string; technical_webex_markdown: string }, analysisLink: AnalysisLink): { valid: boolean; reason: string | null } {
+  const bodies = [messages.sales_webex_markdown, messages.technical_webex_markdown];
+  for (const body of bodies) {
+    if (!body || body.trim().length === 0) return { valid: false, reason: "OPENAI_OUTPUT_PARSE_FAILURE: empty message" };
+    if (body.length > WEBEX_HARD_CHAR_CEILING) return { valid: false, reason: "synthesized message exceeded the channel length ceiling" };
+    if (/localhost|127\.0\.0\.1/i.test(body)) return { valid: false, reason: "synthesized message contained a localhost link" };
+  }
+  if (!analysisLink.included && bodies.some((body) => body.includes("http://") || body.includes("https://"))) {
+    // No valid public link exists — a synthesized message must not
+    // have introduced one anyway.
+    return { valid: false, reason: "synthesized message included a link despite no valid public analysis link" };
+  }
+  return { valid: true, reason: null };
+}
+
+/** Stage D: replaces the deterministic Webex/email content with
+ * OpenAI-synthesized, evidence-backed content when qualification/
+ * message synthesis is enabled, configured, and validates — otherwise
+ * the already-built deterministic messages/emails are returned
+ * unchanged. Never blocks delivery on a synthesis failure. */
+async function applyAiMessageSynthesis(params: {
+  result: SecureNetworkingTriageResult;
+  routing: ReturnType<typeof buildLaneRouting>;
+  runId: string;
+  analysisLink: AnalysisLink;
+  messages: WebexMessagePreview[];
+  emails: EmailMessagePreview[];
+}): Promise<{ messages: WebexMessagePreview[]; emails: EmailMessagePreview[]; used: boolean; fallback_reason: string | null }> {
+  const salesDecision = params.routing.find((d) => d.lane === "sales");
+  const technicalDecision = params.routing.find((d) => d.lane === "technical");
+  if (!salesDecision || !technicalDecision) {
+    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: "no sales/technical lane routed for this transcript" };
+  }
+
+  const publicEvidenceSummaries = (params.result.public_enrichment?.accepted_evidence ?? [])
+    .filter((item) => item.url)
+    .slice(0, 3)
+    .map((item) => ({ title: item.title ?? "Source", url: item.url as string, summary: item.quote_or_snippet }));
+
+  const outcome = await synthesizeQualifiedMessages({
+    result: params.result,
+    meddpicc: params.result.meddpicc,
+    accountResolution: params.result.account_resolution,
+    namedStakeholders: params.result.stakeholder_analysis.named_stakeholders,
+    salesRecipientName: salesDecision.recipient_name,
+    technicalRecipientName: technicalDecision.recipient_name,
+    analysisLink: params.analysisLink,
+    runId: params.runId,
+    webexCharLimit: SYNTHESIS_CHAR_LIMIT,
+    publicEvidenceSummaries,
+    enabled: true
+  });
+
+  if (!outcome.used || !outcome.messages) {
+    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: outcome.fallback_reason };
+  }
+
+  const validation = validateSynthesizedMessages(outcome.messages, params.analysisLink);
+  if (!validation.valid) {
+    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: validation.reason };
+  }
+
+  const synthesized = outcome.messages;
+  const messages = params.messages.map((message) =>
+    message.lane === "sales"
+      ? { ...message, markdown: synthesized.sales_webex_markdown, character_count: synthesized.sales_webex_markdown.length, synthesized_by_ai: true }
+      : { ...message, markdown: synthesized.technical_webex_markdown, character_count: synthesized.technical_webex_markdown.length, synthesized_by_ai: true }
+  );
+  const emails = params.emails.map((email) =>
+    email.lane === "sales"
+      ? { ...email, subject: synthesized.sales_email_subject, html: synthesized.sales_email_html, text: stripHtml(synthesized.sales_email_html), synthesized_by_ai: true }
+      : { ...email, subject: synthesized.technical_email_subject, html: synthesized.technical_email_html, text: stripHtml(synthesized.technical_email_html), synthesized_by_ai: true }
+  );
+
+  return { messages, emails, used: true, fallback_reason: null };
 }
 
 function previewOnlyDelivery(
@@ -60,22 +210,33 @@ function previewOnlyDelivery(
 }
 
 /** Preview-only: computes lifecycle + routing + message/email drafts
- * without sending anything or touching the idempotency guard. */
-export function computePeachtreePreview(result: SecureNetworkingTriageResult): PeachtreePilotResult {
+ * without sending anything or touching the idempotency guard. Still
+ * builds/persists the real analysis link so the preview shown in the UI
+ * matches exactly what would be sent. */
+export async function computePeachtreePreview(result: SecureNetworkingTriageResult): Promise<PeachtreePilotResult> {
   const config = loadRoutingConfig();
   const lifecycle = classifyLifecycle(result);
   const routing = buildLaneRouting(result, config, lifecycle);
   const runId = result.timestamp;
-  const baseUrl = getConfig().WEBEX_PUBLIC_BASE_URL ?? null;
-  const messages = buildMessagesForRouting({ result, routing, runId, baseUrl });
-  const emails = buildEmailsForRouting({ result, routing, runId, baseUrl });
+  const analysisLink = await resolveAnalysisLink(result);
+  result.analysis_link = analysisLink;
+  const deterministicMessages = buildMessagesForRouting({ result, routing, runId, analysisLink });
+  const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
+  const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
+  result.ai_processing.message_synthesis_used = synthesis.used;
+  if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
+  const previewDelivery = previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this.");
+  // Re-persist with the now-final analysis_link/messages so the shared
+  // results page matches this preview exactly (same runId/token issued
+  // above, just richer content).
+  await finalizeRunPersistence({ result, analysisLink, messages: synthesis.messages, delivery: previewDelivery });
 
   return {
     lifecycle,
     routing,
-    messages,
-    emails,
-    delivery: previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this."),
+    messages: synthesis.messages,
+    emails: synthesis.emails,
+    delivery: previewDelivery,
     routing_config_version: config.metadata.version,
     auto_send_enabled: false
   };
@@ -97,9 +258,15 @@ export async function deliverPeachtreePipeline(
   const routing = buildLaneRouting(result, config, lifecycle);
   const transcriptId = computeTranscriptId(transcriptText, webexSource);
   const runId = result.timestamp;
-  const baseUrl = getConfig().WEBEX_PUBLIC_BASE_URL ?? null;
-  const messages = buildMessagesForRouting({ result, routing, runId, baseUrl });
-  const emails = buildEmailsForRouting({ result, routing, runId, baseUrl });
+  const analysisLink = await resolveAnalysisLink(result);
+  result.analysis_link = analysisLink;
+  const deterministicMessages = buildMessagesForRouting({ result, routing, runId, analysisLink });
+  const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
+  const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
+  result.ai_processing.message_synthesis_used = synthesis.used;
+  if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
+  const messages = synthesis.messages;
+  const emails = synthesis.emails;
 
   const alreadyProcessed = await getProcessedTranscript(transcriptId);
   const alreadySentKeys = new Set<string>(alreadyProcessed?.lanesSent ?? []);
@@ -216,6 +383,8 @@ export async function deliverPeachtreePipeline(
       error: item.error
     });
   }
+
+  await finalizeRunPersistence({ result, analysisLink, messages, delivery });
 
   return { lifecycle, routing, messages, emails, delivery, routing_config_version: config.metadata.version, auto_send_enabled: true };
 }

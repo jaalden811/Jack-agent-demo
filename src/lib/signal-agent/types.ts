@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 
 /**
  * All types here describe data shapes only. Nothing in this file encodes a
@@ -346,6 +347,12 @@ export const runRequestSchema = z.object({
       useOpenAIEmbeddings: z.boolean().optional(),
       useOpenAISynthesis: z.boolean().optional(),
       enrichPublicSignals: z.boolean().optional(),
+      /** "Enrich with public account and stakeholder signals" toggle
+       * (Section 13) — gates both the new SerpAPI qualification pass
+       * and, unless explicitly overridden, the legacy `public_signals`
+       * search below. Distinct from useOpenAI* — this also controls
+       * whether OpenAI Stage A/B run at all for this run. */
+      useQualification: z.boolean().optional(),
       maxLabels: z.number().int().min(1).max(5).optional(),
       deliverToWebex: z.boolean().optional()
     })
@@ -527,6 +534,27 @@ export type SecureNetworkingTriageResult = {
   audit: { logged: boolean; path: string; warning: string | null };
   transcript_meta: TranscriptMeta;
   timestamp: string;
+  /** Stable, URL-safe identifier for this run — distinct from
+   * `timestamp` (which is used as a dedupe-key component elsewhere).
+   * Used by the persisted public results page. */
+  run_id: string;
+  /** Evidence-backed account identity resolution (Section 2/14) —
+   * distinct from executive_summary.account, which may still show a
+   * best-effort transcript-stated name even when unresolved. */
+  account_resolution: AccountResolution;
+  /** Evidence-backed MEDDPICC qualification (Section 7/14). */
+  meddpicc: Meddpicc;
+  /** SerpAPI public enrichment trace (Section 1-4/13/14) — always
+   * present; `enabled: false` when disabled, not configured, or gated
+   * off by the search-enrichment decision logic. */
+  public_enrichment: PublicEnrichmentStatus;
+  /** Which OpenAI qualification/synthesis stages actually ran for this
+   * result (Section 13/14) — independent of the existing
+   * `providers` block, which covers only embeddings/legacy synthesis. */
+  ai_processing: AiProcessingStatus;
+  /** Signed, expiring public link to this run's read-only result page
+   * — never a localhost/private-address URL (Section 11). */
+  analysis_link: AnalysisLink;
 };
 
 /** Wire shape for GET /api/signal-agent/catalog — one taxonomy entry as

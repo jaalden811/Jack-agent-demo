@@ -239,6 +239,16 @@ button:disabled {
   color: #9b1c1c;
 }
 
+.status-pill.status-ok {
+  background: #e7f5ee;
+  color: #17643a;
+}
+
+.status-pill.status-off {
+  background: #f1f1f1;
+  color: #555;
+}
+
 .provider-grid,
 .summary-grid,
 .detail-grid {

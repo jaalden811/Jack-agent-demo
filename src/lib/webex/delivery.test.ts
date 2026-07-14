@@ -15,7 +15,8 @@ const salesMessage: WebexMessagePreview = {
   recipient_email: "belrobin@cisco.com",
   subject: "Sales action",
   markdown: "**Sales action**",
-  character_count: 20
+  character_count: 20,
+  synthesized_by_ai: false
 };
 
 const technicalMessage: WebexMessagePreview = {
@@ -24,7 +25,8 @@ const technicalMessage: WebexMessagePreview = {
   recipient_email: "jaalden@cisco.com",
   subject: "Technical action",
   markdown: "**Technical action**",
-  character_count: 21
+  character_count: 21,
+  synthesized_by_ai: false
 };
 
 beforeEach(() => {

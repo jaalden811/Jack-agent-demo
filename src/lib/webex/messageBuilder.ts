@@ -1,4 +1,5 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import type { AnalysisLink } from "@/lib/qualification/types";
 import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } from "@/lib/webex/types";
 
 /**
@@ -8,6 +9,13 @@ import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } fr
  * ~1,200 characters. Sales and technical content is always distinct —
  * each lane's message is built from lane-specific evidence, never a
  * shared generic template.
+ *
+ * The "Open full analysis" link is only ever rendered as a hyperlink
+ * when `analysis_link.included` is true — i.e. a real, validated,
+ * public HTTPS URL was constructed and the run was persisted (see
+ * @/lib/signal-agent/analysisLink). A localhost/relative URL is never
+ * sent to a remote recipient; when no valid public link exists, a
+ * plain-text run-ID reference is used instead (never a dead hyperlink).
  */
 
 const MAX_MESSAGE_CHARS = 1200;
@@ -16,9 +24,18 @@ function truncate(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 }
 
-function analysisUrl(baseUrl: string | null, runId: string): string {
-  const base = baseUrl?.replace(/\/$/, "") ?? "";
-  return `${base}/signal-agent?run=${encodeURIComponent(runId)}`;
+function analysisLinkMarkdown(analysisLink: AnalysisLink, runId: string): string {
+  if (analysisLink.included && analysisLink.url) {
+    return `[Open full analysis](${analysisLink.url})`;
+  }
+  return `**Analysis reference:** Run \`${runId}\`\nFull analysis is available in the Signal-to-Solution app.`;
+}
+
+function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
+  if (analysisLink.included && analysisLink.url) {
+    return `<p><a href="${analysisLink.url}">Open full analysis</a></p>`;
+  }
+  return `<p><strong>Analysis reference:</strong> Run <code>${runId}</code>. Full analysis is available in the Signal-to-Solution app.</p>`;
 }
 
 function commercialStakeholders(result: SecureNetworkingTriageResult): string {
@@ -49,9 +66,9 @@ export function buildSalesMessage(params: {
   result: SecureNetworkingTriageResult;
   decision: LaneRoutingDecision;
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): WebexMessagePreview {
-  const { result, decision, runId, baseUrl } = params;
+  const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
 
   const lines = [
@@ -65,7 +82,7 @@ export function buildSalesMessage(params: {
     `**Recommended action:** ${decision.actions[0] ?? "Review the full analysis"}`,
     `**Technical counterpart:** ${technicalCounterpartText(decision)}`,
     "",
-    `[Open full analysis](${analysisUrl(baseUrl, runId)})`,
+    analysisLinkMarkdown(analysisLink, runId),
     "",
     "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot."
   ];
@@ -77,7 +94,8 @@ export function buildSalesMessage(params: {
     recipient_email: decision.recipient_email,
     subject: `Sales action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
     markdown,
-    character_count: markdown.length
+    character_count: markdown.length,
+    synthesized_by_ai: false
   };
 }
 
@@ -85,9 +103,9 @@ export function buildTechnicalMessage(params: {
   result: SecureNetworkingTriageResult;
   decision: LaneRoutingDecision;
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): WebexMessagePreview {
-  const { result, decision, runId, baseUrl } = params;
+  const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
 
@@ -111,7 +129,7 @@ export function buildTechnicalMessage(params: {
     `**Recommended action:** ${truncate(recommendedAction, 160)}`,
     `**Evidence:** ${evidenceSnippets.map((snippet) => `"${snippet}"`).join(" / ") || "No verbatim snippet available."}`,
     "",
-    `[Open full analysis](${analysisUrl(baseUrl, runId)})`,
+    analysisLinkMarkdown(analysisLink, runId),
     "",
     "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot."
   ];
@@ -123,7 +141,8 @@ export function buildTechnicalMessage(params: {
     recipient_email: decision.recipient_email,
     subject: `Technical action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
     markdown,
-    character_count: markdown.length
+    character_count: markdown.length,
+    synthesized_by_ai: false
   };
 }
 
@@ -131,12 +150,12 @@ export function buildMessagesForRouting(params: {
   result: SecureNetworkingTriageResult;
   routing: LaneRoutingDecision[];
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): WebexMessagePreview[] {
   return params.routing.map((decision) =>
     decision.lane === "sales"
-      ? buildSalesMessage({ result: params.result, decision, runId: params.runId, baseUrl: params.baseUrl })
-      : buildTechnicalMessage({ result: params.result, decision, runId: params.runId, baseUrl: params.baseUrl })
+      ? buildSalesMessage({ result: params.result, decision, runId: params.runId, analysisLink: params.analysisLink })
+      : buildTechnicalMessage({ result: params.result, decision, runId: params.runId, analysisLink: params.analysisLink })
   );
 }
 
@@ -159,11 +178,10 @@ export function buildSalesEmail(params: {
   result: SecureNetworkingTriageResult;
   decision: LaneRoutingDecision;
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): EmailMessagePreview {
-  const { result, decision, runId, baseUrl } = params;
+  const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
-  const link = analysisUrl(baseUrl, runId);
 
   const commercialSignalParts = [
     result.commercial_signals.budget ? `Budget: ${result.commercial_signals.budget}` : null,
@@ -179,8 +197,7 @@ export function buildSalesEmail(params: {
     { label: "Budget / timeline / renewal", value: whyNowEvidence(result) },
     { label: "Primary opportunity", value: summary.primary_opportunity ?? "Not identified" },
     { label: "Recommended sales action", value: decision.actions[0] ?? "Review the full analysis" },
-    { label: "Technical counterpart requirement", value: technicalCounterpartText(decision) },
-    { label: "Full analysis", value: link }
+    { label: "Technical counterpart requirement", value: technicalCounterpartText(decision) }
   ];
 
   return {
@@ -188,8 +205,9 @@ export function buildSalesEmail(params: {
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
     subject: `[${summary.verdict}] Sales action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
-    html: `<p>Peachtree Select pilot — Sales action.</p>${bulletsToHtml(bullets)}<p><a href="${link}">Open full analysis</a></p>`,
-    text: `Peachtree Select pilot — Sales action.\n\n${bulletsToText(bullets)}`
+    html: `<p>Peachtree Select pilot — Sales action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
+    text: `Peachtree Select pilot — Sales action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
+    synthesized_by_ai: false
   };
 }
 
@@ -197,12 +215,11 @@ export function buildTechnicalEmail(params: {
   result: SecureNetworkingTriageResult;
   decision: LaneRoutingDecision;
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): EmailMessagePreview {
-  const { result, decision, runId, baseUrl } = params;
+  const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
-  const link = analysisUrl(baseUrl, runId);
 
   const currentEnvironment = primaryMatch?.solution_decision.retained_existing_platforms.length
     ? primaryMatch.solution_decision.retained_existing_platforms.join(", ")
@@ -221,8 +238,7 @@ export function buildTechnicalEmail(params: {
     { label: "Recommended solution motion", value: solutionMotion },
     { label: "Technical evidence", value: evidence },
     { label: "Risks / unknowns", value: unresolvedRisks || "None flagged" },
-    { label: "Recommended action", value: decision.actions[0] ?? "Schedule technical discovery / architecture review." },
-    { label: "Full analysis", value: link }
+    { label: "Recommended action", value: decision.actions[0] ?? "Schedule technical discovery / architecture review." }
   ];
 
   return {
@@ -230,8 +246,9 @@ export function buildTechnicalEmail(params: {
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
     subject: `[${summary.verdict}] Technical action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
-    html: `<p>Peachtree Select pilot — Technical action.</p>${bulletsToHtml(bullets)}<p><a href="${link}">Open full analysis</a></p>`,
-    text: `Peachtree Select pilot — Technical action.\n\n${bulletsToText(bullets)}`
+    html: `<p>Peachtree Select pilot — Technical action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
+    text: `Peachtree Select pilot — Technical action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
+    synthesized_by_ai: false
   };
 }
 
@@ -239,11 +256,11 @@ export function buildEmailsForRouting(params: {
   result: SecureNetworkingTriageResult;
   routing: LaneRoutingDecision[];
   runId: string;
-  baseUrl: string | null;
+  analysisLink: AnalysisLink;
 }): EmailMessagePreview[] {
   return params.routing.map((decision) =>
     decision.lane === "sales"
-      ? buildSalesEmail({ result: params.result, decision, runId: params.runId, baseUrl: params.baseUrl })
-      : buildTechnicalEmail({ result: params.result, decision, runId: params.runId, baseUrl: params.baseUrl })
+      ? buildSalesEmail({ result: params.result, decision, runId: params.runId, analysisLink: params.analysisLink })
+      : buildTechnicalEmail({ result: params.result, decision, runId: params.runId, analysisLink: params.analysisLink })
   );
 }

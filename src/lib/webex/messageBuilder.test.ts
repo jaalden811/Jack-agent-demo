@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildSalesMessage, buildTechnicalMessage, buildSalesEmail, buildTechnicalEmail } from "@/lib/webex/messageBuilder";
+import { buildDefaultAccountResolution, buildDefaultAiProcessing, buildDefaultMeddpicc, buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
+import type { AnalysisLink } from "@/lib/qualification/types";
 import type { LaneRoutingDecision } from "@/lib/webex/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+
+const noLink: AnalysisLink = { included: false, url: null, reason: "no_public_base_url", expires_at: null };
+const includedLink: AnalysisLink = { included: true, url: "https://app.example.com/signal-agent/results/run-1?token=abc.def", reason: "public_url_ready", expires_at: new Date(Date.now() + 3600_000).toISOString() };
 
 function buildResult(): SecureNetworkingTriageResult {
   return {
@@ -94,7 +99,13 @@ function buildResult(): SecureNetworkingTriageResult {
     public_signals: [],
     audit: { logged: false, path: "", warning: null },
     transcript_meta: { title: "Test meeting", account: "Acme Retail", participant_count: 5, sentence_count: 20, raw_text: "" },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    run_id: "test-run-id",
+    account_resolution: { ...buildDefaultAccountResolution(), name: "Acme Retail", status: "resolved", confidence: 0.95, action_required: null },
+    meddpicc: buildDefaultMeddpicc(),
+    public_enrichment: buildDefaultPublicEnrichment(),
+    ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),
+    analysis_link: noLink
   };
 }
 
@@ -123,8 +134,8 @@ const technicalDecision: LaneRoutingDecision = {
 describe("Webex message templates", () => {
   it("sales and technical messages contain different, tailored content", () => {
     const result = buildResult();
-    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
-    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
     expect(salesMessage.markdown).toContain("Sales action");
@@ -139,32 +150,46 @@ describe("Webex message templates", () => {
   it("never pastes the full transcript into a message", () => {
     const result = buildResult();
     result.transcript_meta.raw_text = "SENTENCE-MARKER-XYZ ".repeat(500);
-    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     expect(salesMessage.markdown).not.toContain("SENTENCE-MARKER-XYZ");
   });
 
   it("keeps each message under ~1,200 characters", () => {
     const result = buildResult();
-    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
-    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
     expect(salesMessage.character_count).toBeLessThanOrEqual(1200);
     expect(technicalMessage.character_count).toBeLessThanOrEqual(1200);
   });
 
   it("explains why the recipient received the message", () => {
     const result = buildResult();
-    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
-    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
     expect(salesMessage.markdown).toContain("Sales / Commercial action for the Peachtree Select pilot");
     expect(technicalMessage.markdown).toContain("Technical / Specialist action for the Peachtree Select pilot");
+  });
+
+  it("never renders a hyperlink when no valid public analysis link exists (Section 11)", () => {
+    const result = buildResult();
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    expect(salesMessage.markdown).not.toContain("[Open full analysis]");
+    expect(salesMessage.markdown).toContain("Analysis reference:** Run `run-1`");
+  });
+
+  it("renders a real hyperlink only when a valid public link was constructed", () => {
+    const result = buildResult();
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: includedLink });
+    expect(salesMessage.markdown).toContain(`[Open full analysis](${includedLink.url})`);
+    expect(salesMessage.markdown).not.toContain("localhost");
   });
 });
 
 describe("Outlook email templates", () => {
   it("builds distinct sales and technical emails with the required subject format", () => {
     const result = buildResult();
-    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
-    const technicalEmail = buildTechnicalEmail({ result, decision: technicalDecision, runId: "run-1", baseUrl: null });
+    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technicalEmail = buildTechnicalEmail({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
     expect(salesEmail.subject).toBe("[HIGH_INTENT] Sales action — Acme Retail — Fragmented network operations");
     expect(technicalEmail.subject).toBe("[HIGH_INTENT] Technical action — Acme Retail — Fragmented network operations");
@@ -177,7 +202,7 @@ describe("Outlook email templates", () => {
   it("never pastes the full transcript into an email", () => {
     const result = buildResult();
     result.transcript_meta.raw_text = "SENTENCE-MARKER-XYZ ".repeat(500);
-    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", baseUrl: null });
+    const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     expect(salesEmail.text).not.toContain("SENTENCE-MARKER-XYZ");
     expect(salesEmail.html).not.toContain("SENTENCE-MARKER-XYZ");
   });
