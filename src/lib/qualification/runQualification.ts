@@ -44,12 +44,22 @@ export async function runQualificationPipeline(params: {
   businessProblem: string;
   renewalEvents: string[];
   purchaseLanguage: string[];
+  /** Deterministic, always-available budget/timeline evidence (see
+   * @/lib/signal-agent/commercialSignals) — used directly for the
+   * transcript-opportunity score so funding/urgency detection never
+   * silently depends on OpenAI being configured. */
+  budget: string | null;
+  timeline: string | null;
   matches: MatchOutput[];
   verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
   lifecycleStageGuess: "LAND" | "ADOPT" | "EXPAND" | "RENEW";
   enrichPublicSignals: boolean;
   useQualification: boolean;
   userEnteredAccount?: string | null;
+  /** Real generic next-step evidence (workshops, pilots, PoV/PoC,
+   * "let's schedule a follow-up", etc.) — genuinely present-or-absent,
+   * never a placeholder that is unconditionally true. */
+  nextStepSignals?: string[];
 }): Promise<QualificationPipelineResult> {
   const config = getConfig();
   const openAiConfigured = Boolean(config.OPENAI_API_KEY);
@@ -205,11 +215,19 @@ export async function runQualificationPipeline(params: {
     enrichmentEnabled: params.enrichPublicSignals
   });
 
-  const hasNamedDecisionAuthority = params.namedStakeholders.some((s) => s.ownership_type === "executive");
+  // "executive" and "finance_vendor_management" (procurement/vendor
+  // management/budget authority) are the two generic ownership
+  // categories that represent real purchasing decision authority,
+  // independent of any specific transcript, company, or product.
+  const hasNamedDecisionAuthority = params.namedStakeholders.some((s) => s.ownership_type === "executive" || s.ownership_type === "finance_vendor_management");
   const transcriptOpportunitySignals = buildTranscriptOpportunitySignals({
     commercialSignals: {
-      budget: extraction.result?.commercial_signals.budget[0] ?? (params.purchaseLanguage.length > 0 ? "stated" : null),
-      timeline: extraction.result?.commercial_signals.timeline[0] ?? null,
+      // Deterministic evidence first (always available); the OpenAI
+      // extraction, when configured, can surface additional signal
+      // but must never be the *only* path to a real, already-detected
+      // budget/timeline fact.
+      budget: params.budget ?? extraction.result?.commercial_signals.budget[0] ?? null,
+      timeline: params.timeline ?? extraction.result?.commercial_signals.timeline[0] ?? null,
       renewal_events: params.renewalEvents,
       quantified_impact: params.quantifiedImpact,
       purchase_language: params.purchaseLanguage
@@ -217,7 +235,7 @@ export async function runQualificationPipeline(params: {
     meddpicc,
     primaryMatch: params.matches[0],
     hasNamedDecisionAuthority,
-    discoveryQuestions: []
+    nextStepSignals: params.nextStepSignals ?? []
   });
   const transcriptScore = computeTranscriptOpportunityScore(transcriptOpportunitySignals);
   const qualificationScore = computeQualificationCompletenessScore(meddpicc);

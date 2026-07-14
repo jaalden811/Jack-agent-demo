@@ -291,12 +291,15 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     businessProblem: finalExecutiveSummary.business_problem,
     renewalEvents: commercialSignals.renewal_events,
     purchaseLanguage: commercialSignals.purchase_language,
+    budget: commercialSignals.budget,
+    timeline: commercialSignals.timeline,
     matches,
     verdict: primaryEvaluation.intentLabel,
     lifecycleStageGuess,
     enrichPublicSignals,
     useQualification,
-    userEnteredAccount: request.userEnteredAccount ?? null
+    userEnteredAccount: request.userEnteredAccount ?? null,
+    nextStepSignals: genericSignals.filter((s) => s.bucket === "next_steps").map((s) => s.text)
   });
 
   const corroborationSummary: CorroborationSummary = {

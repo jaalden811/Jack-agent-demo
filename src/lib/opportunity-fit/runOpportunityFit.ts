@@ -147,7 +147,11 @@ export function buildTranscriptOpportunitySignals(params: {
   meddpicc: Meddpicc;
   primaryMatch: MatchOutput | undefined;
   hasNamedDecisionAuthority: boolean;
-  discoveryQuestions: string[];
+  /** Real, generically-detected next-step evidence (workshop, pilot,
+   * PoV/PoC, explicit "next steps"/follow-up commitment language) —
+   * empty when the transcript contains no such evidence, never an
+   * unconditional placeholder. */
+  nextStepSignals: string[];
 }): TranscriptOpportunitySignals {
   return {
     hasQuantifiedImpact: params.commercialSignals.quantified_impact.length > 0,
@@ -156,7 +160,7 @@ export function buildTranscriptOpportunitySignals(params: {
     hasRenewal: params.commercialSignals.renewal_events.length > 0,
     hasEvaluationLanguage: params.commercialSignals.purchase_language.length > 0,
     hasSuccessCriteria: (params.primaryMatch?.intent_evidence.length ?? 0) > 0,
-    hasNextSteps: params.discoveryQuestions.length >= 0, // discovery questions always exist deterministically; presence of a routed action is checked upstream
+    hasNextSteps: params.nextStepSignals.length > 0,
     hasNamedDecisionAuthority: params.hasNamedDecisionAuthority,
     identifyPainStatus: params.meddpicc.identify_pain.status,
     primarySolutionFitConfidence: params.primaryMatch?.confidence ?? 0

@@ -29,6 +29,26 @@ function baseSignal(overrides: Partial<NormalizedPublicSignal> = {}): Normalized
   };
 }
 
+describe("Defect fix: hasNextSteps reflects real evidence, never an unconditional true", () => {
+  it("computeTranscriptOpportunityScore differs by exactly the configured next-steps point value when next-step evidence is present vs absent", () => {
+    const base = {
+      hasQuantifiedImpact: false,
+      hasFunding: false,
+      hasUrgencyOrDeadline: false,
+      hasRenewal: false,
+      hasEvaluationLanguage: false,
+      hasSuccessCriteria: false,
+      hasNamedDecisionAuthority: false,
+      identifyPainStatus: "MISSING" as const,
+      primarySolutionFitConfidence: 0
+    };
+    const without = computeTranscriptOpportunityScore({ ...base, hasNextSteps: false });
+    const withNextSteps = computeTranscriptOpportunityScore({ ...base, hasNextSteps: true });
+    expect(withNextSteps).toBeGreaterThan(without);
+    expect(withNextSteps - without).toBe(8);
+  });
+});
+
 describe("Test 22: arithmetic matches configured weights", () => {
   it("transcript opportunity score reflects the configured point values, never a hard-coded 100", () => {
     const score = computeTranscriptOpportunityScore({

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
 import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
+import { computeTranscriptOpportunityScore } from "@/lib/opportunity-fit/opportunityFit";
 
 /**
  * Integration-level tests (Section 17) for the account-resolution ->
@@ -19,6 +20,56 @@ beforeEach(() => {
   delete process.env.SEARCH_API_KEY;
   clearCatalogCache();
   clearAccountsCache();
+});
+
+describe("Defect fix: funding/timeline detection never silently depends on OpenAI being configured", () => {
+  it("the real 30-turn Splunk regression fixture — which has clear deterministic budget/timeline/renewal language — scores hasFunding/hasUrgencyOrDeadline true with OpenAI fully disabled", async () => {
+    const text = readFileSync("signal-agent-poc/data/transcripts/splunk_platform_rationalization.txt", "utf8");
+    const result = await runSignalAgent({ customTranscript: text, options: OFF });
+    // commercial_signals.budget/timeline are deterministically detected
+    // (verified independently below) — the transcript-opportunity score
+    // must reflect them even though OpenAI is fully disabled in this
+    // test. Before the fix, budget/timeline detection for the score was
+    // wired exclusively through the OpenAI Stage-A extraction result,
+    // so it silently produced 0 points for both whenever OpenAI was
+    // unconfigured, regardless of the deterministic evidence already
+    // computed elsewhere in the same pipeline run.
+    expect(result.commercial_signals.budget).toBeTruthy();
+    expect(result.commercial_signals.timeline).toBeTruthy();
+    expect(result.opportunity_scoring.transcript_score).toBeGreaterThanOrEqual(90);
+  });
+
+  it("computeTranscriptOpportunityScore itself: hasFunding/hasUrgencyOrDeadline being true adds exactly the configured point values", () => {
+    const base = {
+      hasQuantifiedImpact: false,
+      hasFunding: false,
+      hasUrgencyOrDeadline: false,
+      hasRenewal: false,
+      hasEvaluationLanguage: false,
+      hasSuccessCriteria: false,
+      hasNextSteps: false,
+      hasNamedDecisionAuthority: false,
+      identifyPainStatus: "MISSING" as const,
+      primarySolutionFitConfidence: 0
+    };
+    const withoutFundingOrTimeline = computeTranscriptOpportunityScore(base);
+    const withFundingAndTimeline = computeTranscriptOpportunityScore({ ...base, hasFunding: true, hasUrgencyOrDeadline: true });
+    expect(withFundingAndTimeline - withoutFundingOrTimeline).toBe(22); // 12 (funding) + 10 (urgency/timeline)
+  });
+});
+
+describe("Defect fix: finance/vendor-management stakeholders count as decision authority", () => {
+  it("a named procurement/vendor-management lead contributes decision-authority points, not only an 'executive' title", async () => {
+    const withProcurementLead = await runSignalAgent({
+      customTranscript: ["Account: Brightfield Regional Utilities", "00:00 — Jamie: I run vendor management and procurement for this initiative.", "00:05 — Sam: We have too many network consoles across our sites."].join("\n"),
+      options: OFF
+    });
+    const withoutAnyAuthority = await runSignalAgent({
+      customTranscript: ["Account: Brightfield Regional Utilities", "00:00 — Jamie: I handle day-to-day monitoring dashboards.", "00:05 — Sam: We have too many network consoles across our sites."].join("\n"),
+      options: OFF
+    });
+    expect(withProcurementLead.opportunity_scoring.transcript_score).toBeGreaterThan(withoutAnyAuthority.opportunity_scoring.transcript_score);
+  });
 });
 
 describe("Test 6/7: unresolved account prevents broad search but never reduces the transcript score", () => {
