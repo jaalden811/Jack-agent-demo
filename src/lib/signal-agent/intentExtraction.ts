@@ -1,5 +1,6 @@
-import type { BuyingIntentEvidence, BuyingIntentEvidenceType, IngestedTranscript, Stakeholder, StakeholderOwnershipType } from "@/lib/signal-agent/types";
+import type { BuyingIntentEvidence, BuyingIntentEvidenceType, IngestedTranscript, Stakeholder } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
+import { classifyOwnership } from "@/lib/signal-agent/stakeholderExtraction";
 
 /**
  * Explicit transcript intent extraction — deterministic, generic, and
@@ -147,50 +148,20 @@ export function scoreBuyingIntentEvidence(evidence: BuyingIntentEvidence[]): num
   return Math.min(1, total);
 }
 
-const OWNERSHIP_KEYWORDS: Array<{ type: StakeholderOwnershipType; keywords: string[] }> = [
-  { type: "executive", keywords: ["chief", "cio", "cto", "ceo", "cfo", "evp", "svp", "president", "executive"] },
-  { type: "security", keywords: ["security", "ciso", "soc"] },
-  { type: "application", keywords: ["application", "platform", "product", "app "] },
-  { type: "technical", keywords: ["engineer", "architect", "technical", "engineering"] },
-  { type: "operational", keywords: ["operations", "vp", "director", "manager", "ops"] }
-];
-
-function classifyOwnership(role: string): StakeholderOwnershipType {
-  const lower = role.toLowerCase();
-  for (const group of OWNERSHIP_KEYWORDS) {
-    if (
-      group.keywords.some((keyword) => {
-        // Require a word boundary immediately before the keyword (but not
-        // necessarily after) — this still lets "engineer" match inside
-        // "engineering", while preventing short acronym-like keywords
-        // (e.g. "cto", "vp") from false-positive matching mid-word
-        // substrings such as "director" (which contains the letters
-        // "cto" starting mid-word, with no boundary before them).
-        const pattern = new RegExp(`\\b${keyword.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
-        return pattern.test(lower);
-      })
-    ) {
-      return group.type;
-    }
-  }
-  return "operational";
-}
-
-/** Stakeholders are read only from the transcript's own "Participants"
- * line — never invented. A participant explicitly tagged "(Customer, ...)"
- * is included; the role text after the comma drives ownership_type
- * classification generically (keyword groups above), not a hard-coded
- * per-person mapping. */
+/** Legacy, simple stakeholder list (name/role/ownership_type only) used
+ * for corroboration scoring and the `stakeholders` result field. Reads
+ * from the transcript's structural participant records — built purely
+ * from transcript text (headers, the legacy Participants: line, or
+ * dialogue turns), never invented. Only customer-side participants with
+ * a discernible role are included; vendor-side (e.g. Cisco seller)
+ * participants are excluded regardless of how often they spoke. See
+ * @/lib/signal-agent/stakeholderExtraction for the richer three-tier
+ * (participants / named stakeholders / inferred functional owners) model. */
 export function extractStakeholders(transcript: IngestedTranscript): Stakeholder[] {
   const stakeholders: Stakeholder[] = [];
-  for (const participant of transcript.participants) {
-    const match = participant.match(/^(.+?)\s*\((.+)\)$/);
-    if (!match) continue;
-    const name = match[1].trim();
-    const roleText = match[2].trim();
-    if (!roleText.toLowerCase().includes("customer")) continue;
-    const role = roleText.replace(/^customer,?\s*/i, "").trim() || "Customer stakeholder";
-    stakeholders.push({ name, role, ownership_type: classifyOwnership(role) });
+  for (const record of transcript.participantRecords) {
+    if (record.classification !== "customer" || !record.title) continue;
+    stakeholders.push({ name: record.name, role: record.title, ownership_type: classifyOwnership(record.title) });
   }
   return stakeholders;
 }
