@@ -147,6 +147,95 @@ describe("ingestTranscript — vendor vs customer classification", () => {
   });
 });
 
+describe("ingestTranscript — hyphenated compound words never become fake speakers (regression)", () => {
+  it("never treats 'The cross-environment...' as a speaker header", () => {
+    const text = [
+      "00:05 — Erin: Let's talk about performance.",
+      "The cross-environment API calls were slower during peak hours."
+    ].join("\n");
+    const transcript = ingestTranscript(text);
+    expect(transcript.participantRecords.map((p) => p.name)).not.toContain("The cross");
+    expect(transcript.sentences.some((s) => s.text.includes("cross-environment"))).toBe(true);
+  });
+
+  it("never treats 'Plus customer-service...', 'So business-service...', 'Provide a three-year...', or 'Include sensitive-field...' as speaker headers", () => {
+    const text = [
+      "00:05 — Erin: Let's cover a few points.",
+      "Plus customer-service overtime costs have gone up significantly this quarter alone.",
+      "So business-service reliability matters more than ever to our leadership team.",
+      "00:10 — Maya: Understood.",
+      "Provide a three-year cost model for this initiative.",
+      "Include sensitive-field masking requirements in the technical scope."
+    ].join("\n");
+    const transcript = ingestTranscript(text);
+    const names = transcript.participantRecords.map((p) => p.name);
+    expect(names).not.toContain("Plus customer");
+    expect(names).not.toContain("So business");
+    expect(names).not.toContain("Provide a three");
+    expect(names).not.toContain("Include sensitive");
+    expect(names).toEqual(["Erin", "Maya"]);
+  });
+
+  it("preserves the continuation text of a rejected header candidate as part of the open turn, never dropping it", () => {
+    const text = ["00:05 — Erin: Let's cover a few points.", "Plus customer-service overtime costs have gone up this quarter."].join("\n");
+    const transcript = ingestTranscript(text);
+    expect(transcript.sentences.some((s) => s.text.includes("customer-service overtime"))).toBe(true);
+    expect(transcript.sentences.find((s) => s.text.includes("customer-service overtime"))?.speaker).toBe("Erin");
+  });
+
+  it("still recognizes a genuine 'Name — Title' header with padded em dash", () => {
+    const transcript = ingestTranscript("Maya Chen — Cisco Account Executive");
+    expect(transcript.participantRecords.map((p) => p.name)).toContain("Maya Chen");
+  });
+
+  it("does not treat an unpadded hyphen anywhere as the no-timestamp header separator", () => {
+    const transcript = ingestTranscript("Well-known issue with the platform today.");
+    expect(transcript.participantRecords.map((p) => p.name)).not.toContain("Well");
+  });
+});
+
+describe("ingestTranscript — multi-line turn continuation (regression: previously only the first line of a wrapped turn reached scoring)", () => {
+  it("accumulates every wrapped continuation line into the open speaker's turn until the next header", () => {
+    const text = [
+      "00:05 — Erin: Our biggest pain is fragmented tooling.",
+      "Every team has its own logging tool.",
+      "When something breaks we jump between five consoles.",
+      "00:10 — Maya: Understood, that's a common problem."
+    ].join("\n");
+    const transcript = ingestTranscript(text);
+    const erinSentences = transcript.sentences.filter((s) => s.speaker === "Erin");
+    expect(erinSentences.length).toBe(3);
+    expect(erinSentences.map((s) => s.text)).toEqual([
+      "Our biggest pain is fragmented tooling.",
+      "Every team has its own logging tool.",
+      "When something breaks we jump between five consoles."
+    ]);
+  });
+
+  it("reports accurate turns_parsed/sentences_parsed diagnostics for a multi-line transcript", () => {
+    const text = [
+      "00:00 — Maya: Thanks for joining today.",
+      "00:05 — Erin: Our biggest pain is fragmented tooling.",
+      "Every team has its own logging tool.",
+      "When something breaks we jump between five consoles.",
+      "00:15 — Maya: Understood."
+    ].join("\n");
+    const transcript = ingestTranscript(text);
+    expect(transcript.diagnostics.turns_parsed).toBe(3);
+    expect(transcript.diagnostics.sentences_parsed).toBe(5);
+    expect(transcript.diagnostics.speaker_headers_detected).toBe(3);
+  });
+
+  it("a header line (participant metadata) closes an open turn rather than becoming its continuation", () => {
+    const text = ["00:00 — Erin: First point.", "Daniel Cho — Customer, Reliability Lead", "00:05 — Daniel: Second point."].join("\n");
+    const transcript = ingestTranscript(text);
+    const erin = transcript.participantRecords.find((p) => p.name === "Erin")!;
+    // Erin's turn text must not have absorbed the header line as continuation.
+    expect(transcript.sentences.some((s) => s.speaker === "Erin" && s.text.includes("Reliability Lead"))).toBe(false);
+    expect(erin).toBeTruthy();
+  });
+});
+
 describe("ingestTranscript — freeform fallback preserved", () => {
   it("treats fully unattributed pasted text as one customer-equivalent block", () => {
     const text = "We have too many consoles and need a unified view across the network.";
