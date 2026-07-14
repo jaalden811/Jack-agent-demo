@@ -216,7 +216,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
 describe("computePeachtreePreview — no delivery attempted", () => {
   it("returns delivery entries with attempted:false and auto_send_enabled:false", async () => {
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
-    const preview = computePeachtreePreview(result);
+    const preview = await computePeachtreePreview(result);
     expect(preview.auto_send_enabled).toBe(false);
     expect(preview.delivery.every((item) => item.attempted === false)).toBe(true);
     expect(sendDirectMessage).not.toHaveBeenCalled();

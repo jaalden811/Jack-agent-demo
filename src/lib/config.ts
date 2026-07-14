@@ -18,8 +18,35 @@ const envSchema = z.object({
   OPENAI_EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-small"),
   OPENAI_SYNTHESIS_MODEL: trimmedString,
   OPENAI_MODEL: trimmedString,
+  OPENAI_QUALIFICATION_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
+  OPENAI_MESSAGE_SYNTHESIS_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
+  OPENAI_PUBLIC_EVIDENCE_CLASSIFICATION_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
+  OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().optional().default(45_000),
+  OPENAI_MAX_RETRIES: z.coerce.number().optional().default(2),
+  OPENAI_STORE_RESPONSES: z.string().optional().default("false").transform((v) => v.trim().toLowerCase() === "true"),
   SEARCH_API_KEY: trimmedString,
   SEARCH_PROVIDER: z.enum(["tavily", "brave", "exa", "serpapi"]).optional().default("tavily"),
+
+  // Dedicated SerpAPI connector (@/lib/connectors/serpapi) — reuses the
+  // existing SEARCH_PROVIDER/SEARCH_API_KEY, never a second key variable.
+  SERPAPI_ENGINE: z.string().optional().default("google"),
+  SERPAPI_LANGUAGE: z.string().optional().default("en"),
+  SERPAPI_COUNTRY: z.string().optional().default("us"),
+  SERPAPI_SAFE: z.string().optional().default("active"),
+  SERPAPI_MAX_QUERIES_PER_RUN: z.coerce.number().optional().default(8),
+  SERPAPI_MAX_RESULTS_PER_QUERY: z.coerce.number().optional().default(10),
+  SERPAPI_DEFAULT_RESULT_LIMIT: z.coerce.number().optional().default(5),
+  SERPAPI_CACHE_TTL_SECONDS: z.coerce.number().optional().default(86_400),
+  SERPAPI_REQUEST_TIMEOUT_MS: z.coerce.number().optional().default(15_000),
+  SERPAPI_MAX_RETRIES: z.coerce.number().optional().default(2),
+  SERPAPI_SECOND_PAGE_ENABLED: z.string().optional().default("false").transform((v) => v.trim().toLowerCase() === "true"),
+
+  // Public, HTTPS-only origin used to build outbound share links — never
+  // derived from localhost/the request Host header. See
+  // @/lib/signal-agent/shareLink.
+  APP_PUBLIC_BASE_URL: trimmedString,
+  SIGNAL_SHARE_LINK_TTL_HOURS: z.coerce.number().optional().default(168),
+  SIGNAL_SHARE_LINK_SECRET: trimmedString,
   FIRECRAWL_API_KEY: trimmedString,
   DATABASE_URL: trimmedString,
   SUPABASE_URL: trimmedString,
@@ -110,6 +137,7 @@ export function getConfig() {
       parsed.data.WEBEX_PUBLIC_BASE_URL &&
         /^https:\/\//i.test(parsed.data.WEBEX_PUBLIC_BASE_URL) &&
         !/localhost|127\.0\.0\.1/i.test(parsed.data.WEBEX_PUBLIC_BASE_URL)
-    )
+    ),
+    hasSerpApi: Boolean(parsed.data.SEARCH_API_KEY && parsed.data.SEARCH_PROVIDER === "serpapi")
   };
 }

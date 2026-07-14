@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
-import { getConfig } from "@/lib/config";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import { buildAnalysisLink } from "@/lib/signal-agent/analysisLink";
+import { persistRunResult } from "@/lib/signal-agent/resultStore";
 import { loadRoutingConfig, classifyLifecycle, buildLaneRouting } from "@/lib/webex/peachtreeRouting";
 import { buildMessagesForRouting, buildEmailsForRouting } from "@/lib/webex/messageBuilder";
 import { deliverMessages } from "@/lib/webex/delivery";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
+import type { AnalysisLink } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, PeachtreePilotResult, WebexLane, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
@@ -29,6 +31,58 @@ import type { ChannelDeliveryResult, PeachtreePilotResult, WebexLane, WebexTrans
 export function computeTranscriptId(transcriptText: string, webexSource: WebexTranscriptSource | null): string {
   if (webexSource?.transcriptId) return webexSource.transcriptId;
   return `local-${createHash("sha256").update(transcriptText).digest("hex").slice(0, 16)}`;
+}
+
+/** Builds (and persists) the "Open full analysis" link for this result,
+ * before any message is constructed — see @/lib/signal-agent/analysisLink
+ * for the full validation checklist. Never derives the link from a
+ * request Host header or localhost; only from the configured
+ * APP_PUBLIC_BASE_URL. */
+async function resolveAnalysisLink(result: SecureNetworkingTriageResult): Promise<AnalysisLink> {
+  return buildAnalysisLink({
+    run_id: result.run_id,
+    created_at: result.timestamp,
+    account: result.executive_summary.account,
+    verdict: result.executive_summary.verdict,
+    confidence: result.executive_summary.confidence,
+    qualification_json: result as unknown as Record<string, unknown>,
+    sales_message: null,
+    technical_message: null,
+    source_summary: (result.public_enrichment?.accepted_evidence ?? [])
+      .filter((item) => item.url)
+      .map((item) => ({ title: item.title ?? item.url ?? "Source", url: item.url as string, domain: item.url ? new URL(item.url).hostname : "" })),
+    delivery_summary: {}
+  });
+}
+
+/** Re-persists the run record with the final built messages/emails and
+ * delivery summary once they exist, so the shared results page reflects
+ * exactly what was sent — without changing the already-issued link
+ * (same run_id, same token). */
+async function finalizeRunPersistence(params: {
+  result: SecureNetworkingTriageResult;
+  analysisLink: AnalysisLink;
+  messages: Array<{ lane: string; markdown: string }>;
+  delivery: ChannelDeliveryResult[];
+}): Promise<void> {
+  if (!params.analysisLink.included) return;
+  const sales = params.messages.find((m) => m.lane === "sales")?.markdown ?? null;
+  const technical = params.messages.find((m) => m.lane === "technical")?.markdown ?? null;
+  await persistRunResult({
+    run_id: params.result.run_id,
+    created_at: params.result.timestamp,
+    expires_at: params.analysisLink.expires_at ?? new Date().toISOString(),
+    account: params.result.executive_summary.account,
+    verdict: params.result.executive_summary.verdict,
+    confidence: params.result.executive_summary.confidence,
+    qualification_json: params.result as unknown as Record<string, unknown>,
+    sales_message: sales,
+    technical_message: technical,
+    source_summary: (params.result.public_enrichment?.accepted_evidence ?? [])
+      .filter((item) => item.url)
+      .map((item) => ({ title: item.title ?? item.url ?? "Source", url: item.url as string, domain: item.url ? new URL(item.url).hostname : "" })),
+    delivery_summary: { channels: params.delivery }
+  });
 }
 
 function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
@@ -60,15 +114,17 @@ function previewOnlyDelivery(
 }
 
 /** Preview-only: computes lifecycle + routing + message/email drafts
- * without sending anything or touching the idempotency guard. */
-export function computePeachtreePreview(result: SecureNetworkingTriageResult): PeachtreePilotResult {
+ * without sending anything or touching the idempotency guard. Still
+ * builds/persists the real analysis link so the preview shown in the UI
+ * matches exactly what would be sent. */
+export async function computePeachtreePreview(result: SecureNetworkingTriageResult): Promise<PeachtreePilotResult> {
   const config = loadRoutingConfig();
   const lifecycle = classifyLifecycle(result);
   const routing = buildLaneRouting(result, config, lifecycle);
   const runId = result.timestamp;
-  const baseUrl = getConfig().WEBEX_PUBLIC_BASE_URL ?? null;
-  const messages = buildMessagesForRouting({ result, routing, runId, baseUrl });
-  const emails = buildEmailsForRouting({ result, routing, runId, baseUrl });
+  const analysisLink = await resolveAnalysisLink(result);
+  const messages = buildMessagesForRouting({ result, routing, runId, analysisLink });
+  const emails = buildEmailsForRouting({ result, routing, runId, analysisLink });
 
   return {
     lifecycle,
@@ -97,9 +153,9 @@ export async function deliverPeachtreePipeline(
   const routing = buildLaneRouting(result, config, lifecycle);
   const transcriptId = computeTranscriptId(transcriptText, webexSource);
   const runId = result.timestamp;
-  const baseUrl = getConfig().WEBEX_PUBLIC_BASE_URL ?? null;
-  const messages = buildMessagesForRouting({ result, routing, runId, baseUrl });
-  const emails = buildEmailsForRouting({ result, routing, runId, baseUrl });
+  const analysisLink = await resolveAnalysisLink(result);
+  const messages = buildMessagesForRouting({ result, routing, runId, analysisLink });
+  const emails = buildEmailsForRouting({ result, routing, runId, analysisLink });
 
   const alreadyProcessed = await getProcessedTranscript(transcriptId);
   const alreadySentKeys = new Set<string>(alreadyProcessed?.lanesSent ?? []);
@@ -216,6 +272,8 @@ export async function deliverPeachtreePipeline(
       error: item.error
     });
   }
+
+  await finalizeRunPersistence({ result, analysisLink, messages, delivery });
 
   return { lifecycle, routing, messages, emails, delivery, routing_config_version: config.metadata.version, auto_send_enabled: true };
 }
