@@ -30,8 +30,28 @@ export function SignalAgentWorkspace() {
 
   const [useOpenAI, setUseOpenAI] = useState(true);
   const [enrichPublicSignals, setEnrichPublicSignals] = useState(false);
+  const [enrichPublicSignalsTouched, setEnrichPublicSignalsTouched] = useState(false);
   const [accountOverrideText, setAccountOverrideText] = useState("");
   const [showTranscript, setShowTranscript] = useState(false);
+
+  // "Enrich with public account and stakeholder signals" (Section 13):
+  // default ON once SerpAPI is confirmed configured/usable, unless the
+  // user has already made an explicit choice — never overrides a
+  // manual toggle, and never turns itself on for a run the user
+  // explicitly opted out of.
+  useEffect(() => {
+    if (!enrichPublicSignalsTouched && agentStatus?.search.usable) {
+      // Deferred to a microtask (same pattern as the connection-notice
+      // effect above) so this is never a synchronous setState call
+      // within the effect body itself.
+      void Promise.resolve().then(() => setEnrichPublicSignals(true));
+    }
+  }, [agentStatus?.search.usable, enrichPublicSignalsTouched]);
+
+  function handleToggleEnrich(value: boolean) {
+    setEnrichPublicSignalsTouched(true);
+    setEnrichPublicSignals(value);
+  }
 
   function loadCatalog() {
     fetch("/api/signal-agent/catalog")
@@ -129,6 +149,7 @@ export function SignalAgentWorkspace() {
           options: {
             useOpenAIEmbeddings: useOpenAI,
             useOpenAISynthesis: useOpenAI,
+            useQualification: useOpenAI,
             enrichPublicSignals
           }
         })
@@ -189,7 +210,7 @@ export function SignalAgentWorkspace() {
             accountOverrideText={accountOverrideText}
             onAccountOverrideTextChange={setAccountOverrideText}
             enrichPublicSignals={enrichPublicSignals}
-            onToggleEnrich={setEnrichPublicSignals}
+            onToggleEnrich={handleToggleEnrich}
             useOpenAI={useOpenAI}
             onToggleOpenAI={setUseOpenAI}
           />

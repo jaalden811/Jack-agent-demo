@@ -11,6 +11,7 @@ import { ScoreEvidenceTab } from "@/components/signal-agent/tabs/ScoreEvidenceTa
 import { RoutingPreviewTab } from "@/components/signal-agent/tabs/RoutingPreviewTab";
 import { InternalBriefTab } from "@/components/signal-agent/tabs/InternalBriefTab";
 import { AuditTab } from "@/components/signal-agent/tabs/AuditTab";
+import { SourcesEnrichmentTab } from "@/components/signal-agent/tabs/SourcesEnrichmentTab";
 
 const TABS = [
   { id: "executive", label: "Executive summary" },
@@ -18,6 +19,7 @@ const TABS = [
   { id: "signals", label: "Opportunity signals" },
   { id: "architecture", label: "Solution architecture" },
   { id: "score", label: "Score & evidence" },
+  { id: "sources", label: "Sources & enrichment" },
   { id: "routing", label: "Routing preview" },
   { id: "brief", label: "Internal brief" },
   { id: "audit", label: "Audit" }
@@ -59,6 +61,7 @@ export function ResultTabs({
         {activeTab === "signals" && <OpportunitySignalsTab result={result} />}
         {activeTab === "architecture" && <SolutionArchitectureTab result={result} />}
         {activeTab === "score" && <ScoreEvidenceTab result={result} />}
+        {activeTab === "sources" && <SourcesEnrichmentTab result={result} />}
         {activeTab === "routing" && <RoutingPreviewTab result={result} onResultUpdate={onResultUpdate} />}
         {activeTab === "brief" && <InternalBriefTab result={result} />}
         {activeTab === "audit" && <AuditTab result={result} status={status} />}
