@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { ingestTranscript } from "@/lib/signal-agent/transcript";
 import { classifyOwnership, extractNamedStakeholders, inferFunctionalOwners } from "@/lib/signal-agent/stakeholderExtraction";
+import { extractStakeholders } from "@/lib/signal-agent/intentExtraction";
+
+describe("extractStakeholders (legacy result field) — dialogue-only transcripts", () => {
+  it("includes named customer speakers who spoke even when no per-speaker title is present", () => {
+    // A dialogue-only transcript ("00:00 — Erin: ...") has real named
+    // stakeholders but no header-supplied titles; requiring a title
+    // previously dropped every one of them, leaving result.stakeholders
+    // empty for a transcript full of named people.
+    const transcript = ingestTranscript(
+      ["00:00 — Erin: We own reliability and cannot build one timeline.", "00:05 — Marcus: Security needs data segregation.", "00:10 — Leah: Procurement requires measurable cost reduction."].join("\n")
+    );
+    const stakeholders = extractStakeholders(transcript);
+    expect(stakeholders.map((s) => s.name).sort()).toEqual(["Erin", "Leah", "Marcus"]);
+    expect(stakeholders.every((s) => s.role.length > 0)).toBe(true);
+  });
+
+  it("still prefers an explicit header title over the neutral default role", () => {
+    const transcript = ingestTranscript(["Marcus Reyes — Customer, Security Operations Lead", "", "00:00 — Marcus: We need protected pipelines."].join("\n"));
+    const stakeholders = extractStakeholders(transcript);
+    const marcus = stakeholders.find((s) => s.name === "Marcus Reyes");
+    expect(marcus?.role).toContain("Security Operations Lead");
+  });
+});
 
 describe("extractNamedStakeholders", () => {
   it("detects a named, titled customer participant as an explicit stakeholder", () => {
