@@ -40,21 +40,27 @@ const LEGACY_BRACKET_SPEAKER_RE = /^\[([^\]]+)\]:\s*(.*)$/;
 const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .']{0,59}):\s*(.+)$/;
 // No-timestamp "Name — Title" participant-header line. Deliberately
 // restricted to em/en dash ONLY, always padded by whitespace on both
-// sides — a bare mid-word hyphen (as in "cross-environment",
-// "customer-service", "three-year") must never be treated as this
-// separator; only the timestamp-anchored regex above may use a plain
-// hyphen. See isPlausibleSpeakerName for the additional name-shape
-// guard that rejects sentence-like fragments even when the separator
-// shape alone would otherwise match.
-const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.]*(?:\s+[A-Za-z][\w'.]*){0,4})\s+[—–]\s+(.+)$/;
-const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'. ]*?)\s*\(([^)]+)\)\s*$/;
+// sides — a bare mid-word hyphen inside an ordinary hyphenated compound
+// word (of which there are unboundedly many, in any transcript, on any
+// topic) must never be treated as this separator; only the
+// timestamp-anchored regex above may use a plain hyphen. See
+// isPlausibleSpeakerName for the additional name-shape guard that
+// rejects sentence-like fragments even when the separator shape alone
+// would otherwise match.
+// Name tokens may contain an internal hyphen (real compound names, e.g.
+// "Okafor-Lindqvist" or "Jean-Paul") — this is safe because the
+// separator itself still requires a padded em/en dash, never a bare
+// hyphen, so an ordinary hyphenated word in prose still can't supply
+// that separator.
+const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,4})\s+[—–]\s+(.+)$/;
+const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
 
 // Words that never begin a real person's name but commonly begin an
-// ordinary sentence or mid-transcript continuation line — the exact
-// fragments a hyphen/dash-anchored header regex would otherwise
-// misfire on (e.g. "The cross-environment...", "Plus customer-service
-// overtime...", "So business-service...", "Provide a three-year...",
-// "Include sensitive-field..."). Checked case-insensitively against the
+// ordinary sentence or mid-transcript continuation line — a
+// dash/hyphen-anchored header regex would otherwise misfire on any
+// sentence that happens to start with an article, conjunction, or verb
+// and later contains an unrelated hyphenated compound word, on any
+// topic, in any transcript. Checked case-insensitively against the
 // first word of any header/plain-speaker candidate name.
 const IMPLAUSIBLE_LEADING_NAME_WORDS = new Set([
   "the", "a", "an", "and", "or", "but", "so", "plus", "minus", "include", "includes", "including", "excludes",
@@ -68,19 +74,30 @@ const IMPLAUSIBLE_LEADING_NAME_WORDS = new Set([
 ]);
 
 /** Speaker/header-name plausibility guard (Section 2 "Speaker
- * validation"): 1-80 characters, letters/spaces/apostrophes/periods
- * only, no more than 5 words, and never starting with an ordinary
- * sentence-continuation word. This is what actually prevents a
- * hyphenated compound word ("cross-environment") or a sentence
- * fragment from ever becoming a fabricated participant — the
- * separator-shape regexes alone are not sufficient. */
+ * validation"): 1-80 characters, letters/spaces/apostrophes/periods/
+ * internal hyphens only (so real compound names like "Okafor-Lindqvist"
+ * or "Jean-Paul" are never rejected), no more than 5 space-separated
+ * words, and never starting with an ordinary sentence-continuation
+ * word. This is what actually prevents an ordinary sentence fragment
+ * from ever becoming a fabricated participant — the separator-shape
+ * regexes (which require a padded em/en dash, never a bare mid-word
+ * hyphen) are the primary defense; this is a second, independent one. */
 export function isPlausibleSpeakerName(candidate: string): boolean {
   const trimmed = candidate.trim();
   if (trimmed.length < 1 || trimmed.length > 80) return false;
-  if (!/^[A-Za-z][A-Za-z\s'.]*$/.test(trimmed)) return false;
+  if (!/^[A-Za-z][A-Za-z\s'.-]*$/.test(trimmed)) return false;
+  if (trimmed.includes("--") || trimmed.startsWith("-") || trimmed.endsWith("-")) return false;
   const words = trimmed.split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > 5) return false;
-  if (IMPLAUSIBLE_LEADING_NAME_WORDS.has(words[0].toLowerCase())) return false;
+  // Check every hyphen-joined sub-token too (e.g. a compound word split
+  // on its internal hyphen into two halves), not just space-separated
+  // words — a fragment whose first half is an ordinary
+  // sentence-continuation word should still be rejected even when the
+  // whole token contains an internal hyphen.
+  for (const word of words) {
+    const subTokens = word.split("-");
+    if (IMPLAUSIBLE_LEADING_NAME_WORDS.has(subTokens[0].toLowerCase())) return false;
+  }
   return true;
 }
 
@@ -135,10 +152,9 @@ function parseDialogueLine(line: string): DialogueLine | null {
 type HeaderLine = { name: string; descriptor: string };
 /** `null` when the line doesn't even resemble a header; a HeaderLine on
  * a genuine match; or the raw candidate name string when the line
- * matched the separator shape but failed speaker-name plausibility
- * (e.g. "The cross" from "The cross-environment...") — surfaced via
- * `transcript_diagnostics.rejected_header_candidates` rather than
- * silently becoming a fabricated participant. */
+ * matched the separator shape but failed speaker-name plausibility —
+ * surfaced via `transcript_diagnostics.rejected_header_candidates`
+ * rather than silently becoming a fabricated participant. */
 type HeaderLineOutcome = { kind: "header"; value: HeaderLine } | { kind: "rejected"; candidate: string } | null;
 
 function parseHeaderLine(line: string): HeaderLineOutcome {

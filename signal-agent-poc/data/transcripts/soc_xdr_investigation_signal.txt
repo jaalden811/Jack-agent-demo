@@ -1,0 +1,39 @@
+Account: Larchmont County Health Network
+Meeting: SOC Alert Fatigue and Response Discovery
+Date: 2026-05-14
+
+Taylor — Cisco Account Executive
+Nora — Customer, SOC Manager
+Owen — Customer, Threat Detection Engineer
+Reese — Customer, Incident Response Lead
+
+00:00 — Taylor: Thanks for joining. What's the biggest challenge your SOC is facing right now?
+00:10 — Nora: Alert fatigue. We have far too many alerts to triage every single day.
+Our analysts jump between five different tools during every incident just to piece together what happened.
+00:35 — Nora: We don't know which threats actually matter versus which are noise, so real incidents get buried.
+00:55 — Owen: On the detection side, we can't correlate endpoint activity with identity activity easily.
+When a login looks suspicious, we can't quickly tell if the same account also triggered anything on an endpoint.
+01:20 — Owen: Our investigation workflow today is almost entirely manual — pulling logs from one system, cross-referencing another, and building a timeline by hand.
+01:45 — Reese: When we do confirm an incident, our response is too slow and too manual.
+We don't have a consistent playbook for containment across endpoint, identity, and network at the same time.
+02:10 — Reese: A recent incident took our team almost four hours just to confirm scope before we could even start containment.
+02:35 — Nora: We're understaffed relative to our alert volume, so anything that reduces noise and speeds up triage is a priority.
+03:00 — Owen: We want to correlate security telemetry into prioritized incidents instead of a flat, undifferentiated alert queue.
+That means cross-domain correlation specifically across endpoint, identity, network, and email signals into one prioritized view.
+03:25 — Reese: We also want to automate threat detection, investigation, and remediation workflows wherever possible, not just generate more alerts.
+Automated or semi-automated response actions for common containment steps would help enormously.
+03:35 — Nora: Reducing SOC tool switching is really the core outcome we're after — every extra tool switch during an active incident costs us time we don't have.
+03:50 — Nora: Our SOC director has asked us to bring in options for consolidating our detection and response tooling this quarter.
+04:15 — Owen: Budget has been approved for a SOC modernization initiative, and leadership wants a decision within the next two months.
+04:40 — Reese: Our CISO is the executive sponsor here and has been very vocal about reducing analyst burnout from alert overload.
+05:05 — Nora: We'd like a proof of concept that takes a realistic multi-stage attack scenario and shows end-to-end detection, investigation, and response.
+05:30 — Owen: For that proof of concept, we want to see how quickly an analyst can go from alert to confirmed scope to containment recommendation.
+05:55 — Reese: Our target is to cut investigation time from hours down to well under thirty minutes for a typical incident.
+06:20 — Nora: We also want better collaboration between our SOC team and our incident-response team during active investigations.
+06:45 — Owen: Integration with our existing endpoint and identity tools matters — we don't want to replace everything at once.
+07:10 — Reese: We'd like a workshop to walk through a real recent incident and see how the recommended approach would have changed the outcome.
+07:35 — Nora: If the workshop goes well, we can bring a formal recommendation to our security steering committee next month.
+08:00 — Owen: We'll also need clear reporting for our board on mean time to detect and mean time to respond.
+08:25 — Reese: Let's schedule a follow-up session once the workshop materials are ready.
+08:50 — Taylor: Understood. We'll prepare a scoped proof of concept, a workshop agenda, and a rough timeline for the steering committee.
+09:15 — Nora: Sounds good. Thanks for the productive discussion today.

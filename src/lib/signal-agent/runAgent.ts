@@ -15,6 +15,8 @@ import { synthesizeExecutiveBrief } from "@/lib/signal-agent/openaiSynthesis";
 import { fetchPublicSignals } from "@/lib/signal-agent/publicSignals";
 import { randomUUID } from "node:crypto";
 import { runQualificationPipeline } from "@/lib/qualification/runQualification";
+import { extractGenericSignals, groupGenericSignalsByBucket } from "@/lib/qualification/genericSignalExtraction";
+import { buildCategoryScores } from "@/lib/signal-agent/dominance";
 import type {
   CorroborationSummary,
   EntryEvaluation,
@@ -141,6 +143,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   const effectiveBundle = prefetchSucceeded
     ? embeddingBundle
     : { ...embeddingBundle, mode: "fallback" as const, warning: "Semantic matching unavailable; using deterministic fallback." };
+
+  const genericSignals = extractGenericSignals(transcript);
 
   const evaluations = await Promise.all(
     catalog.entries.map((entry) =>
@@ -358,7 +362,20 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     // Built (and persisted) once messages exist — see
     // @/lib/webex/automation.ts#resolveAnalysisLink. Not yet known here.
     analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null },
-    transcript_diagnostics: transcript.diagnostics
+    transcript_diagnostics: transcript.diagnostics,
+    generic_diagnostics: {
+      parser: {
+        turns: transcript.diagnostics.turns_parsed,
+        sentences: transcript.diagnostics.sentences_parsed,
+        participants: transcript.diagnostics.participants,
+        warning:
+          transcript.diagnostics.raw_characters > PARSE_INCOMPLETE_MIN_CHARS && transcript.diagnostics.sentences_parsed < PARSE_INCOMPLETE_MIN_SENTENCES
+            ? "parser_warning: sentence count is implausibly low for this transcript length"
+            : null
+      },
+      signals: groupGenericSignalsByBucket(genericSignals),
+      category_scores: buildCategoryScores(evaluations, genericSignals)
+    }
   };
 
   const auditOutcome = await appendAuditRecord(result);

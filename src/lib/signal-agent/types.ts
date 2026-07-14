@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
+import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
 /**
  * All types here describe data shapes only. Nothing in this file encodes a
@@ -601,6 +603,29 @@ export type SecureNetworkingTriageResult = {
    * visible immediately instead of silently producing a confident
    * wrong result. */
   transcript_diagnostics: TranscriptDiagnostics;
+  /** Generic, transcript-agnostic diagnostic trace (Section 8): every
+   * field here is derived purely from the parser and the generic
+   * evidence-scoring engine — never from a transcript-specific branch.
+   * `category_scores` covers every taxonomy entry that was evaluated,
+   * not only the ones selected as matches, so the full ranking (and
+   * why one category dominated another) is always inspectable. */
+  generic_diagnostics: GenericDiagnostics;
+};
+
+export type GenericDiagnostics = {
+  parser: {
+    turns: number;
+    sentences: number;
+    participants: string[];
+    warning: string | null;
+  };
+  signals: {
+    commercial: GenericSignal[];
+    technical: GenericSignal[];
+    ownership: GenericSignal[];
+    next_steps: GenericSignal[];
+  };
+  category_scores: CategoryScoreDiagnostic[];
 };
 
 /** Thrown by runSignalAgent when the transcript is long enough that a
