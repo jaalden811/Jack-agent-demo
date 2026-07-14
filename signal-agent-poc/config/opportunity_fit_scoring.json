@@ -91,5 +91,29 @@
   "negative_signal_requirements": {
     "min_high_authority_sources_for_negative_signal": 1,
     "do_not_pursue_requires_one_of": ["strong_negative_transcript_evidence", "explicit_customer_disqualification", "confirmed_no_fit_taxonomy_condition", "strong_crm_disqualification", "multiple_high_authority_negative_signals_with_weak_transcript_intent"]
+  },
+  "decision_rules": {
+    "high_signal_incomplete_qualification": {
+      "description": "A strong buying signal with incomplete account/MEDDPICC data means pursue-with-discovery, not passive nurture. Missing account data becomes an account-confirmation action, never an automatic downgrade to NURTURE.",
+      "when": {
+        "signal_strength_min": 75,
+        "hard_negative_gate": false,
+        "requires_pain_or_impact": true,
+        "requires_any_momentum": ["next_step", "timing", "funding", "evaluation"]
+      },
+      "minimum_recommendation": "PURSUE_WITH_DISCOVERY"
+    },
+    "nurture": {
+      "description": "NURTURE means the signal itself lacks urgency, commitment, timing, or a meaningful next step — not merely that account/qualification data is incomplete.",
+      "requires_any": ["weak_timing", "no_next_step", "low_commitment", "future_interest_only", "no_material_impact"]
+    }
+  },
+  "signal_strength_bands": {
+    "high": 75,
+    "medium": 50
+  },
+  "deal_maturity": {
+    "default_stage": "PROBLEM_DISCOVERY",
+    "stages": ["PROBLEM_DISCOVERY", "SOLUTION_DISCOVERY", "VALIDATION", "COMMERCIAL_EVALUATION", "PROCUREMENT", "COMMIT"]
   }
 }

@@ -52,6 +52,83 @@ function decisionForScore(score: number): PursuitDecision {
   return (band?.decision as PursuitDecision) ?? "HOLD";
 }
 
+// Recommendation strength ordering, used to enforce a configured
+// MINIMUM recommendation without ever downgrading a stronger one.
+const DECISION_RANK: Record<PursuitDecision, number> = {
+  DO_NOT_PURSUE: 0,
+  HOLD: 1,
+  NURTURE: 2,
+  PURSUE_WITH_DISCOVERY: 3,
+  PURSUE: 4
+};
+
+export type DecisionRuleInputs = {
+  /** "Is this conversation important?" (0-100). */
+  signalStrength: number;
+  hasPainOrImpact: boolean;
+  /** Presence of a meaningful next step / timing / funding / evaluation. */
+  momentum: { next_step: boolean; timing: boolean; funding: boolean; evaluation: boolean };
+  /** Evidence that genuinely warrants NURTURE (weak signal), not merely
+   * incomplete account/qualification data. */
+  nurtureEvidence: { weak_timing: boolean; no_next_step: boolean; low_commitment: boolean; future_interest_only: boolean; no_material_impact: boolean };
+};
+
+/**
+ * Applies the config-driven decision rules (Section 5) AFTER the raw
+ * score band + hard gates + DO_NOT_PURSUE guard have been resolved:
+ *
+ *  - high_signal_incomplete_qualification: a strong signal with no hard
+ *    negative gate, explicit pain/impact, and at least one momentum
+ *    signal is floored to at least PURSUE_WITH_DISCOVERY — so an
+ *    unresolved account or thin MEDDPICC can never silently reduce a
+ *    strong signal to passive NURTURE (it becomes an account-confirmation
+ *    action instead).
+ *  - nurture: NURTURE is only valid when the signal itself is weak
+ *    (weak timing / no next step / low commitment / future-only /
+ *    no material impact). A NURTURE landing with none of those AND a
+ *    strong signal is upgraded to PURSUE_WITH_DISCOVERY.
+ *
+ * Never overrides a triggered hard gate (DO_NOT_PURSUE / HOLD).
+ */
+export function applyDecisionRules(params: { decision: PursuitDecision; gates: HardGateResult[]; inputs: DecisionRuleInputs }): { decision: PursuitDecision; applied: string[] } {
+  const applied: string[] = [];
+  const rules = loadOpportunityFitScoringConfig().decision_rules;
+  const hardNegativeGate = params.gates.some((g) => g.triggered && (g.effect === "do_not_pursue" || g.effect === "hold"));
+
+  // A hard negative gate is authoritative — the floor never overrides it.
+  if (hardNegativeGate || params.decision === "DO_NOT_PURSUE") return { decision: params.decision, applied };
+
+  const when = rules.high_signal_incomplete_qualification.when;
+  const momentumKeys = when.requires_any_momentum as Array<keyof DecisionRuleInputs["momentum"]>;
+  const hasMomentum = momentumKeys.some((key) => params.inputs.momentum[key]);
+  const painOk = !when.requires_pain_or_impact || params.inputs.hasPainOrImpact;
+  const strongSignal = params.inputs.signalStrength >= when.signal_strength_min;
+
+  const floorEligible = strongSignal && painOk && hasMomentum;
+
+  // NURTURE guard: a NURTURE result must be justified by actual
+  // weak-signal evidence; otherwise it is not a real NURTURE.
+  if (params.decision === "NURTURE") {
+    const nurtureKeys = rules.nurture.requires_any as Array<keyof DecisionRuleInputs["nurtureEvidence"]>;
+    const nurtureJustified = nurtureKeys.some((key) => params.inputs.nurtureEvidence[key]);
+    if (!nurtureJustified && floorEligible) {
+      applied.push("nurture_unjustified_upgraded_to_pursue_with_discovery");
+      return { decision: "PURSUE_WITH_DISCOVERY", applied };
+    }
+  }
+
+  // High-signal minimum-recommendation floor.
+  if (floorEligible) {
+    const minimum = rules.high_signal_incomplete_qualification.minimum_recommendation as PursuitDecision;
+    if (DECISION_RANK[params.decision] < DECISION_RANK[minimum]) {
+      applied.push("high_signal_incomplete_qualification_floor");
+      return { decision: minimum, applied };
+    }
+  }
+
+  return { decision: params.decision, applied };
+}
+
 /** DO_NOT_PURSUE may never result purely from public web evidence
  * (Section 9) — requires at least one of the listed strong
  * disqualification conditions. If none apply, DO_NOT_PURSUE is
@@ -125,6 +202,10 @@ export function buildPursuitRecommendation(params: {
   gates: HardGateResult[];
   doNotPursueGuardInputs: Omit<Parameters<typeof applyDoNotPursueGuard>[0], "rawDecision">;
   evidenceCount: number;
+  /** Config-driven decision-rule inputs (Section 5). When provided, the
+   * high-signal floor + NURTURE guard are applied after the raw band /
+   * gates / guard resolve. */
+  decisionRuleInputs?: DecisionRuleInputs;
 }): PursuitRecommendation {
   const { score, weightsUsed } = computePursuitScore({
     transcriptScore: params.transcriptScore,
@@ -146,6 +227,12 @@ export function buildPursuitRecommendation(params: {
   else if (params.gates.some((g) => g.triggered && g.effect === "hold") && decision !== "DO_NOT_PURSUE") decision = "HOLD";
 
   decision = applyDoNotPursueGuard({ rawDecision: decision, ...params.doNotPursueGuardInputs });
+
+  // Section 5 decision rules: a strong signal with incomplete
+  // account/qualification data must not passively become NURTURE.
+  if (params.decisionRuleInputs) {
+    decision = applyDecisionRules({ decision, gates: params.gates, inputs: params.decisionRuleInputs }).decision;
+  }
 
   const confidence = computeRecommendationConfidence({
     accountResolutionConfidence: params.accountResolutionConfidence,

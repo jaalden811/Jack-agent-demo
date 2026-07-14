@@ -9,6 +9,7 @@ import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/ser
 import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs, detectExplicitNotPursuingStatement } from "@/lib/opportunity-fit/runOpportunityFit";
 import { computeTranscriptOpportunityScore, computeQualificationCompletenessScore, computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
+import { classifyDealMaturity, signalStrengthBand } from "@/lib/opportunity-fit/dealMaturity";
 import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
@@ -272,6 +273,35 @@ export async function runQualificationPipeline(params: {
     ...(!externalFit.available ? [{ factor: `External account fit unavailable (${externalFit.reason})`, score_contribution: 0, evidence_ids: [] }] : [])
   ];
 
+  // Score dimensions are kept explicitly separate (Section 5): signal
+  // strength = "is the conversation important" (the transcript
+  // opportunity score); qualification completeness = "how much do we
+  // understand"; deal maturity = "how far along is the deal"; pursuit =
+  // "what should we do now".
+  const hasEvaluationOrPov = (params.nextStepSignals ?? []).length > 0 || transcriptOpportunitySignals.hasEvaluationLanguage;
+  const hasPurchaseOrRenewalMomentum = params.purchaseLanguage.length > 0 || params.renewalEvents.length > 0;
+  const dealMaturity = classifyDealMaturity({ meddpicc, hasEvaluationOrPov, hasPurchaseOrRenewalMomentum });
+  const painPresent = meddpicc.identify_pain.status === "CONFIRMED" || meddpicc.identify_pain.status === "PARTIAL";
+  const hasPainOrImpact = painPresent || transcriptOpportunitySignals.hasQuantifiedImpact;
+
+  const decisionRuleInputs = {
+    signalStrength: transcriptScore,
+    hasPainOrImpact,
+    momentum: {
+      next_step: transcriptOpportunitySignals.hasNextSteps,
+      timing: transcriptOpportunitySignals.hasUrgencyOrDeadline || transcriptOpportunitySignals.hasRenewal,
+      funding: transcriptOpportunitySignals.hasFunding,
+      evaluation: transcriptOpportunitySignals.hasEvaluationLanguage
+    },
+    nurtureEvidence: {
+      weak_timing: !transcriptOpportunitySignals.hasUrgencyOrDeadline && !transcriptOpportunitySignals.hasRenewal,
+      no_next_step: !transcriptOpportunitySignals.hasNextSteps,
+      low_commitment: !transcriptOpportunitySignals.hasEvaluationLanguage && !transcriptOpportunitySignals.hasFunding,
+      future_interest_only: params.verdict === "REVIEW" && !transcriptOpportunitySignals.hasUrgencyOrDeadline,
+      no_material_impact: !transcriptOpportunitySignals.hasQuantifiedImpact && !painPresent
+    }
+  };
+
   const pursuit = buildPursuitRecommendation({
     transcriptScore,
     qualificationScore,
@@ -294,7 +324,8 @@ export async function runQualificationPipeline(params: {
       strongCrmDisqualification: false,
       multipleHighAuthorityNegativeSignalsWithWeakTranscriptIntent: false
     },
-    evidenceCount: serpapiSignals.signals.length
+    evidenceCount: serpapiSignals.signals.length,
+    decisionRuleInputs
   });
 
   const opportunityScoring: OpportunityScoringResult = {
@@ -308,7 +339,10 @@ export async function runQualificationPipeline(params: {
     score_version: pursuit.score_version,
     weights: pursuit.weights,
     factors: [...pursuit.positive_factors, ...pursuit.negative_factors],
-    gates: pursuit.gates
+    gates: pursuit.gates,
+    signal_strength: { score: transcriptScore, band: signalStrengthBand(transcriptScore) },
+    deal_maturity: dealMaturity,
+    qualification_completeness: qualificationScore
   };
 
   return {

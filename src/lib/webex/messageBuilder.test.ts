@@ -210,7 +210,10 @@ describe("Webex message templates", () => {
         { factor: "Strong transcript intent and quantified impact", score_contribution: 20, evidence_ids: [] },
         { factor: "Economic Buyer not yet identified", score_contribution: -5, evidence_ids: [] }
       ],
-      gates: []
+      gates: [],
+      signal_strength: { score: 82, band: "HIGH" },
+      deal_maturity: "SOLUTION_DISCOVERY",
+      qualification_completeness: 60
     };
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     expect(salesMessage.markdown).toContain("Pursuit:");
@@ -231,7 +234,10 @@ describe("Webex message templates", () => {
       score_version: "opportunity-fit-v1",
       weights: {},
       factors: [],
-      gates: []
+      gates: [],
+      signal_strength: { score: 82, band: "HIGH" },
+      deal_maturity: "SOLUTION_DISCOVERY",
+      qualification_completeness: 60
     };
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
     expect(technicalMessage.markdown).not.toContain("Pursuit recommendation");
