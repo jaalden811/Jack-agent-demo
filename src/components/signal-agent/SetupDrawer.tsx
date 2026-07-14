@@ -670,7 +670,7 @@ export function SetupDrawer({
                     <div className="provider-line" key={d.operation} style={{ fontSize: "0.78rem" }}>
                       <span className="muted">{d.operation} diagnostic:</span>
                       <span className="muted">
-                        HTTP {d.http_status ?? "—"} · {d.error_code ?? "unclassified"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
+                        {d.safe_classification ?? "unclassified"} · HTTP {d.http_status ?? "—"} · {d.error_code ?? d.error_type ?? "—"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
                       </span>
                     </div>
                   ) : null

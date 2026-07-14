@@ -2,6 +2,7 @@ import { getConfig } from "@/lib/config";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { readRecentAuditRecords, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
 import { checkOpenAiAuthentication, checkOpenAiEmbeddings, checkOpenAiSynthesis } from "@/lib/signal-agent/openaiStatus";
+import { deriveOpenAiProviderState, type OpenAiSafeClassification } from "@/lib/openai/errorNormalizer";
 import type { OpenAiCapabilityStatus, OpenAiStatus, ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
 
 /**
@@ -28,7 +29,8 @@ async function buildOpenAiStatus(options: { useOpenAI?: boolean }): Promise<Open
     synthesis_model: config.OPENAI_SYNTHESIS_MODEL,
     authentication: NOT_CHECKED,
     embeddings: NOT_CHECKED,
-    synthesis: NOT_CHECKED
+    synthesis: NOT_CHECKED,
+    provider_state: deriveOpenAiProviderState({ configured: Boolean(config.OPENAI_API_KEY), authenticationOk: false, authenticationClassification: null, operationalOk: false, worstClassification: null })
   };
 
   if (!config.OPENAI_API_KEY) {
@@ -53,7 +55,22 @@ async function buildOpenAiStatus(options: { useOpenAI?: boolean }): Promise<Open
   // `diagnostic` carries the full Section-8 structured shape
   // (http_status/error_type/error_code/request_id/retryable/safe_message)
   // — everything else on these objects stays backward-compatible.
-  return { ...base, authentication, embeddings, synthesis };
+  const authClassification = (authentication.diagnostic?.safe_classification as OpenAiSafeClassification | undefined) ?? null;
+  // "Operational" for the product's purposes means synthesis works
+  // (the capability that generates messages); embeddings enhances
+  // retrieval but is not required for a useful result.
+  const operationalOk = synthesis.usable;
+  const failing = [authentication.diagnostic, embeddings.diagnostic, synthesis.diagnostic].filter((d) => d && !d.operational && d.safe_classification);
+  const worstClassification = (failing[0]?.safe_classification as OpenAiSafeClassification | undefined) ?? null;
+  const provider_state = deriveOpenAiProviderState({
+    configured: true,
+    authenticationOk: authentication.usable,
+    authenticationClassification: authClassification,
+    operationalOk,
+    worstClassification
+  });
+
+  return { ...base, authentication, embeddings, synthesis, provider_state };
 }
 
 async function probeSearch(apiKey: string, provider: string): Promise<ProviderStatusEntry> {

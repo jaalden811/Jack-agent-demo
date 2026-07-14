@@ -41,7 +41,7 @@ describe("checkOpenAiAuthentication", () => {
     const { checkOpenAiAuthentication } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiAuthentication(SECRET_KEY);
     expect(result.usable).toBe(false);
-    expect(result.message).toContain("Authentication rejected");
+    expect(result.message.toLowerCase()).toContain("rejected the api key");
     expect(result.error?.http_status).toBe(401);
     expect(result.error?.error_code).toBe("invalid_api_key");
 
@@ -50,6 +50,7 @@ describe("checkOpenAiAuthentication", () => {
     expect(diagnostic.operational).toBe(false);
     expect(diagnostic.http_status).toBe(401);
     expect(diagnostic.error_code).toBe("invalid_api_key");
+    expect(diagnostic.safe_classification).toBe("OPENAI_AUTHENTICATION_REJECTED");
     expect(diagnostic.request_id).toBe("req_test_401");
     expect(diagnostic.retryable).toBe(false);
     expect(JSON.stringify(result)).not.toContain(SECRET_KEY);
@@ -70,7 +71,7 @@ describe("checkOpenAiEmbeddings", () => {
     const { checkOpenAiEmbeddings } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiEmbeddings(SECRET_KEY, "bogus-model");
     expect(result.usable).toBe(false);
-    expect(result.message).toContain("Model unavailable");
+    expect(result.message.toLowerCase()).toContain("model unavailable");
     expect(result.error?.http_status).toBe(404);
     expect(result.diagnostic.model).toBe("bogus-model");
   });
@@ -95,7 +96,7 @@ describe("checkOpenAiSynthesis", () => {
     const synthesisResult = await checkOpenAiSynthesis(SECRET_KEY, "text-embedding-3-small");
     const embeddingsResult = await checkOpenAiEmbeddings(SECRET_KEY, "text-embedding-3-small");
     expect(synthesisResult.usable).toBe(false);
-    expect(synthesisResult.message).toContain("Model unavailable");
+    expect(synthesisResult.message.toLowerCase()).toContain("model unavailable");
     expect(embeddingsResult.usable).toBe(true);
   });
 
@@ -104,7 +105,7 @@ describe("checkOpenAiSynthesis", () => {
     mockOpenAiModule({ responses: { create: vi.fn().mockRejectedValue(error) } });
     const { checkOpenAiSynthesis } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiSynthesis(SECRET_KEY, "gpt-4o-mini");
-    expect(result.message).toContain("Rate limited");
+    expect(result.message.toLowerCase()).toContain("rate limited");
     expect(result.diagnostic.retryable).toBe(true);
   });
 
@@ -113,7 +114,8 @@ describe("checkOpenAiSynthesis", () => {
     mockOpenAiModule({ responses: { create: vi.fn().mockRejectedValue(error) } });
     const { checkOpenAiSynthesis } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiSynthesis(SECRET_KEY, "gpt-4o-mini");
-    expect(result.message).toContain("Quota exceeded");
+    expect(result.message.toLowerCase()).toContain("quota");
+    expect(result.diagnostic.safe_classification).toBe("OPENAI_QUOTA_EXCEEDED");
     expect(result.diagnostic.retryable).toBe(false);
   });
 

@@ -14,17 +14,12 @@
  */
 
 import type { OpenAiOperationDiagnostic, SanitizedProviderError } from "@/lib/signal-agent/types";
+import { normalizeOpenAiError, type OpenAiOperation, type OpenAiSafeClassification } from "@/lib/openai/errorNormalizer";
 
-export type SafeOpenAiErrorCode =
-  | "OPENAI_AUTHENTICATION_REJECTED"
-  | "OPENAI_PERMISSION_REJECTED"
-  | "OPENAI_MODEL_UNAVAILABLE"
-  | "OPENAI_QUOTA_EXCEEDED"
-  | "OPENAI_RATE_LIMITED"
-  | "OPENAI_INVALID_REQUEST"
-  | "OPENAI_TIMEOUT"
-  | "OPENAI_NETWORK_FAILURE"
-  | "OPENAI_UNKNOWN_ERROR";
+/** @deprecated The single source of truth is now
+ * @/lib/openai/errorNormalizer's OpenAiSafeClassification. Re-exported
+ * here for backward compatibility with existing imports/tests. */
+export type SafeOpenAiErrorCode = OpenAiSafeClassification;
 
 export type { OpenAiOperationDiagnostic, SanitizedProviderError };
 
@@ -35,78 +30,31 @@ export type CapabilityCheckResult = {
   last_check: string;
 };
 
-type OpenAiErrorShape = {
-  status?: number;
-  name?: string;
-  code?: string | null;
-  requestID?: string | null;
-  error?: { type?: string; code?: string; message?: string };
-};
-
-function classifySafeOpenAiErrorCode(error: unknown): SafeOpenAiErrorCode {
-  const e = error as OpenAiErrorShape;
-  const status = e?.status;
-  const code = e?.code ?? e?.error?.code ?? null;
-  const nameLower = (e?.name ?? "").toLowerCase();
-  const messageLower = (error instanceof Error ? error.message : "").toLowerCase();
-
-  if (nameLower.includes("timeout") || code === "ETIMEDOUT") return "OPENAI_TIMEOUT";
-  if (nameLower.includes("connectionerror") || code === "ECONNREFUSED" || code === "ENOTFOUND") return "OPENAI_NETWORK_FAILURE";
-  if (status === 401) return "OPENAI_AUTHENTICATION_REJECTED";
-  if (status === 403) return "OPENAI_PERMISSION_REJECTED";
-  if (status === 404) return "OPENAI_MODEL_UNAVAILABLE";
-  if (status === 429) {
-    // OpenAI's own error code for exhausted billing quota is literally
-    // "insufficient_quota" — distinct from a transient request-rate 429.
-    if (code === "insufficient_quota" || messageLower.includes("quota") || messageLower.includes("billing")) return "OPENAI_QUOTA_EXCEEDED";
-    return "OPENAI_RATE_LIMITED";
-  }
-  if (status === 400) return "OPENAI_INVALID_REQUEST";
-  if (typeof status === "number" && status >= 500) return "OPENAI_NETWORK_FAILURE";
-  return "OPENAI_UNKNOWN_ERROR";
-}
-
-const SAFE_MESSAGE_BY_CODE: Record<SafeOpenAiErrorCode, string> = {
-  OPENAI_AUTHENTICATION_REJECTED: "Authentication rejected (HTTP 401) — the configured API key was not accepted.",
-  OPENAI_PERMISSION_REJECTED: "Permission rejected (HTTP 403) — the key is valid but lacks access to this resource/project.",
-  OPENAI_MODEL_UNAVAILABLE: "Model unavailable (HTTP 404) — the configured model was not found or is not accessible to this account.",
-  OPENAI_QUOTA_EXCEEDED: "Quota exceeded (HTTP 429) — billing quota is exhausted; this will not resolve on retry.",
-  OPENAI_RATE_LIMITED: "Rate limited (HTTP 429) — too many requests; safe to retry after a short backoff.",
-  OPENAI_INVALID_REQUEST: "Invalid request (HTTP 400) — the request was malformed for the configured model/parameters.",
-  OPENAI_TIMEOUT: "Request timed out before OpenAI responded.",
-  OPENAI_NETWORK_FAILURE: "Network or provider-side failure — could not complete the request.",
-  OPENAI_UNKNOWN_ERROR: "Request failed with an unrecognized error shape — see error_type/error_code for detail."
-};
-
-const RETRYABLE_CODES: ReadonlySet<SafeOpenAiErrorCode> = new Set(["OPENAI_RATE_LIMITED", "OPENAI_TIMEOUT", "OPENAI_NETWORK_FAILURE"]);
-
-function sanitizeOpenAiError(error: unknown): SanitizedProviderError {
-  const e = error as OpenAiErrorShape;
-  const status = e?.status ?? null;
-  const code = classifySafeOpenAiErrorCode(error);
+function sanitizeOpenAiError(error: unknown, operation: OpenAiOperation): SanitizedProviderError {
+  const normalized = normalizeOpenAiError(error, operation);
   return {
-    http_status: typeof status === "number" ? status : null,
-    error_type: e?.error?.type ?? null,
-    error_code: e?.code ?? e?.error?.code ?? null,
-    message: SAFE_MESSAGE_BY_CODE[code]
+    http_status: normalized.http_status,
+    error_type: normalized.error_type,
+    error_code: normalized.error_code,
+    message: normalized.safe_message
   };
 }
 
 function toOperationDiagnostic(operation: OpenAiOperationDiagnostic["operation"], model: string | null, error: unknown): OpenAiOperationDiagnostic {
-  const e = error as OpenAiErrorShape;
-  const code = classifySafeOpenAiErrorCode(error);
+  const normalized = normalizeOpenAiError(error, operation as OpenAiOperation);
   return {
     operation,
     configured: true,
     operational: false,
     model,
-    http_status: typeof e?.status === "number" ? e.status : null,
-    error_type: e?.error?.type ?? null,
-    error_code: e?.code ?? e?.error?.code ?? null,
-    safe_message: SAFE_MESSAGE_BY_CODE[code],
-    request_id: e?.requestID ?? null,
-    retryable: RETRYABLE_CODES.has(code),
-    checked_at: new Date().toISOString()
+    http_status: normalized.http_status,
+    error_type: normalized.error_type,
+    error_code: normalized.error_code,
+    safe_classification: normalized.safe_classification,
+    safe_message: normalized.safe_message,
+    request_id: normalized.request_id,
+    retryable: normalized.retryable,
+    checked_at: normalized.checked_at
   };
 }
 
@@ -119,6 +67,7 @@ function operationalDiagnostic(operation: OpenAiOperationDiagnostic["operation"]
     http_status: null,
     error_type: null,
     error_code: null,
+    safe_classification: null,
     safe_message: "Ready",
     request_id: null,
     retryable: false,
@@ -128,7 +77,7 @@ function operationalDiagnostic(operation: OpenAiOperationDiagnostic["operation"]
 
 /** Kept for direct reuse/testing of just the safe-reason mapping. */
 export function describeOpenAiFailure(error: unknown): string {
-  return sanitizeOpenAiError(error).message;
+  return normalizeOpenAiError(error, "authentication").safe_message;
 }
 
 async function withClient<T>(apiKey: string, run: (client: import("openai").default) => Promise<T>): Promise<T> {
@@ -143,7 +92,7 @@ export async function checkOpenAiAuthentication(apiKey: string): Promise<Capabil
     await withClient(apiKey, (client) => client.models.list());
     return { usable: true, message: "Ready", error: null, last_check, diagnostic: operationalDiagnostic("authentication", "n/a") };
   } catch (error) {
-    const sanitized = sanitizeOpenAiError(error);
+    const sanitized = sanitizeOpenAiError(error, "authentication");
     return { usable: false, message: sanitized.message, error: sanitized, last_check, diagnostic: toOperationDiagnostic("authentication", null, error) };
   }
 }
@@ -163,7 +112,7 @@ export async function checkOpenAiEmbeddings(apiKey: string, model: string): Prom
     }
     return { usable: true, message: "Ready", error: null, last_check, diagnostic: operationalDiagnostic("embeddings", model) };
   } catch (error) {
-    const sanitized = sanitizeOpenAiError(error);
+    const sanitized = sanitizeOpenAiError(error, "embeddings");
     return { usable: false, message: sanitized.message, error: sanitized, last_check, diagnostic: toOperationDiagnostic("embeddings", model, error) };
   }
 }
@@ -189,7 +138,7 @@ export async function checkOpenAiSynthesis(apiKey: string, model: string): Promi
     }
     return { usable: true, message: "Ready", error: null, last_check, diagnostic: operationalDiagnostic("synthesis", model) };
   } catch (error) {
-    const sanitized = sanitizeOpenAiError(error);
+    const sanitized = sanitizeOpenAiError(error, "synthesis");
     return { usable: false, message: sanitized.message, error: sanitized, last_check, diagnostic: toOperationDiagnostic("synthesis", model, error) };
   }
 }
