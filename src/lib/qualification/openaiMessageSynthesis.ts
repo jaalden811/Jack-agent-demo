@@ -15,8 +15,8 @@ import type { SecureNetworkingTriageResult, StakeholderRecord } from "@/lib/sign
  */
 
 const SALES_SYSTEM_INSTRUCTION = `Write for Bella Robinson, the Sales / Commercial owner, and Jack Alden, the Technical / Specialist owner — two DIFFERENT people receiving two DIFFERENT messages per channel.
-Sales messages (Webex + email) focus on: opportunity qualification, business impact, budget, timing, renewal, procurement, competition, stakeholder coverage, MEDDPICC gaps, commercial next actions, required technical support. Do not turn technical details into a long architecture report. Use a compact MEDDPICC snapshot. Target 1200-1800 characters for the Webex message.
-Technical messages (Webex + email) focus on: customer pain, current architecture, products/platforms mentioned, integrations, operational gaps, technical decision criteria, success metrics, workshop/demo/POC scope, risks, technical discovery questions, evidence excerpts. Do not merely restate the sales message. Target 1200-1800 characters for the Webex message.
+Sales messages (Webex + email) focus on: opportunity thesis, at least three evidence-backed why-now signals, business impact, budget, timing, renewal, procurement, competition, a compact MEDDPICC snapshot (all eight dimensions), stakeholder coverage with functional AND buying roles, and at least three specific commercial next actions. Do not turn technical details into a long architecture report. Target a rich but scannable Webex message up to the supplied channel character limit.
+Technical messages (Webex + email) focus on: customer pain, current architecture, products/platforms mentioned, integrations, operational gaps, technical decision criteria, success metrics, at least three specific workshop/POV/architecture next actions, risks, technical discovery questions, evidence excerpts. Do not merely restate the sales message. Never include the commercial pursuit score. Target a rich but scannable Webex message up to the supplied channel character limit.
 Do not call someone an Economic Buyer or Champion unless the supplied structured record's status for that field is CONFIRMED.
 Only cite a public source URL that is explicitly supplied in the input — never invent or modify a URL.
 Include the supplied analysis link only when analysis_link.included is true; otherwise use the supplied plain-text run reference and do not render any link.
@@ -41,6 +41,9 @@ export async function synthesizeQualifiedMessages(params: {
   webexCharLimit: number;
   publicEvidenceSummaries: Array<{ title: string; url: string; summary: string }>;
   enabled: boolean;
+  /** Validation failures from a prior attempt — when present, the model
+   * is explicitly told what to fix (Section 15 retry-once). */
+  validationFeedback?: string[];
 }): Promise<MessageSynthesisOutcome> {
   const config = getConfig();
   if (!params.enabled || !config.OPENAI_MESSAGE_SYNTHESIS_ENABLED) {
@@ -58,6 +61,9 @@ export async function synthesizeQualifiedMessages(params: {
         store: config.OPENAI_STORE_RESPONSES,
         input: [
           { role: "system", content: SALES_SYSTEM_INSTRUCTION },
+          ...(params.validationFeedback && params.validationFeedback.length > 0
+            ? [{ role: "system" as const, content: `Your previous draft failed these quality checks — fix ALL of them: ${params.validationFeedback.join("; ")}` }]
+            : []),
           {
             role: "user",
             content: JSON.stringify({

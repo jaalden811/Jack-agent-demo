@@ -10,7 +10,7 @@ import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
 import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
-import type { AnalysisLink } from "@/lib/qualification/types";
+import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
@@ -131,7 +131,22 @@ async function applyAiMessageSynthesis(params: {
     .slice(0, 3)
     .map((item) => ({ title: item.title ?? "Source", url: item.url as string, summary: item.quote_or_snippet }));
 
-  const outcome = await synthesizeQualifiedMessages({
+  // Allowed URLs: the validated public analysis link plus any real
+  // SerpAPI source URLs; anything else in an AI message is treated as
+  // invented and rejected.
+  const allowedUrls = [
+    ...(params.analysisLink.included && params.analysisLink.url ? [params.analysisLink.url] : []),
+    ...params.result.serpapi_signals.signals.map((s) => s.source_url),
+    ...(params.result.public_enrichment?.accepted_evidence ?? []).map((e) => e.url).filter((u): u is string => Boolean(u))
+  ];
+  const qualityContext = {
+    verdict: params.result.executive_summary.verdict,
+    allowedUrls,
+    charCeiling: WEBEX_HARD_CHAR_CEILING,
+    requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
+  };
+
+  const synthesisArgs = {
     result: params.result,
     meddpicc: params.result.meddpicc,
     accountResolution: params.result.account_resolution,
@@ -143,32 +158,34 @@ async function applyAiMessageSynthesis(params: {
     webexCharLimit: SYNTHESIS_CHAR_LIMIT,
     publicEvidenceSummaries,
     enabled: true
-  });
+  };
 
-  if (!outcome.used || !outcome.messages) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: outcome.fallback_reason };
+  // Section 15: try synthesis, validate; on validation failure retry ONCE
+  // with the failures fed back; if still invalid, fall through to the
+  // rich deterministic messages (recording the reason).
+  let lastFailureReason: string | null = null;
+  let synthesized: SynthesizedMessages | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const outcome = await synthesizeQualifiedMessages({ ...synthesisArgs, validationFeedback: attempt === 0 ? undefined : lastFailureReason ? lastFailureReason.split("; ") : undefined });
+    if (!outcome.used || !outcome.messages) {
+      lastFailureReason = outcome.fallback_reason;
+      break; // a provider/parse failure will not be fixed by a retry with feedback
+    }
+    const validation = validateMessageQuality({
+      salesMarkdown: outcome.messages.sales_webex_markdown,
+      technicalMarkdown: outcome.messages.technical_webex_markdown,
+      context: qualityContext
+    });
+    if (validation.valid) {
+      synthesized = outcome.messages;
+      break;
+    }
+    lastFailureReason = `message quality validation failed: ${validation.failures.join("; ")}`;
   }
 
-  // Section 15 quality gate — an AI message that fails validation is
-  // rejected in favor of the rich deterministic fallback (retry-once is
-  // handled inside synthesizeQualifiedMessages). Allowed URLs: the
-  // validated public analysis link plus any real SerpAPI source URLs;
-  // anything else is treated as invented.
-  const allowedUrls = [
-    ...(params.analysisLink.included && params.analysisLink.url ? [params.analysisLink.url] : []),
-    ...params.result.serpapi_signals.signals.map((s) => s.source_url),
-    ...(params.result.public_enrichment?.accepted_evidence ?? []).map((e) => e.url).filter((u): u is string => Boolean(u))
-  ];
-  const validation = validateMessageQuality({
-    salesMarkdown: outcome.messages.sales_webex_markdown,
-    technicalMarkdown: outcome.messages.technical_webex_markdown,
-    context: { verdict: params.result.executive_summary.verdict, allowedUrls, charCeiling: WEBEX_HARD_CHAR_CEILING, requireRichBrief: params.result.executive_summary.verdict !== "NOISE" }
-  });
-  if (!validation.valid) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: `message quality validation failed: ${validation.failures.join("; ")}` };
+  if (!synthesized) {
+    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: lastFailureReason };
   }
-
-  const synthesized = outcome.messages;
   const messages = params.messages.map((message) =>
     message.lane === "sales"
       ? { ...message, markdown: synthesized.sales_webex_markdown, character_count: synthesized.sales_webex_markdown.length, synthesized_by_ai: true }
