@@ -16,6 +16,16 @@ describe("publicUrl — never treats localhost/private addresses as public (Sect
     expect(validatePublicBaseUrl("https://192.168.1.1").valid).toBe(false);
   });
 
+  it("blocks the full 172.16.0.0-172.31.255.255 private range at both boundaries", () => {
+    expect(validatePublicBaseUrl("https://172.16.0.1").valid).toBe(false);
+    expect(validatePublicBaseUrl("https://172.31.255.254").valid).toBe(false);
+  });
+
+  it("does not over-block addresses just outside the 172.16-172.31 private range", () => {
+    expect(validatePublicBaseUrl("https://172.15.255.255").valid).toBe(true);
+    expect(validatePublicBaseUrl("https://172.32.0.1").valid).toBe(true);
+  });
+
   it("rejects a missing base URL", () => {
     expect(validatePublicBaseUrl(undefined).reason).toBe("no_public_base_url");
     expect(validatePublicBaseUrl("").reason).toBe("no_public_base_url");
