@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APIError, AuthenticationError, PermissionDeniedError, NotFoundError, BadRequestError, RateLimitError, InternalServerError, APIConnectionError, APIConnectionTimeoutError } from "openai";
+import { AuthenticationError, PermissionDeniedError, NotFoundError, BadRequestError, RateLimitError, InternalServerError, APIConnectionError, APIConnectionTimeoutError } from "openai";
 import { normalizeOpenAiError, deriveOpenAiProviderState, safeStructuralTrace } from "@/lib/openai/errorNormalizer";
 
 /** Builds a Headers-like object carrying a request id, exactly as the
