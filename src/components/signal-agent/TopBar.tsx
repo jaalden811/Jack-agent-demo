@@ -38,8 +38,10 @@ export function TopBar({
   return (
     <header className="topbar">
       <div>
-        <h1>Signal-to-Solution Triage</h1>
-        <p className="muted">Secure Networking opportunity detection with automatic Webex + Outlook routing for the Peachtree Select pilot.</p>
+        <h1>Turn every important customer conversation into coordinated action.</h1>
+        <p className="muted">
+          Detect meaningful buying signals, gather account context, identify the correct internal owner, recommend the next step, deliver the action, and preserve the evidence — the Signal-to-Action spine for the Peachtree Select pilot.
+        </p>
       </div>
       <div className="topbar-status">
         <StatusPill label={loading ? "Running…" : "Idle"} ok={loading ? null : true} />

@@ -1,0 +1,56 @@
+---
+description: Signal-to-Action north star, architecture spine, and semantic/scoring guardrails for the Signal-to-Solution app
+globs: src/**
+alwaysApply: false
+---
+
+# Signal-to-Action Architecture
+
+## North-star outcome
+
+**Every important customer conversation leads to timely, coordinated action.**
+
+The product headline is "Turn every important customer conversation into coordinated action." The app must read as ONE coherent operational flow, not a set of disconnected analysis tabs.
+
+## The six-stage spine (present every run this way)
+
+Conversation → Signal Capture → Trigger Evaluation → Orchestration Handoff → Unified Context → Enrich & Prioritize → Format & Route Action → Audit
+
+- **Signal capture** — Webex/paste/upload → normalized turns, timestamps, transcript hash, run ID, candidate signals.
+- **Trigger evaluation** — HIGH_INTENT / REVIEW / NOISE. NOISE is logged AND suppressed, never delivered.
+- **Orchestration + unified context** — run identity, account candidate, transcript signals, taxonomy candidates, enrichment + routing config; sources: transcript, Webex/Outlook metadata, user account, uploaded JSON/CSV, SerpAPI, taxonomy, routing table.
+- **Enrich & prioritize** — the independent score dimensions below.
+- **Route action** — data-driven WHEN/IF/THEN → Bella (sales), Jack (technical), or both; deduplicate, respect auto-send, retain delivery result, append audit, retry only failed channels.
+- **Audit** — no signal dies silently; every run (including NOISE) is recorded.
+
+## Score semantics — keep these DISTINCT (never conflate)
+
+1. **Signal strength** — is this conversation important? (pain/impact/urgency/timing/funding/evaluation/next step)
+2. **Deal maturity** — how far along is the deal? (PROBLEM_DISCOVERY → SOLUTION_DISCOVERY → VALIDATION → COMMERCIAL_EVALUATION → PROCUREMENT → COMMIT)
+3. **Qualification completeness** — how much do we understand? (MEDDPICC + coverage + account resolution)
+4. **External account fit** — does accepted public evidence strengthen the pursuit?
+5. **Pursuit recommendation** — what should the team do now? (PURSUE / PURSUE_WITH_DISCOVERY / NURTURE / HOLD / DO_NOT_PURSUE)
+
+A strong signal with incomplete account/MEDDPICC data means **PURSUE_WITH_DISCOVERY**, not passive NURTURE. NURTURE requires evidence the signal itself is weak (weak timing / no next step / low commitment / future-only interest / no material impact). An unresolved account creates an account-confirmation action; it must never automatically reduce a strong signal to NURTURE.
+
+## Data-driven scoring
+
+All weights, thresholds, decision rules, deal-maturity stages, and hard gates live in `signal-agent-poc/config/opportunity_fit_scoring.json`. Never place scoring rules or thresholds in React components.
+
+## Semantic distinctions to preserve
+
+Business impact ≠ budget. Funding ≠ product-specific budget. Retention period ≠ buying timeline. Ticket interval ≠ decision deadline. Product presence ≠ replacement intent. Vendor recommendation ≠ customer acceptance. Public evidence ≠ private opportunity evidence. Missing account data = a discovery action, not disqualification. An explicit org name stays an account candidate even when the surrounding opportunity claim is negated.
+
+## Determinism and provider roles
+
+- The **deterministic engine** owns run integrity, account truth, arithmetic, category correctness, routing correctness, and delivery safety.
+- **OpenAI** only enhances role interpretation, contradiction resolution, MEDDPICC narrative, product-role explanation, and message refinement. When quota is exhausted, show "OpenAI enhancement unavailable — quota exhausted; deterministic Signal-to-Action processing remains active" and still produce the full rich Decision Packet. OpenAI failure must never reduce output to a thin template.
+- **SerpAPI** is the current external-context adapter; public evidence may improve account confidence / strategic alignment / external fit / timing, but never claim private budget, opportunity stage, private renewal, Economic Buyer, Champion, or procurement state.
+
+## Hard no-hard-coding rule
+
+Never hard-code one transcript, company, product, score, specialist, or expected result in production logic. Bella Robinson (sales) and Jack Alden (technical) are the pilot's configured routing owners, not analysis inputs. Provider/roadmap status (solid = available now; dashed = configured-but-not-connected / planned) must be rendered dynamically from real status, never asserted.
+
+## Routing + audit requirements
+
+Routing output must explain: why the lane was selected, what evidence triggered it, the assigned action, whether another lane is required, whether the action already exists (duplicate), and delivery status. Sales and technical messages must be materially different. Every run appends an audit record with run ID, evidence, routing decision, and delivery IDs.

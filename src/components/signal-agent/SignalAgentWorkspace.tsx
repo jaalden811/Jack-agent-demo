@@ -13,6 +13,8 @@ import { ContextCard } from "@/components/signal-agent/ContextCard";
 import { SummaryCard } from "@/components/signal-agent/SummaryCard";
 import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
+import { SignalToActionJourney } from "@/components/signal-agent/SignalToActionJourney";
+import { ScoreSemanticsSummary } from "@/components/signal-agent/ScoreSemanticsSummary";
 import { TranscriptViewModal } from "@/components/signal-agent/TranscriptViewModal";
 
 export function SignalAgentWorkspace() {
@@ -225,6 +227,8 @@ export function SignalAgentWorkspace() {
           )}
           {result && !loading ? (
             <>
+              <SignalToActionJourney result={result} />
+              <ScoreSemanticsSummary result={result} />
               <SummaryCard result={result} />
               <DeliveryResultCard result={result} onResultUpdate={setResult} />
               <ResultTabs result={result} status={agentStatus} onResultUpdate={setResult} />
