@@ -1,6 +1,7 @@
 import { getConfig } from "@/lib/config";
 import { getOpenAIClient } from "@/lib/openai/client";
-import { withOpenAiRetry, classifyOpenAiError } from "@/lib/openai/errorMapping";
+import { withOpenAiRetry } from "@/lib/openai/errorMapping";
+import { normalizeOpenAiError } from "@/lib/openai/errorNormalizer";
 import { messageSynthesisSchema } from "@/lib/qualification/schemas";
 import type { AnalysisLink, Meddpicc, SynthesizedMessages } from "@/lib/qualification/types";
 import type { AccountResolution } from "@/lib/qualification/types";
@@ -95,7 +96,7 @@ export async function synthesizeQualifiedMessages(params: {
     const parsed = JSON.parse(response.output_text) as SynthesizedMessages;
     return { used: true, fallback_reason: null, messages: parsed };
   } catch (error) {
-    const code = classifyOpenAiError(error);
+    const code = normalizeOpenAiError(error, "message_synthesis").safe_classification;
     return { used: false, fallback_reason: code, messages: null };
   }
 }
