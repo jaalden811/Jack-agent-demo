@@ -50,6 +50,9 @@ async function buildOpenAiStatus(options: { useOpenAI?: boolean }): Promise<Open
     checkOpenAiSynthesis(config.OPENAI_API_KEY, config.OPENAI_SYNTHESIS_MODEL)
   ]);
 
+  // `diagnostic` carries the full Section-8 structured shape
+  // (http_status/error_type/error_code/request_id/retryable/safe_message)
+  // — everything else on these objects stays backward-compatible.
   return { ...base, authentication, embeddings, synthesis };
 }
 

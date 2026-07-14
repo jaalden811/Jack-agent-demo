@@ -1,4 +1,4 @@
-import type { IngestedTranscript, ParticipantClassification, ParticipantRecord, TranscriptChunk, TranscriptSentence } from "@/lib/signal-agent/types";
+import type { IngestedTranscript, ParticipantClassification, ParticipantRecord, TranscriptChunk, TranscriptDiagnostics, TranscriptSentence } from "@/lib/signal-agent/types";
 
 /**
  * Splits a transcript into speaker turns and sentences, extracts account,
@@ -30,12 +30,76 @@ const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+/;
 const MIN_SENTENCE_CHARS = 8;
 
 const TIMESTAMP = "\\d{1,2}:\\d{2}(?::\\d{2})?";
-const BRACKETED_TIMESTAMP_SPEAKER_RE = new RegExp(`^\\[(${TIMESTAMP})\\]\\s+([^:\\[\\]]+):\\s*(.+)$`);
-const DASH_TIMESTAMP_SPEAKER_RE = new RegExp(`^(${TIMESTAMP})\\s*[—–-]\\s*([^:]+):\\s*(.+)$`);
-const LEGACY_BRACKET_SPEAKER_RE = /^\[([^\]]+)\]:\s*(.+)$/;
-const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .'-]{1,60}):\s*(.+)$/;
-const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.]*(?:\s+[A-Za-z][\w'.]*){0,4})\s*[—–-]\s*(.+)$/;
-const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'. ]*?)\s*\(([^)]+)\)\s*$/;
+const BRACKETED_TIMESTAMP_SPEAKER_RE = new RegExp(`^\\[(${TIMESTAMP})\\]\\s+([^:\\[\\]]+):\\s*(.*)$`);
+// Separators are only ever treated as a speaker delimiter in the
+// timestamp-header position — anchored at the very start of the line by
+// a strict MM:SS/HH:MM:SS pattern, so a bare hyphen here can never be
+// confused with a hyphen inside ordinary transcript prose (Section 2).
+const DASH_TIMESTAMP_SPEAKER_RE = new RegExp(`^(${TIMESTAMP})\\s*[—–-]\\s*([^:]+):\\s*(.*)$`);
+const LEGACY_BRACKET_SPEAKER_RE = /^\[([^\]]+)\]:\s*(.*)$/;
+const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .']{0,59}):\s*(.+)$/;
+// No-timestamp "Name — Title" participant-header line. Deliberately
+// restricted to em/en dash ONLY, always padded by whitespace on both
+// sides — a bare mid-word hyphen inside an ordinary hyphenated compound
+// word (of which there are unboundedly many, in any transcript, on any
+// topic) must never be treated as this separator; only the
+// timestamp-anchored regex above may use a plain hyphen. See
+// isPlausibleSpeakerName for the additional name-shape guard that
+// rejects sentence-like fragments even when the separator shape alone
+// would otherwise match.
+// Name tokens may contain an internal hyphen (real compound names, e.g.
+// "Okafor-Lindqvist" or "Jean-Paul") — this is safe because the
+// separator itself still requires a padded em/en dash, never a bare
+// hyphen, so an ordinary hyphenated word in prose still can't supply
+// that separator.
+const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,4})\s+[—–]\s+(.+)$/;
+const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
+
+// Words that never begin a real person's name but commonly begin an
+// ordinary sentence or mid-transcript continuation line — a
+// dash/hyphen-anchored header regex would otherwise misfire on any
+// sentence that happens to start with an article, conjunction, or verb
+// and later contains an unrelated hyphenated compound word, on any
+// topic, in any transcript. Checked case-insensitively against the
+// first word of any header/plain-speaker candidate name.
+const IMPLAUSIBLE_LEADING_NAME_WORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "so", "plus", "minus", "include", "includes", "including", "excludes",
+  "provide", "provides", "providing", "please", "this", "that", "these", "those", "is", "are", "was", "were",
+  "will", "would", "could", "should", "shall", "can", "cannot", "must", "has", "have", "had", "do", "does",
+  "did", "we", "you", "they", "it", "if", "because", "since", "while", "when", "then", "also", "our", "your",
+  "their", "its", "not", "no", "yes", "there", "here", "what", "which", "who", "how", "why", "next", "let",
+  "let's", "here's", "there's", "it's", "we're", "for", "with", "without", "about", "across", "over", "under",
+  "between", "during", "before", "after", "once", "each", "every", "some", "any", "all", "both", "few", "more",
+  "most", "other", "such", "only", "just", "than", "too", "very", "so's"
+]);
+
+/** Speaker/header-name plausibility guard (Section 2 "Speaker
+ * validation"): 1-80 characters, letters/spaces/apostrophes/periods/
+ * internal hyphens only (so real compound names like "Okafor-Lindqvist"
+ * or "Jean-Paul" are never rejected), no more than 5 space-separated
+ * words, and never starting with an ordinary sentence-continuation
+ * word. This is what actually prevents an ordinary sentence fragment
+ * from ever becoming a fabricated participant — the separator-shape
+ * regexes (which require a padded em/en dash, never a bare mid-word
+ * hyphen) are the primary defense; this is a second, independent one. */
+export function isPlausibleSpeakerName(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (trimmed.length < 1 || trimmed.length > 80) return false;
+  if (!/^[A-Za-z][A-Za-z\s'.-]*$/.test(trimmed)) return false;
+  if (trimmed.includes("--") || trimmed.startsWith("-") || trimmed.endsWith("-")) return false;
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 5) return false;
+  // Check every hyphen-joined sub-token too (e.g. a compound word split
+  // on its internal hyphen into two halves), not just space-separated
+  // words — a fragment whose first half is an ordinary
+  // sentence-continuation word should still be rejected even when the
+  // whole token contains an internal hyphen.
+  for (const word of words) {
+    const subTokens = word.split("-");
+    if (IMPLAUSIBLE_LEADING_NAME_WORDS.has(subTokens[0].toLowerCase())) return false;
+  }
+  return true;
+}
 
 // Header/label lines that must never be mistaken for a speaker name or a
 // participant header, however they're formatted.
@@ -66,18 +130,19 @@ type DialogueLine = { timestamp: string | null; speaker: string; text: string };
 
 function parseDialogueLine(line: string): DialogueLine | null {
   let match = line.match(BRACKETED_TIMESTAMP_SPEAKER_RE);
-  if (match) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
+  if (match && isPlausibleSpeakerName(match[2])) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
 
   match = line.match(DASH_TIMESTAMP_SPEAKER_RE);
-  if (match) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
+  if (match && isPlausibleSpeakerName(match[2])) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
 
   match = line.match(LEGACY_BRACKET_SPEAKER_RE);
-  if (match) return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
+  if (match && isPlausibleSpeakerName(match[1])) return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
 
   match = line.match(PLAIN_SPEAKER_RE);
   if (match) {
     const key = match[1].trim().toLowerCase();
     if (NON_SPEAKER_KEYS.has(key)) return null;
+    if (!isPlausibleSpeakerName(match[1])) return null;
     return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
   }
 
@@ -85,13 +150,20 @@ function parseDialogueLine(line: string): DialogueLine | null {
 }
 
 type HeaderLine = { name: string; descriptor: string };
+/** `null` when the line doesn't even resemble a header; a HeaderLine on
+ * a genuine match; or the raw candidate name string when the line
+ * matched the separator shape but failed speaker-name plausibility —
+ * surfaced via `transcript_diagnostics.rejected_header_candidates`
+ * rather than silently becoming a fabricated participant. */
+type HeaderLineOutcome = { kind: "header"; value: HeaderLine } | { kind: "rejected"; candidate: string } | null;
 
-function parseHeaderLine(line: string): HeaderLine | null {
+function parseHeaderLine(line: string): HeaderLineOutcome {
   let match = line.match(HEADER_NAME_PAREN_RE);
   if (match) {
     const key = match[1].trim().toLowerCase();
     if (NON_SPEAKER_KEYS.has(key)) return null;
-    return { name: match[1].trim(), descriptor: match[2].trim() };
+    if (!isPlausibleSpeakerName(match[1])) return { kind: "rejected", candidate: match[1].trim() };
+    return { kind: "header", value: { name: match[1].trim(), descriptor: match[2].trim() } };
   }
 
   match = line.match(HEADER_NAME_TITLE_RE);
@@ -99,7 +171,8 @@ function parseHeaderLine(line: string): HeaderLine | null {
     const key = match[1].trim().toLowerCase();
     if (NON_SPEAKER_KEYS.has(key)) return null;
     if (match[2].length > 80) return null; // implausibly long "title" — not a header line
-    return { name: match[1].trim(), descriptor: match[2].trim() };
+    if (!isPlausibleSpeakerName(match[1])) return { kind: "rejected", candidate: match[1].trim() };
+    return { kind: "header", value: { name: match[1].trim(), descriptor: match[2].trim() } };
   }
 
   return null;
@@ -218,51 +291,96 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
     }
   }
 
-  // Pass 2 — standalone participant header lines ("Maya Chen — Cisco
-  // Account Executive" / "Daniel Cho (Reliability Lead)") that are not
-  // themselves a dialogue turn. This format has no tagging convention, so
-  // an ambiguous (non-Cisco/vendor) descriptor defaults to "customer".
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || parseDialogueLine(trimmed)) continue;
-    const header = parseHeaderLine(trimmed);
-    if (!header) continue;
-    const record = ensureRecord(header.name);
-    if (record.classification !== "unknown") continue; // don't override an explicit legacy tag
-    const { title, organization, classification } = classifyDescriptor(header.descriptor, "customer");
-    record.title = title;
-    record.organization = organization;
-    record.classification = classification;
+  // Pass 2 — one single ordered walk that both (a) recognizes standalone
+  // participant header lines ("Maya Chen — Cisco Account Executive" /
+  // "Daniel Cho (Reliability Lead)") and (b) builds each dialogue turn
+  // by accumulating every subsequent line into the currently open
+  // speaker's turn until the next recognized speaker header — so a
+  // real transcript's wrapped/multi-line turns are never silently
+  // dropped (previously only the first line of a multi-line turn ever
+  // reached scoring). A header line always closes any open turn (it is
+  // metadata, never dialogue content); a line matching neither pattern
+  // is a continuation of the open turn, or — if no turn is open yet —
+  // an orphan line that is recorded for diagnostics but never
+  // fabricates a participant.
+  let headersDetected = 0;
+  const rejectedHeaderCandidates: string[] = [];
+  const turns: Array<{ record: ParticipantRecord; timestamp: string | null; textParts: string[] }> = [];
+  let openTurn: { record: ParticipantRecord; timestamp: string | null; textParts: string[] } | null = null;
+
+  function closeOpenTurn() {
+    if (openTurn) {
+      turns.push(openTurn);
+      openTurn = null;
+    }
   }
 
-  // Pass 3 — every recognized dialogue turn, across every supported
-  // format. Builds the full ordered sentence sequence (what context-
-  // window lookups are computed against) and each participant's turn
-  // count and first/last evidence index.
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue; // blank lines never close or start a turn — real transcripts wrap paragraphs across blank lines
+    if (ACCOUNT_LINE_RE.test(trimmed) || PARTICIPANTS_LINE_RE.test(trimmed)) continue; // already consumed in Pass 1
+
+    const dialogue = parseDialogueLine(trimmed);
+    if (dialogue) {
+      closeOpenTurn();
+      headersDetected += 1;
+      const record = ensureRecord(dialogue.speaker);
+      record.turnCount += 1;
+      openTurn = { record, timestamp: dialogue.timestamp, textParts: dialogue.text ? [dialogue.text] : [] };
+      continue;
+    }
+
+    const header = parseHeaderLine(trimmed);
+    if (header?.kind === "rejected") {
+      rejectedHeaderCandidates.push(header.candidate);
+      // Falls through to continuation handling below — a rejected
+      // header candidate is still real transcript content and must
+      // not be dropped.
+    } else if (header?.kind === "header") {
+      closeOpenTurn(); // a genuine header line is metadata, not dialogue continuation
+      const record = ensureRecord(header.value.name);
+      if (record.classification === "unknown") {
+        const { title, organization, classification } = classifyDescriptor(header.value.descriptor, "customer");
+        record.title = title;
+        record.organization = organization;
+        record.classification = classification;
+      }
+      continue;
+    }
+
+    // Continuation of the currently open speaker turn (the normal case
+    // for a wrapped/multi-line turn), or an orphan line with no open
+    // turn yet (e.g. free text before the first recognized speaker).
+    if (openTurn) {
+      openTurn.textParts.push(trimmed);
+    }
+  }
+  closeOpenTurn();
+
+  // Pass 3 — split every accumulated turn's full text into sentences.
+  // Builds the full ordered sentence sequence (what context-window
+  // lookups are computed against) and each participant's first/last
+  // evidence index.
   const sentences: TranscriptSentence[] = [];
   const sentenceRecords: Array<ParticipantRecord | null> = [];
-  let sawSpeakerLines = false;
+  const sawSpeakerLines = turns.length > 0;
 
-  for (const line of lines) {
-    const dialogue = parseDialogueLine(line.trim());
-    if (!dialogue || !dialogue.text) continue;
-    sawSpeakerLines = true;
+  for (const turn of turns) {
+    const fullText = turn.textParts.join(" ").replace(/\s+/g, " ").trim();
+    if (!fullText) continue;
 
-    const record = ensureRecord(dialogue.speaker);
-    record.turnCount += 1;
-
-    for (const sentenceText of splitSentences(dialogue.text)) {
+    for (const sentenceText of splitSentences(fullText)) {
       const sentenceIndex = sentences.length;
-      if (record.firstEvidenceIndex === null) record.firstEvidenceIndex = sentenceIndex;
-      record.lastEvidenceIndex = sentenceIndex;
+      if (turn.record.firstEvidenceIndex === null) turn.record.firstEvidenceIndex = sentenceIndex;
+      turn.record.lastEvidenceIndex = sentenceIndex;
       sentences.push({
         index: sentenceIndex,
-        speaker: record.name,
+        speaker: turn.record.name,
         isCustomer: false, // resolved below, once every record's classification is final
         text: sentenceText,
-        timestamp: dialogue.timestamp
+        timestamp: turn.timestamp
       });
-      sentenceRecords.push(record);
+      sentenceRecords.push(turn.record);
     }
   }
 
@@ -313,12 +431,23 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
   const participantRecords = orderedKeys.map((key) => recordsByKey.get(key)!);
   const participants = participantRecords.map((record) => (record.title ? `${record.name} (${record.title})` : record.name));
 
+  const diagnostics: TranscriptDiagnostics = {
+    raw_characters: rawText.length,
+    raw_lines: lines.length,
+    speaker_headers_detected: headersDetected,
+    turns_parsed: turns.length,
+    sentences_parsed: sentences.length,
+    participants: participantRecords.map((record) => record.name),
+    rejected_header_candidates: rejectedHeaderCandidates
+  };
+
   return {
     account,
     participants,
     participantRecords,
     sentences,
     chunks,
-    rawText
+    rawText,
+    diagnostics
   };
 }

@@ -1,0 +1,30 @@
+Account: Pinehollow Community Schools
+Meeting: Hybrid-Work Collaboration Discovery
+Date: 2026-04-22
+
+Sam — Cisco Account Executive
+Blair — Customer, IT Director
+Dana — Customer, Workplace Experience Lead
+Jules — Customer, Finance and Operations
+
+00:00 — Sam: Thanks for making time today. What's driving this conversation for your team?
+00:10 — Blair: Our meetings and messaging are fragmented across too many different tools.
+Staff use one app for messaging, another for meetings, and a third for events, and nothing feels connected.
+00:35 — Blair: We want a common collaboration experience for our whole staff, not three disconnected point tools.
+00:55 — Dana: From a workplace-experience standpoint, our hybrid-work setup is inconsistent across buildings.
+Some sites have good video and audio setups, others are stuck with outdated equipment.
+01:20 — Dana: We want AI-assisted meeting summaries and a consistent experience whether staff are in the building or remote.
+01:45 — Jules: Budget has been approved this year for a collaboration-tool consolidation project.
+We're currently paying for overlapping messaging and meeting licenses across departments, and we want to simplify that.
+02:10 — Blair: We'd like to standardize on one collaboration platform for meetings, messaging, and events district-wide.
+02:35 — Dana: We also want better room-device management — right now nobody knows which conference rooms are actually working until someone shows up and finds out the hard way.
+03:00 — Jules: If we consolidate licensing, we expect meaningful savings we can redirect toward classroom technology instead.
+03:25 — Blair: Our superintendent is sponsoring this initiative and wants a recommendation before the next budget cycle.
+03:50 — Dana: We'd like a pilot in two of our buildings before rolling this out district-wide.
+04:15 — Jules: If the pilot goes well, we can move to a full rollout plan with a clear cost model attached.
+04:40 — Blair: We also want this to integrate with our existing directory and account system so staff don't need new logins.
+05:05 — Dana: Our target is a consistent meeting and messaging experience everywhere, plus better visibility into room and device health.
+05:30 — Jules: Let's schedule a follow-up once you have a pilot proposal and a cost estimate ready for two buildings.
+05:55 — Blair: Sounds good. This has been a helpful conversation.
+06:15 — Dana: Agreed, looking forward to the pilot proposal.
+06:35 — Jules: Thanks everyone, talk soon.

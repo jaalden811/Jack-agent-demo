@@ -1,0 +1,26 @@
+Account: Fenwick Distribution Partners
+Meeting: Network Modernization Discovery
+Date: 2026-03-11
+
+Casey — Cisco Account Executive
+Robin — Customer, Network Operations Lead
+Terry — Customer, IT Director
+
+00:00 — Casey: Thanks for joining. What's the primary challenge you're hoping to solve?
+00:10 — Robin: Our network operations are fragmented across too many consoles.
+We have too many network consoles and no unified operational view across our sites.
+Every time something breaks, we jump between five different dashboards just to find the source.
+00:35 — Robin: We need a single pane for network operations across all of our warehouse and distribution sites.
+00:55 — Terry: To be clear up front, logging and SIEM consolidation is explicitly out of scope for this conversation.
+We already evaluated Splunk last year for centralized logging, but we decided that project is not moving forward right now — it's not what we're here to discuss today.
+01:20 — Terry: What we actually need is help with our network operations and WAN connectivity across our distribution centers.
+01:45 — Robin: Our WAN costs have become unsustainable, and we're planning an SD-WAN refresh this year.
+Our teams also waste time switching between different management tools just to find the source of a problem, since there's dashboard sprawl across every site.
+02:10 — Robin: We also can't tell whether an outage is caused by our own network or by an upstream ISP — we're blind once traffic leaves our sites.
+We need a unified operational view across our internal network and our internet-facing paths together.
+02:35 — Terry: Budget has been approved for a network modernization initiative this fiscal year, and we want a platform-consolidation approach for network operations specifically.
+02:55 — Robin: We'd like a workshop to review a proposed architecture for unifying our network operations and improving WAN resiliency.
+03:05 — Terry: Provisioning at new distribution sites also takes too long today, and configuration drift between sites is a constant operational headache.
+03:20 — Terry: Our target is a single operational view across all sites and faster root-cause isolation for outages.
+03:45 — Robin: Let's schedule a follow-up once you have a draft architecture ready.
+04:05 — Terry: Thanks for the discussion today — and again, please keep the proposal focused on networking, not logging or SIEM.

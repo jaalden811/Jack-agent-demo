@@ -161,7 +161,9 @@ export async function runQualificationPipeline(params: {
             .map((s) => ({ name: s.name, role: s.function_or_role, ownership_type: s.ownership_type })),
           businessProblem: params.businessProblem,
           renewalEvents: params.renewalEvents,
-          purchaseLanguage: params.purchaseLanguage
+          purchaseLanguage: params.purchaseLanguage,
+          primaryMatchedText: params.matches[0]?.matched_text,
+          competitorMentions: extraction.result?.commercial_signals.competitor_mentions
         });
   const meddpicc = classifiedPublicResults.length > 0 ? mergePublicEvidenceIntoMeddpicc(baseMeddpicc, classifiedPublicResults) : baseMeddpicc;
 

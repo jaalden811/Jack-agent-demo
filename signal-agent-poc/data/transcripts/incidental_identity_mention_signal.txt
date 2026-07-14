@@ -1,0 +1,22 @@
+Account: Copperfield Analytics Group
+Meeting: Cloud-Native Observability Discovery
+Date: 2026-02-18
+
+Avery — Cisco Account Executive
+Rowan — Customer, Site Reliability Lead
+Skyler — Customer, Platform Engineering Lead
+
+00:00 — Avery: Thanks for joining. What's the core problem you're trying to solve?
+00:10 — Rowan: Our microservices are a black box. We cannot correlate metrics, traces, and logs across our environment.
+Kubernetes incidents take too long to resolve because we can't see across the whole distributed system at once.
+00:35 — Rowan: We've started instrumenting with OpenTelemetry, but we don't have anywhere consistent to send that data yet.
+00:55 — Skyler: We need real-time observability across our cloud environments, correlating traces, metrics, logs, and user experience data together.
+01:20 — Skyler: We ingest telemetry from a lot of different systems — for context, our identity providers are Entra ID and Okta, and those show up as data sources in some of our dashboards, but that's really just background information about our environment, not a problem we're trying to solve today.
+01:45 — Rowan: Right, identity isn't the focus here — our real pain is reducing mean time to root cause for application and infrastructure incidents.
+02:10 — Skyler: We want to instrument and troubleshoot our cloud-native applications and infrastructure end to end.
+02:35 — Rowan: Our biggest recent incident took almost five hours to resolve because we couldn't correlate the right signals quickly.
+03:00 — Skyler: We'd like a proof of value where we recreate that incident and show root-cause identification in under thirty minutes.
+03:25 — Rowan: Budget has been approved for an observability platform this year, and our VP of Engineering is sponsoring the initiative.
+03:50 — Skyler: We want this to integrate with our existing OpenTelemetry collectors rather than requiring a full re-instrumentation effort.
+04:15 — Rowan: Let's schedule a workshop once you have a proposed architecture ready.
+04:35 — Skyler: Agreed. Thanks for the discussion today.

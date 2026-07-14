@@ -59,6 +59,13 @@ export function buildDeterministicMeddpicc(params: {
   businessProblem: string;
   renewalEvents: string[];
   purchaseLanguage: string[];
+  /** The primary taxonomy match's own matched customer-language
+   * snippets — genuinely evidence-grounded technical/requirement
+   * language already computed deterministically, reused here (never
+   * product-specific) to populate Decision Criteria without requiring
+   * OpenAI. */
+  primaryMatchedText?: string[];
+  competitorMentions?: string[];
 }): Meddpicc {
   const meddpicc = buildDefaultMeddpicc();
 
@@ -107,6 +114,44 @@ export function buildDeterministicMeddpicc(params: {
       evidence_ids: [],
       gaps: ["Procurement, legal, and security review steps are not confirmed."],
       next_question: "What are the procurement, legal, and security review steps for this purchase?"
+    };
+  }
+
+  // Decision Criteria: reuse the primary taxonomy match's own matched
+  // customer-language snippets — already evidence-grounded, deterministic,
+  // and product-agnostic (never invents a requirement that wasn't matched
+  // against real transcript text).
+  const criteriaSnippets = (params.primaryMatchedText ?? []).filter((text) => text.length > 0);
+  if (criteriaSnippets.length >= 3) {
+    meddpicc.decision_criteria = {
+      status: "CONFIRMED",
+      summary: `Multiple explicit technical/decision requirements were stated: ${criteriaSnippets.slice(0, 3).join(" ")}`,
+      confidence: 0.75,
+      evidence_ids: [],
+      gaps: ["Requirements have not yet been weighted or ranked by the buying committee."],
+      next_question: "Which of these stated requirements are must-have versus nice-to-have for the final decision?"
+    };
+  } else if (criteriaSnippets.length > 0) {
+    meddpicc.decision_criteria = {
+      status: "PARTIAL",
+      summary: `Some technical/decision requirements were stated: ${criteriaSnippets[0]}`,
+      confidence: 0.5,
+      evidence_ids: [],
+      gaps: ["The full set of decision criteria has not been confirmed."],
+      next_question: "What additional decision criteria should we validate before a recommendation?"
+    };
+  }
+
+  // Competition: only ever populated from an explicitly named competitor
+  // or incumbent — never inferred from generic product-category language.
+  if (params.competitorMentions && params.competitorMentions.length > 0) {
+    meddpicc.competition = {
+      status: "PARTIAL",
+      summary: `A competitor or incumbent alternative was referenced: ${params.competitorMentions[0]}`,
+      confidence: 0.5,
+      evidence_ids: [],
+      gaps: ["The competitive dynamic and evaluation criteria against this alternative are not yet confirmed."],
+      next_question: "How is this alternative being evaluated relative to what we're proposing?"
     };
   }
 

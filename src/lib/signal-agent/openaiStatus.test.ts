@@ -28,17 +28,30 @@ describe("checkOpenAiAuthentication", () => {
     const result = await checkOpenAiAuthentication(SECRET_KEY);
     expect(result.usable).toBe(true);
     expect(result.message).toBe("Ready");
+    expect(result.diagnostic.operational).toBe(true);
   });
 
-  it("reports a sanitized 401 rejection without leaking the key", async () => {
-    const error = Object.assign(new Error("Incorrect API key provided"), { status: 401, error: { type: "invalid_request_error", code: "invalid_api_key" } });
+  it("reports a sanitized 401 rejection without leaking the key, with the full Section-8 diagnostic shape", async () => {
+    const error = Object.assign(new Error("Incorrect API key provided"), {
+      status: 401,
+      error: { type: "invalid_request_error", code: "invalid_api_key" },
+      requestID: "req_test_401"
+    });
     mockOpenAiModule({ models: { list: vi.fn().mockRejectedValue(error) } });
     const { checkOpenAiAuthentication } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiAuthentication(SECRET_KEY);
     expect(result.usable).toBe(false);
-    expect(result.message).toBe("request rejected (invalid or unauthorized key)");
+    expect(result.message).toContain("Authentication rejected");
     expect(result.error?.http_status).toBe(401);
     expect(result.error?.error_code).toBe("invalid_api_key");
+
+    const diagnostic = result.diagnostic;
+    expect(diagnostic.operation).toBe("authentication");
+    expect(diagnostic.operational).toBe(false);
+    expect(diagnostic.http_status).toBe(401);
+    expect(diagnostic.error_code).toBe("invalid_api_key");
+    expect(diagnostic.request_id).toBe("req_test_401");
+    expect(diagnostic.retryable).toBe(false);
     expect(JSON.stringify(result)).not.toContain(SECRET_KEY);
   });
 });
@@ -57,8 +70,9 @@ describe("checkOpenAiEmbeddings", () => {
     const { checkOpenAiEmbeddings } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiEmbeddings(SECRET_KEY, "bogus-model");
     expect(result.usable).toBe(false);
-    expect(result.message).toBe("model unavailable");
+    expect(result.message).toContain("Model unavailable");
     expect(result.error?.http_status).toBe(404);
+    expect(result.diagnostic.model).toBe("bogus-model");
   });
 });
 
@@ -81,15 +95,34 @@ describe("checkOpenAiSynthesis", () => {
     const synthesisResult = await checkOpenAiSynthesis(SECRET_KEY, "text-embedding-3-small");
     const embeddingsResult = await checkOpenAiEmbeddings(SECRET_KEY, "text-embedding-3-small");
     expect(synthesisResult.usable).toBe(false);
-    expect(synthesisResult.message).toBe("model unavailable");
+    expect(synthesisResult.message).toContain("Model unavailable");
     expect(embeddingsResult.usable).toBe(true);
   });
 
-  it("reports a rate-limit (429) rejection with a sanitized reason", async () => {
+  it("reports a plain rate-limit (429) as retryable, distinct from quota exhaustion", async () => {
     const error = Object.assign(new Error("rate limited"), { status: 429 });
     mockOpenAiModule({ responses: { create: vi.fn().mockRejectedValue(error) } });
     const { checkOpenAiSynthesis } = await import("@/lib/signal-agent/openaiStatus");
     const result = await checkOpenAiSynthesis(SECRET_KEY, "gpt-4o-mini");
-    expect(result.message).toBe("request rejected (rate limited)");
+    expect(result.message).toContain("Rate limited");
+    expect(result.diagnostic.retryable).toBe(true);
+  });
+
+  it("reports 429 with insufficient_quota as quota-exceeded and NOT retryable", async () => {
+    const error = Object.assign(new Error("You exceeded your current quota"), { status: 429, error: { code: "insufficient_quota" } });
+    mockOpenAiModule({ responses: { create: vi.fn().mockRejectedValue(error) } });
+    const { checkOpenAiSynthesis } = await import("@/lib/signal-agent/openaiStatus");
+    const result = await checkOpenAiSynthesis(SECRET_KEY, "gpt-4o-mini");
+    expect(result.message).toContain("Quota exceeded");
+    expect(result.diagnostic.retryable).toBe(false);
+  });
+
+  it("reports a timeout distinctly from a network failure", async () => {
+    const error = Object.assign(new Error("timed out"), { name: "APIConnectionTimeoutError" });
+    mockOpenAiModule({ responses: { create: vi.fn().mockRejectedValue(error) } });
+    const { checkOpenAiSynthesis } = await import("@/lib/signal-agent/openaiStatus");
+    const result = await checkOpenAiSynthesis(SECRET_KEY, "gpt-4o-mini");
+    expect(result.message).toContain("timed out");
+    expect(result.diagnostic.retryable).toBe(true);
   });
 });

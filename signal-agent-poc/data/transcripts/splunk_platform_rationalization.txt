@@ -1,0 +1,125 @@
+Account: Vertex Industrial Holdings
+Meeting: Splunk Platform Rationalization Discovery
+Date: 2026-07-13
+
+Maya — Cisco Account Executive
+Erin — Customer, Site Reliability Engineering Lead
+Marcus — Customer, Security Operations Lead
+Tom — Customer, Infrastructure Monitoring Lead
+Priya — Customer, Application Support Lead
+Daniel — Customer, Enterprise Architecture
+Leah — Customer, Vendor Management and Procurement
+
+00:00 — Maya: Thanks everyone for joining today. Before we dive in, can someone frame the overall problem we're trying to solve?
+00:12 — Erin: Sure, I'll start. Our biggest pain right now is that we don't have centralized machine data.
+Every team has its own logging tool, so cross-domain correlation across our environment basically doesn't exist.
+When something breaks, we're jumping between five or six different consoles just to find the right log line.
+00:41 — Erin: The cross-environment API calls between our order system and our warehouse system were slower during peak hours last quarter, and nobody could tell us why for almost a full day.
+01:05 — Maya: That's helpful context. Marcus, what does that look like from the security side?
+01:12 — Marcus: From security, we have the same fragmentation problem but for a different reason.
+Our security analytics live in one place, our infrastructure logs live in another, and our application logs live in a third place entirely.
+We need centralized logs for security and compliance.
+When we're doing a cross-domain security investigation, we can't easily join those data sets together.
+01:40 — Marcus: We also need proper audit trails and retention controls, because our compliance team is asking harder questions every quarter about how long we keep security-relevant data and who can access it.
+Audit reporting takes too long today.
+02:05 — Tom: On the infrastructure monitoring side, it's the same story. I own most of our infrastructure monitoring today, and I still can't get a single reliable search across every host, container, and network device we run.
+02:28 — Tom: Plus customer-service overtime costs have gone up significantly this quarter alone, because our support team has to stay late reconciling incidents that span infrastructure and application boundaries.
+02:50 — Priya: I own application-support standards for our customer-facing services, and I'll add to that. Our application teams have started instrumenting with OpenTelemetry, but we have nowhere consistent to send that data.
+Our microservices run on Kubernetes, and traditional APM alone isn't enough for that environment anymore. We cannot correlate metrics, traces, and logs today, and we need real-time observability across our cloud environments, including real user monitoring for our storefront.
+03:10 — Priya: So business-service reliability matters more to our leadership team than it ever has, because every outage now gets escalated straight to the executive staff meeting.
+03:35 — Maya: Understood. Can you quantify the business impact at all? Even a rough number helps us prioritize.
+03:50 — Erin: Yes. Finance actually did that work for us already. Finance estimated about $1.8 million in delayed orders this quarter alone, directly tied to incidents where we couldn't isolate the failure fast enough.
+04:15 — Erin: On top of that number, there are expediting costs we pay to rush replacement shipments, and there are retailer penalties in our contracts whenever an order slips past the promised ship date.
+04:45 — Marcus: Those retailer penalties came up in our last board review too. It's not just an IT problem anymore; it's a revenue problem.
+05:05 — Daniel: I'll jump in here. I sit on the enterprise architecture team, and my job is to make sure whatever we choose actually fits our target architecture, not just patches today's symptom.
+05:25 — Daniel: We have design authority over any platform that touches more than one domain, so Enterprise Architecture will need to sign off before this moves forward.
+05:50 — Maya: That's good to know. Who else has decision authority here, so we understand the full picture?
+06:05 — Erin: Our CIO is the executive sponsor for this whole initiative. She's the one who asked us to bring in outside options instead of just renewing what we have.
+06:28 — Tom: On the budget side, our VP of Infrastructure and Operations controls a meaningful part of the budget for this, especially anything that touches monitoring and platform spend.
+06:52 — Marcus: And I'll say directly, our CISO has control over anything security-related, including whether a data platform is acceptable for security analytics and compliance reporting.
+07:15 — Leah: I'm Leah, and I run vendor management and procurement for this initiative. My team controls vendor consolidation, so part of what I need is a clean story about which tools we retain and which ones we retire.
+07:40 — Leah: There is funding for platform rationalization already approved in this year's budget, which is a big part of why we're even having this conversation now.
+08:05 — Maya: That's excellent. Is there a specific timeline we should be aware of?
+08:15 — Daniel: Yes. Our fiscal-planning cycle closes in October, so we need a firm architecture and commercial plan before then, or this slips to next fiscal year entirely.
+08:40 — Leah: On top of that, two of our existing monitoring and logging contracts renew over the next two fiscal quarters. Our logging contract specifically renews in January.
+09:00 — Leah: Then a separate platform contract renews in March, so we'd like any new platform decision made before both of those renewal dates.
+09:25 — Erin: Those renewals are exactly why this conversation is urgent. If we renew blind, we lock ourselves into the same fragmented state for another year.
+09:50 — Maya: Understood on timing. Let's talk about what a good outcome looks like technically. What decision criteria matter most to you?
+10:05 — Marcus: Data segregation is non-negotiable for us. Security data and general IT data need role-based access so that only the right teams can see the right slice of it.
+10:30 — Marcus: We also need strong retention controls and full audit trails, since our regulators expect us to prove exactly who touched what data and when.
+10:42 — Marcus: We also want to consolidate SIEM and UEBA on that same security-analytics data platform, and we need custom detections across all our data, not just a narrow set of Cisco-native alerts.
+That means analyzing security data from many sources at real scale, and supporting proper threat hunting alongside our compliance reporting needs.
+10:55 — Tom: From my side, I need reliable search performance at scale. If a search takes ten minutes during an active incident, that's not acceptable.
+11:20 — Priya: We need OpenTelemetry support natively, and we'd like to reuse our existing collector fleet rather than re-instrumenting every service from scratch.
+11:45 — Priya: Include sensitive-field masking in whatever technical scope we agree on, because some of our application logs contain fields that need to be redacted before they ever leave the source system.
+12:10 — Tom: We also rely heavily on ServiceNow and PagerDuty today, and our infrastructure runs primarily in Azure, so any platform needs solid integrations across all three.
+12:35 — Erin: Provide a three-year cost model as part of any proposal. Leadership will not approve a platform change without transparent, multi-year cost visibility.
+13:00 — Marcus: We'll also need clear routing, filtering, and tiering so that high-value security data doesn't get buried next to low-value debug logs, and so we can separate workloads by cost tier.
+13:25 — Daniel: From an architecture standpoint, workload separation matters too. We don't want one noisy team's ingestion spike to degrade search performance for everyone else.
+13:50 — Maya: This is great detail. Let's talk about what would prove this out before a full commitment. What would a proof of value need to demonstrate?
+14:10 — Erin: The clearest test case we have is the incident from May. In May we had a major outage that took almost six hours to root-cause because the evidence was scattered across so many tools.
+14:35 — Erin: Our proof-of-value target is simple to state: recreate the May incident using historical or representative data, and show a responder identifying the likely failure path in under 20 minutes.
+15:00 — Tom: For that proof of value, we'd want to bring in real production-service traces, logs, metrics, and deployment events, not just a synthetic demo data set.
+15:25 — Marcus: On the security side, we'd also want a cross-domain security investigation scenario included, so we can validate that security and infrastructure data can actually be joined together during the test.
+15:50 — Marcus: Data separation and auditability need to hold up during that proof of value too, not just in the sales deck.
+16:15 — Priya: I'd add one more angle. We want to confirm that our OpenTelemetry-instrumented services show up cleanly alongside the older infrastructure telemetry, so we're not maintaining two separate mental models.
+Kubernetes incidents take too long to resolve today, and our microservices are still too much of a black box once something goes wrong.
+16:40 — Maya: That all makes sense. Let's talk ownership. Who ends up owning this platform day to day once it's live?
+16:55 — Erin: I own reliability for the platform overall. My team will be the primary operators once this is in production.
+17:15 — Tom: I own much of the infrastructure monitoring piece specifically, so the infrastructure data sources and their health will be my responsibility.
+17:35 — Priya: Application-support standards are mine. I'll make sure application teams onboard consistently and follow the instrumentation guidelines we agree on.
+17:55 — Marcus: Security monitoring stays with me. I'll own the security-relevant data sources, the detections built on top of them, and the compliance reporting.
+18:15 — Leah: My team continues to own vendor consolidation, so I'll track which legacy tools get retired as this platform comes online.
+18:35 — Daniel: And Enterprise Architecture continues to hold design authority across the whole initiative, reviewing anything that changes our target-state architecture.
+18:55 — Maya: Understood. I do want to touch briefly on identity. Do you have any open concerns there, even if it's not the main focus today?
+19:10 — Marcus: It's on our radar, but it's secondary to this conversation. We use Entra ID today and we're evaluating Okta in a couple of business units, mostly for workforce access and MFA coverage.
+19:35 — Marcus: Device trust and access control matter to us long-term, but that's a separate workstream from the data-platform decision we're making here.
+19:55 — Daniel: Agreed, identity is important, but it's not the dominant problem in this meeting. The dominant problem is that we can't centralize and correlate machine data across domains.
+20:20 — Maya: That's a really important distinction, thank you for being explicit about it. Let's talk about what a Splunk-oriented platform would actually need to cover for you.
+20:40 — Erin: We'd want Splunk to be the machine-data search and correlation layer across infrastructure, applications, and security, replacing most of the fragmented point tools we have today.
+21:05 — Tom: For infrastructure, we'd want it to absorb our infrastructure monitoring use cases, ideally reducing the number of dashboards my team maintains from five down to one.
+21:30 — Priya: For applications, we'd want it to support our OpenTelemetry-based observability goals directly, correlating traces, metrics, and logs for our cloud-native services.
+21:55 — Marcus: For security, we'd want it to serve as our security analytics and audit platform, supporting retention, role-based access, and compliance reporting out of the box.
+22:20 — Daniel: From an architecture perspective, we'd want to retain a few existing domain tools where they're already deeply embedded, rather than ripping everything out on day one.
+22:45 — Erin: Right, this isn't about replacing every tool overnight. It's about governance, ingestion discipline, and having one place to search when something goes wrong.
+23:10 — Leah: And from a procurement lens, I need a clear list of what gets retained versus retired, so I can manage vendor consolidation cleanly with finance.
+23:35 — Maya: Understood across the board. Let's talk next steps. What would you want to see from us before the next session?
+23:55 — Tom: We'd like you to prepare a draft architecture for our ordering-service environment specifically, since that's where the May incident happened and where the $1.8 million impact is concentrated.
+24:20 — Daniel: Please define Splunk's role explicitly in that architecture, alongside which retained domain tools stay in place and why.
+24:45 — Marcus: Make sure the architecture includes our security controls, our audit and retention requirements, and how OpenTelemetry data flows into the security side when relevant.
+25:10 — Priya: We'd also like ownership identified clearly for each layer, so it's obvious who operates what once this goes live.
+25:35 — Leah: And please provide a preliminary cost model, even a rough one, so we can start socializing numbers internally before the October planning deadline.
+26:00 — Erin: If we can get that architecture, the retained-tool list, ownership map, and a preliminary cost model in front of us, we can schedule a working session with the broader team.
+26:25 — Maya: That's a clear set of next steps. To confirm: draft ordering-service architecture, explicit Splunk role definition, retained-tool list, ownership map, and a preliminary three-year cost model, all before our next session.
+26:50 — Daniel: Correct. And please keep Enterprise Architecture looped in early, since we'll need to review the target-state diagram before it goes to the CIO.
+27:15 — Tom: One more thing. Please also address routing, filtering, and tiering explicitly in the architecture, since that maps directly to the cost model Leah needs.
+27:40 — Marcus: And please include sensitive-field masking and data segregation explicitly in the write-up, not just implied. Our compliance team will ask for it directly.
+28:05 — Leah: Agreed. If we see funding for platform rationalization reflected clearly against a real cost model, this becomes a much easier internal conversation.
+28:30 — Erin: This has been a productive session. Let's plan to reconvene once the architecture and cost model are ready, ideally well before our January and March renewal dates.
+28:55 — Maya: Understood. We'll put together the ordering-service architecture, the explicit Splunk role and retained-tool breakdown, the ownership map, and the preliminary cost model, and get back to you well ahead of the October planning deadline.
+
+29:15 — Maya: Before we close, let me make sure I captured the retained-tool question correctly. Daniel, can you say more about which domain tools you expect to keep?
+29:30 — Daniel: Sure. We're not looking to rip out every existing tool. Anything deeply embedded in a single team's workflow with no cross-domain need can likely stay, at least for this first phase.
+29:48 — Daniel: What we do want retired are the overlapping logging and monitoring tools that only exist because teams couldn't share a common data platform.
+30:05 — Maya: That's a fair distinction. Erin, does that match how you're thinking about it too?
+30:18 — Erin: Yes. If a tool is genuinely single-domain and nobody else needs its data, we're fine leaving it alone for now. The urgency is around the tools causing the cross-domain blind spots.
+30:35 — Maya: Understood. Marcus, on the compliance side, is there a specific audit cycle we should design around?
+30:50 — Marcus: Our next major compliance audit is later this fiscal year, so we'd like the retention controls and audit trails validated well before that audit window opens.
+31:08 — Maya: Got it, we'll factor that audit window into the timeline alongside the October planning deadline and the January and March renewals.
+31:22 — Tom: One clarifying question from my side. When you say reduce dashboards from five down to one, does that include our existing ServiceNow and PagerDuty workflows, or just the raw monitoring dashboards?
+31:40 — Maya: Good question. The goal is to keep ServiceNow and PagerDuty as your incident workflow tools, with Splunk feeding context into them rather than replacing them outright.
+31:58 — Tom: That's exactly what we'd want. We don't want to relearn our incident process, we just want better data flowing into the process we already trust.
+32:15 — Priya: On the OpenTelemetry side, will the proof of value include one of our actual instrumented services, or a generic sample service?
+32:32 — Maya: We'd plan to use one of your actual instrumented services if you can identify a representative one, since that will make the under-20-minute failure-path test much more convincing to your team.
+32:50 — Priya: I can nominate one of our order-processing microservices for that. It's already emitting OpenTelemetry traces today.
+33:05 — Marcus: For the cross-domain security scenario in the proof of value, I'd like to include a case where an infrastructure change correlates with a security-relevant event, since that's the kind of join we struggle with today.
+33:22 — Maya: That's a great scenario to include. We'll design the proof of value so it demonstrates that exact kind of cross-domain correlation, not just a single-domain search.
+33:40 — Leah: From a commercial standpoint, will the three-year cost model account for both the ingestion volume growth and the eventual retirement of the overlapping tools?
+33:58 — Maya: Yes, the cost model will show ingestion-based costs alongside the projected savings from retiring the overlapping logging and monitoring contracts, so leadership sees the net picture.
+34:15 — Leah: That net picture is exactly what I need to bring this to finance alongside the funding already approved for platform rationalization.
+34:32 — Daniel: I'll also want to see how the architecture handles workload separation as our data volume grows, so a single noisy application team can't degrade search performance for everyone else.
+34:50 — Maya: Understood, we'll document routing, filtering, tiering, and workload separation explicitly as part of the architecture, tied directly to the cost model.
+35:05 — Erin: Given everything we've covered, I think the next working session should include the broader SRE and security engineering teams, not just this group.
+35:22 — Maya: Agreed. Once the draft architecture, retained-tool list, ownership map, and cost model are ready, we'll schedule that broader working session before the January renewal.
+35:40 — Marcus: Sounds good. This has been one of the more concrete discovery sessions we've had on this topic.
+35:55 — Maya: Thank you all again. We'll follow up with the materials well ahead of the October planning deadline and before the January and March renewal dates.

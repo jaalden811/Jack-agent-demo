@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
+import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
 /**
  * All types here describe data shapes only. Nothing in this file encodes a
@@ -180,6 +182,25 @@ export type ParticipantRecord = {
   lastEvidenceIndex: number | null;
 };
 
+/** Parser transparency/diagnostics (never shown on the main result
+ * card — surfaced only in the Audit tab and the API response) so a
+ * parsing regression is visible immediately instead of silently
+ * producing a confident wrong result. See
+ * @/lib/signal-agent/transcript#ingestTranscript. */
+export type TranscriptDiagnostics = {
+  raw_characters: number;
+  raw_lines: number;
+  speaker_headers_detected: number;
+  turns_parsed: number;
+  sentences_parsed: number;
+  participants: string[];
+  /** Lines that looked like a "Name — Title" header candidate but were
+   * rejected by speaker-name plausibility validation (e.g. a
+   * hyphenated-compound-word continuation line, or a sentence-like
+   * fragment) — never silently promoted to a fake participant. */
+  rejected_header_candidates: string[];
+};
+
 export type IngestedTranscript = {
   account: string | null;
   /** Legacy "Name (role)" string list — retained for backward
@@ -190,6 +211,7 @@ export type IngestedTranscript = {
   sentences: TranscriptSentence[];
   chunks: TranscriptChunk[];
   rawText: string;
+  diagnostics: TranscriptDiagnostics;
 };
 
 export type MatchedSemanticCue = {
@@ -378,11 +400,32 @@ export type SanitizedProviderError = {
   message: string;
 };
 
+/** Exact safe diagnostic shape for one tested OpenAI operation (Section
+ * 8) — never the raw SDK error, but always the safe HTTP status,
+ * provider error type/code, request ID, and a specific classification
+ * (never a generic "request rejected"). See @/lib/signal-agent/openaiStatus. */
+export type OpenAiOperationDiagnostic = {
+  operation: "authentication" | "embeddings" | "synthesis";
+  configured: boolean;
+  operational: boolean;
+  model: string | null;
+  http_status: number | null;
+  error_type: string | null;
+  error_code: string | null;
+  safe_message: string;
+  request_id: string | null;
+  retryable: boolean;
+  checked_at: string;
+};
+
 export type OpenAiCapabilityStatus = {
   usable: boolean;
   message: string;
   error: SanitizedProviderError | null;
   last_check: string | null;
+  /** Present once the capability has actually been checked — the full
+   * structured diagnostic per Section 8. */
+  diagnostic?: OpenAiOperationDiagnostic;
 };
 
 /** OpenAI has two independent capabilities, each with its own model and
@@ -555,7 +598,51 @@ export type SecureNetworkingTriageResult = {
   /** Signed, expiring public link to this run's read-only result page
    * — never a localhost/private-address URL (Section 11). */
   analysis_link: AnalysisLink;
+  /** Parser transparency (never shown on the main result card — only
+   * in the Audit tab and this API response) so a parsing regression is
+   * visible immediately instead of silently producing a confident
+   * wrong result. */
+  transcript_diagnostics: TranscriptDiagnostics;
+  /** Generic, transcript-agnostic diagnostic trace (Section 8): every
+   * field here is derived purely from the parser and the generic
+   * evidence-scoring engine — never from a transcript-specific branch.
+   * `category_scores` covers every taxonomy entry that was evaluated,
+   * not only the ones selected as matches, so the full ranking (and
+   * why one category dominated another) is always inspectable. */
+  generic_diagnostics: GenericDiagnostics;
 };
+
+export type GenericDiagnostics = {
+  parser: {
+    turns: number;
+    sentences: number;
+    participants: string[];
+    warning: string | null;
+  };
+  signals: {
+    commercial: GenericSignal[];
+    technical: GenericSignal[];
+    ownership: GenericSignal[];
+    next_steps: GenericSignal[];
+  };
+  category_scores: CategoryScoreDiagnostic[];
+};
+
+/** Thrown by runSignalAgent when the transcript is long enough that a
+ * healthy parse should have found substantially more sentences than it
+ * did — signals a parser regression rather than a genuinely short
+ * transcript, and must never silently continue as a normal run. */
+export class TranscriptParseIncompleteError extends Error {
+  code = "TRANSCRIPT_PARSE_INCOMPLETE" as const;
+  diagnostics: TranscriptDiagnostics;
+  constructor(diagnostics: TranscriptDiagnostics) {
+    super(
+      `Transcript parsing produced only ${diagnostics.sentences_parsed} sentence(s) from ${diagnostics.raw_characters} characters — this looks like a parser failure, not a short transcript. Refusing to produce a result or auto-send.`
+    );
+    this.name = "TranscriptParseIncompleteError";
+    this.diagnostics = diagnostics;
+  }
+}
 
 /** Wire shape for GET /api/signal-agent/catalog — one taxonomy entry as
  * sent to the browser. Snake_case to match the entry's own JSON fields. */

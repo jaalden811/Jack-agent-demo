@@ -1,0 +1,121 @@
+Account: Northgate Materials Science
+Meeting: AI Infrastructure Scale-Up Discovery
+Date: 2026-06-02
+
+Devin — Cisco Account Executive
+Sasha — Customer, AI Platform Lead
+Quinn — Customer, Data Center Operations Director
+Harper — Customer, Research Computing Lead
+Emerson — Customer, Finance and Capital Planning
+
+00:00 — Devin: Thanks for making time today. Can you set the stage for where your AI program stands right now?
+00:12 — Sasha: Sure. We've been running AI pilots for about a year, and now we need to move from pilots into production.
+00:20 — Sasha: The core problem is our GPU infrastructure can't scale the way our research teams need it to.
+00:30 — Quinn: From the data-center side, power, cooling, and networking complexity are slowing every new AI project down.
+00:40 — Quinn: We don't have a validated stack, so every deployment feels like a one-off science project.
+00:50 — Harper: Our research computing team has a backlog of training jobs waiting on capacity.
+01:00 — Harper: We need high-density compute, and we need it to scale without a six-month lead time every time.
+01:10 — Sasha: We also need security and observability built in from day one, not bolted on afterward.
+01:20 — Quinn: Right now we don't have a consistent way to monitor GPU utilization across clusters.
+01:30 — Harper: Some teams are already experimenting with distributed training and agentic workloads.
+01:40 — Sasha: We want a modular approach so we can add capacity incrementally rather than a massive one-time buildout.
+01:50 — Quinn: Networking for AI clusters is a big unknown for us. We don't have expertise in high-performance AI fabric.
+02:00 — Harper: We also want inference capacity close to where our data is generated, not just centralized training.
+02:10 — Emerson: I handle capital planning for this initiative, and we do have budget allocated for AI infrastructure this fiscal year.
+02:20 — Emerson: That said, we need a clear multi-year cost model before we commit to a specific architecture.
+02:30 — Sasha: We're evaluating a few vendors right now, so a validated reference architecture would help our internal review a lot.
+02:40 — Quinn: Our data-center team is also worried about operational complexity — we don't want five new tools to manage this.
+02:50 — Harper: Whatever we choose needs to support both training and inference workloads without a redesign later.
+03:00 — Sasha: We'd like observability into the AI stack itself — GPU health, job status, and failure patterns.
+03:10 — Quinn: On the power side, we're already close to capacity in our primary data center.
+03:20 — Emerson: Any proposal needs to account for power and cooling constraints, not just compute specs.
+03:30 — Harper: Our research leads have specifically asked for agentic AI infrastructure support, not just traditional model training.
+03:40 — Sasha: We want a secure AI factory approach — compute, networking, security, and observability designed together.
+03:50 — Quinn: We also want this to integrate with our existing compute estate rather than requiring a total rip-and-replace.
+04:00 — Harper: Our proof-of-value target is to run one real production-scale training job and one inference workload side by side.
+04:10 — Sasha: We'd like to see that proof of value complete within the next two months if possible.
+04:20 — Emerson: Two months is aggressive, but if the architecture is solid, finance can move quickly on approval.
+04:30 — Quinn: We also want a clear ownership model — who operates the AI infrastructure day to day once it's live.
+04:40 — Harper: Research computing will own the workload scheduling and job management piece.
+04:50 — Quinn: Data center operations will own the physical infrastructure, power, cooling, and networking layer.
+05:00 — Sasha: I'll own the AI platform layer itself — orchestration, security posture, and observability.
+05:10 — Emerson: Finance will track spend against the budget we've allocated and report on capital utilization.
+05:20 — Devin: That's a clear ownership breakdown. Let's talk technical requirements next.
+05:30 — Harper: We need support for distributed training across multiple nodes with high-bandwidth interconnects.
+05:40 — Sasha: We also need integration with our existing MLOps tooling rather than replacing our whole pipeline.
+05:50 — Quinn: Security has to be built in — we can't have an AI environment that's a soft target for lateral movement.
+06:00 — Harper: We'd like GPU utilization metrics correlated with job outcomes so we can tune scheduling over time.
+06:10 — Sasha: Ideally we reduce our average job-queue wait time from several days down to under a few hours.
+06:20 — Quinn: We also want power and thermal telemetry integrated into the same operational view.
+06:30 — Emerson: If we can show a credible path to better utilization, that helps justify the capital spend internally.
+06:40 — Harper: We're also exploring edge inference for a few manufacturing sites, so the architecture needs to extend beyond the core data center eventually.
+06:50 — Sasha: That's phase two for us, but we don't want to design ourselves into a corner on phase one.
+07:00 — Quinn: Our current data-center footprint uses a mix of older server generations, so lifecycle planning matters too.
+07:10 — Devin: Understood. Let's talk about proof-of-value scope in more detail.
+07:20 — Harper: We'd want a representative training job using one of our actual research models, not a generic benchmark.
+07:30 — Sasha: And an inference workload running concurrently, so we can see how the platform behaves under mixed load.
+07:40 — Quinn: We'd also want to validate networking performance under that mixed load, since that's been a bottleneck before.
+07:50 — Emerson: If the proof of value hits its targets, we can move to a broader rollout discussion with the executive team.
+08:00 — Sasha: Our executive sponsor for this initiative is our CTO, who's been pushing for faster AI adoption for two years now.
+08:10 — Quinn: Data center capital decisions ultimately route through our VP of Infrastructure, who controls that budget line.
+08:20 — Harper: Research leadership will weigh in on whether the proof of value actually meets scientific requirements.
+08:30 — Emerson: And I'll coordinate the finance review once we have a firm cost model in hand.
+08:40 — Devin: That's a clear picture. Let's cover timing next.
+08:50 — Emerson: Our capital planning cycle closes at the end of Q3, so we'd like a decision before then.
+09:00 — Quinn: Our current server refresh contracts also expire early next year, so there's a natural alignment point there.
+09:10 — Sasha: If we miss this planning cycle, we lose a meaningful amount of momentum internally.
+09:20 — Harper: Research teams are already asking when they'll get more capacity, so there's real internal pressure too.
+09:30 — Devin: Understood. Let's talk next steps to keep this moving.
+09:40 — Sasha: We'd like a draft reference architecture that covers compute, networking, security, and observability together.
+09:50 — Quinn: Please include power and cooling assumptions explicitly, since that's often glossed over in vendor proposals.
+10:00 — Harper: And please scope the proof of value clearly — one training job, one inference workload, a defined success target.
+10:10 — Emerson: And a preliminary multi-year cost model so we can start the finance conversation early.
+10:20 — Sasha: If we get all of that, we can schedule a technical deep-dive with our broader research and platform teams.
+10:30 — Quinn: I'd also like to loop in our facilities team once we get further into power and cooling specifics.
+10:40 — Harper: Agreed. Let's make sure the proof of value timeline lines up with our Q3 planning deadline.
+10:50 — Devin: To confirm: reference architecture across compute, network, security, and observability, a scoped proof of value, an ownership map, and a preliminary cost model — all before the Q3 planning deadline.
+11:00 — Sasha: That's exactly right. Thanks for such a thorough conversation today.
+11:10 — Quinn: One more thing — please make sure the architecture accounts for our existing compute estate so we're not scrapping recent investments.
+11:20 — Harper: And please flag any risks or open questions clearly rather than glossing over them.
+11:30 — Emerson: Same on the cost side — we'd rather see a conservative estimate than an optimistic one that changes later.
+11:40 — Devin: Understood on all counts. We'll get this back to you well ahead of the Q3 deadline.
+11:50 — Sasha: Appreciate it. Talk soon.
+12:00 — Quinn: Thanks everyone.
+12:10 — Harper: Looking forward to the next session.
+12:20 — Emerson: Same here. Thanks all.
+12:30 — Devin: Thanks everyone, talk soon.
+12:40 — Sasha: One last thought — can the proof of value also demonstrate multi-tenant isolation between research groups?
+12:50 — Quinn: That's a good point, we have several teams that need strict separation for compliance reasons.
+13:00 — Harper: Agreed, our biotech partners have specific data-handling requirements we need to respect.
+13:10 — Emerson: If that's included, it strengthens the business case even further.
+13:20 — Devin: We'll make sure multi-tenant isolation is explicitly addressed in the architecture.
+13:30 — Sasha: Great, that covers everything we wanted to raise today.
+13:40 — Quinn: Agreed, this was a productive session.
+13:50 — Harper: Looking forward to seeing the draft architecture.
+14:00 — Emerson: Same here, thanks everyone.
+14:10 — Devin: Thank you all, we'll follow up soon with the materials we discussed.
+14:20 — Sasha: Sounds good, talk soon.
+14:30 — Quinn: Take care, everyone.
+14:40 — Harper: Bye all.
+14:50 — Emerson: Bye, thanks again.
+15:00 — Devin: Take care.
+
+15:15 — Devin: Actually, before we close, I want to double check the networking requirement once more.
+15:25 — Quinn: Sure, go ahead.
+15:35 — Devin: Do you need lossless fabric for the distributed training workloads specifically?
+15:45 — Harper: Yes, for the largest models we run, network stalls directly slow down training throughput.
+15:55 — Sasha: Smaller fine-tuning jobs are more tolerant, but our flagship models are not.
+16:05 — Quinn: That's part of why our current networking approach isn't sufficient anymore.
+16:15 — Devin: Understood, we'll factor that into the reference architecture explicitly.
+16:25 — Emerson: Will that change the cost model much?
+16:35 — Devin: It could shift some line items, but we'll show the tradeoffs clearly rather than hiding them.
+16:45 — Emerson: Appreciate the transparency, that's what our finance committee will want to see.
+16:55 — Sasha: One more question — can the platform layer expose usage data per research team?
+17:05 — Devin: Yes, that's a reasonable requirement and we'll include it.
+17:15 — Harper: That would help us with internal chargeback discussions too.
+17:25 — Quinn: Good, that's been a point of friction internally.
+17:35 — Sasha: Alright, I think we've covered everything meaningful for today.
+17:45 — Devin: Agreed. Thanks again everyone, we'll be in touch soon with the draft materials.
+17:55 — Quinn: Sounds good, thanks Devin.
+18:05 — Harper: Thanks, talk soon.
+18:15 — Emerson: Thanks all, have a good rest of your day.

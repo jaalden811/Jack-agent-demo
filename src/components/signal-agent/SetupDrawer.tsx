@@ -663,6 +663,18 @@ export function SetupDrawer({
                 <span>Authentication:</span>
                 <span className={agentStatus?.openai.authentication.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.authentication.message ?? "—"}</span>
               </div>
+              {[agentStatus?.openai.authentication.diagnostic, agentStatus?.openai.embeddings.diagnostic, agentStatus?.openai.synthesis.diagnostic]
+                .filter((d) => d && !d.operational)
+                .map((d) =>
+                  d ? (
+                    <div className="provider-line" key={d.operation} style={{ fontSize: "0.78rem" }}>
+                      <span className="muted">{d.operation} diagnostic:</span>
+                      <span className="muted">
+                        HTTP {d.http_status ?? "—"} · {d.error_code ?? "unclassified"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
+                      </span>
+                    </div>
+                  ) : null
+                )}
               <div className="actions">
                 <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
                   {busy === "test-openai" ? "Testing…" : "Test authentication"}

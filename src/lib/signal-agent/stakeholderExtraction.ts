@@ -106,7 +106,29 @@ const FUNCTIONAL_OWNER_PATTERNS: Array<{ function_name: string; ownership_type: 
   {
     function_name: "Enterprise Architecture",
     ownership_type: "enterprise_architecture",
-    patterns: [/\benterprise architecture\s+(team|group|board|review)\b/i, /\barchitecture review board\b/i]
+    patterns: [
+      /\benterprise architecture\s+(team|group|board|review)\b/i,
+      /\barchitecture review board\b/i,
+      // "Enterprise Architecture ... design authority / sign off / review"
+      // — the same organizational function described by decision-authority
+      // language rather than a "team/group/board" noun suffix.
+      /\benterprise architecture\b[^.!?]{0,60}\b(design authority|sign off|signs off|review)\b/i
+    ]
+  },
+  {
+    function_name: "Executive Sponsor (CIO)",
+    ownership_type: "executive",
+    patterns: [/\b(cio|chief information officer)\b/i]
+  },
+  {
+    function_name: "Budget Authority (VP)",
+    ownership_type: "operational",
+    patterns: [/\bvp\b[^.!?]{0,60}\bbudget\b/i, /\bbudget\b[^.!?]{0,60}\bvp\b/i]
+  },
+  {
+    function_name: "Security Authority (CISO)",
+    ownership_type: "security",
+    patterns: [/\b(ciso|chief information security officer)\b/i]
   },
   {
     function_name: "Security Architecture",

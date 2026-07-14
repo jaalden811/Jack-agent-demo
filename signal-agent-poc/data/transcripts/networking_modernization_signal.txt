@@ -1,0 +1,44 @@
+Account: Brightfield Regional Utilities
+Meeting: Network Operations Modernization Discovery
+Date: 2026-07-10
+
+Alex — Cisco Account Executive
+Jordan — Customer, Network Operations Director
+Casey — Customer, Field Connectivity Lead
+Morgan — Customer, WAN Architect
+Riley — Customer, IT Procurement Lead
+
+00:00 — Alex: Thanks for joining. Can you walk me through the biggest operational pain you're facing today?
+00:10 — Jordan: Sure. Our biggest issue is that we have too many network consoles.
+Every region runs its own dashboard, so there's no unified operational view across campus, branch, and internet paths.
+Our teams waste time switching between different management tools just to find the source of a problem.
+00:35 — Jordan: We need a single pane for day-to-day network operations across all of our domains, not five different tools that don't talk to each other.
+00:55 — Casey: On the branch side, we manage close to two hundred remote sites with a very small local IT footprint.
+We need zero-touch deployment and one cloud dashboard so a small team can operate all of it consistently.
+01:20 — Casey: Right now our distributed sites are wildly inconsistent — different firmware versions, different configurations, different vendors in some cases.
+01:45 — Morgan: I own our WAN architecture, and our MPLS costs have become unsustainable.
+We need a more resilient WAN across branches and our two regional data centers, with traffic taking the best path automatically.
+02:10 — Morgan: We're actively planning an SD-WAN refresh this fiscal year and want application-aware routing across every site.
+02:35 — Jordan: We also can't tell whether an outage is caused by our own network or by an upstream ISP.
+Users in some regions can't reach critical SaaS applications, and we're blind once traffic leaves our own network boundary.
+03:00 — Jordan: We need to isolate whether the ISP, DNS, a SaaS provider, or our own infrastructure is responsible before we can even start troubleshooting.
+03:25 — Casey: Provisioning switches at a new site takes far too long today. Configuration drift between sites is a constant headache.
+03:50 — Morgan: We're also looking at our campus footprint. Users keep dropping Wi-Fi connections and we can't find the root cause quickly.
+04:15 — Riley: From a procurement standpoint, we have budget approved for a network operations transformation this year.
+04:35 — Riley: Leadership wants a platform consolidation project — fewer tools, one operational model, and clear ownership for each domain.
+05:00 — Jordan: Our NOC consolidation initiative is the top priority. We want a network-operations transformation, not just another point tool.
+05:25 — Casey: For the branch and distributed-site side specifically, we want a cloud-managed operating model so our lean IT team isn't overwhelmed.
+05:50 — Morgan: For the WAN side, we want application-aware connectivity, multicloud support, and a path toward a broader secure-access architecture down the line.
+06:15 — Jordan: For campus, we need better client health visibility, automated provisioning, and consistent configuration and software lifecycle management.
+06:40 — Riley: We'd like a workshop to review the recommended architecture before we finalize anything, and a rough three-year cost model.
+07:05 — Jordan: Our target is simple: one unified operational view across network domains, faster root-cause isolation, and a lot less tool switching for the NOC team.
+07:30 — Morgan: On timing, we'd like a decision made before the end of this fiscal year, since our current WAN contracts are up for renewal in the fall.
+07:55 — Casey: If we can get a workshop scheduled and a written proposal, we can bring this to our leadership review next month.
+08:15 — Alex: This is really helpful. Let's talk next steps — what would you want to see from us before that workshop?
+08:35 — Jordan: A proposed architecture that addresses the single-pane operations problem, the distributed-site management problem, the WAN modernization, and the internet/SaaS visibility gap, all in one coherent plan.
+08:55 — Riley: And a cost model, and a clear ownership map for who operates what once it's live.
+09:15 — Morgan: We also want to understand how this integrates with our existing Catalyst switching and our current Meraki-managed branch sites, since we don't want to rip everything out on day one.
+09:40 — Jordan: Agreed — this is about unifying operations and reducing tool sprawl, not a wholesale replacement of everything we already have.
+10:05 — Casey: Let's plan to reconvene once the architecture and cost model are ready.
+10:25 — Alex: Understood. We'll put together a draft architecture, a retained-footprint plan, an ownership map, and a preliminary cost model, and schedule the workshop as soon as it's ready.
+10:45 — Jordan: Sounds good. Thanks everyone for such a clear discussion today.
