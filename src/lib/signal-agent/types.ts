@@ -364,6 +364,12 @@ export const runRequestSchema = z.object({
   transcriptId: z.enum(["high_intent", "noise", "secure_networking_triage", "cross_domain_data_platform"]).optional(),
   customTranscript: z.string().trim().max(20000).optional(),
   accountOverride: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  /** User-corrected/entered account name (Section 12) — takes priority
+   * over every other account-identity source except an even-more-
+   * explicit future CRM lock. Never silently rewrites transcript
+   * evidence; only affects account_resolution and downstream
+   * public-signal search. */
+  userEnteredAccount: z.string().trim().max(200).optional(),
   webexSource: webexSourceSchema.optional(),
   options: z
     .object({

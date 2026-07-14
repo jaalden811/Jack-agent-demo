@@ -38,6 +38,52 @@ function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
   return `<p><strong>Analysis reference:</strong> Run <code>${runId}</code>. Full analysis is available in the Signal-to-Solution app.</p>`;
 }
 
+/** Sales-lane pursuit-recommendation summary (Section 16) — decision,
+ * score, top reasons, and up to three cited external signals. Only
+ * rendered when opportunity_scoring is genuinely populated (it always
+ * is once the qualification pipeline runs, but degrades to an empty
+ * string harmlessly if not). */
+function pursuitRecommendationMarkdown(result: SecureNetworkingTriageResult): string {
+  const scoring = result.opportunity_scoring;
+  if (!scoring || scoring.final_pursuit_score === 0 && scoring.decision === "HOLD" && scoring.factors.length === 0) return "";
+
+  const reasons = scoring.factors
+    .filter((f) => f.score_contribution > 0)
+    .slice(0, 3)
+    .map((f) => `- ${f.factor}`);
+  const gaps = scoring.factors
+    .filter((f) => f.score_contribution < 0)
+    .slice(0, 2)
+    .map((f) => `- ${f.factor}`);
+
+  const externalSignalLines = result.serpapi_signals.signals
+    .slice(0, 3)
+    .map((s) => `- [${s.source_title}](${s.source_url})`);
+
+  const lines = [
+    `**Pursuit recommendation:** ${scoring.decision} — ${Math.round(scoring.final_pursuit_score)}/100`,
+    "",
+    "**Why**",
+    ...(reasons.length > 0 ? reasons : ["- See qualification brief for detail."]),
+    ...gaps
+  ];
+  if (externalSignalLines.length > 0) {
+    lines.push("", "**External signals**", ...externalSignalLines);
+  }
+  return lines.join("\n");
+}
+
+/** Technical-lane variant — architecture-relevant strategy/technology
+ * alignment and trigger events only, never the commercial score number
+ * (Section 16: "Do not overload Jack's technical message with the
+ * commercial score"). */
+function technicalStrategyContextMarkdown(result: SecureNetworkingTriageResult): string {
+  const relevantSignals = result.serpapi_signals.signals.filter((s) => s.category === "technology_alignment" || s.category === "trigger_event" || s.category === "strategic_objective").slice(0, 3);
+  if (relevantSignals.length === 0) return "";
+  const lines = ["**Account strategy context**", ...relevantSignals.map((s) => `- ${s.claim.slice(0, 100)} ([source](${s.source_url}))`)];
+  return lines.join("\n");
+}
+
 function commercialStakeholders(result: SecureNetworkingTriageResult): string {
   const names = result.stakeholders
     .filter((s) => s.ownership_type === "executive" || s.ownership_type === "operational")
@@ -81,11 +127,11 @@ export function buildSalesMessage(params: {
     `**Customer stakeholders:** ${truncate(commercialStakeholders(result), 160)}`,
     `**Recommended action:** ${decision.actions[0] ?? "Review the full analysis"}`,
     `**Technical counterpart:** ${technicalCounterpartText(decision)}`,
-    "",
-    analysisLinkMarkdown(analysisLink, runId),
-    "",
-    "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot."
+    ""
   ];
+  const pursuitBlock = pursuitRecommendationMarkdown(result);
+  if (pursuitBlock) lines.push(pursuitBlock, "");
+  lines.push(analysisLinkMarkdown(analysisLink, runId), "", "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot.");
 
   const markdown = truncate(lines.join("\n"), MAX_MESSAGE_CHARS);
   return {
@@ -128,11 +174,11 @@ export function buildTechnicalMessage(params: {
     `**Solution motion:** ${truncate(solutionMotion, 160)}`,
     `**Recommended action:** ${truncate(recommendedAction, 160)}`,
     `**Evidence:** ${evidenceSnippets.map((snippet) => `"${snippet}"`).join(" / ") || "No verbatim snippet available."}`,
-    "",
-    analysisLinkMarkdown(analysisLink, runId),
-    "",
-    "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot."
+    ""
   ];
+  const strategyBlock = technicalStrategyContextMarkdown(result);
+  if (strategyBlock) lines.push(strategyBlock, "");
+  lines.push(analysisLinkMarkdown(analysisLink, runId), "", "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot.");
 
   const markdown = truncate(lines.join("\n"), MAX_MESSAGE_CHARS);
   return {

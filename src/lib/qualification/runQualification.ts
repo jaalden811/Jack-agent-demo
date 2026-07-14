@@ -49,6 +49,7 @@ export async function runQualificationPipeline(params: {
   lifecycleStageGuess: "LAND" | "ADOPT" | "EXPAND" | "RENEW";
   enrichPublicSignals: boolean;
   useQualification: boolean;
+  userEnteredAccount?: string | null;
 }): Promise<QualificationPipelineResult> {
   const config = getConfig();
   const openAiConfigured = Boolean(config.OPENAI_API_KEY);
@@ -79,7 +80,7 @@ export async function runQualificationPipeline(params: {
   const accountResolution = resolveAccountIdentity({
     transcriptAccountLine: params.transcript.account,
     transcriptAccountMatchedInCrm: params.accountMatchedInCrm,
-    userEnteredAccount: null,
+    userEnteredAccount: params.userEnteredAccount ?? null,
     webexMeetingTitle: params.webexMeetingTitle,
     outlookCalendarSubject: null,
     attendeeEmailDomains: [],

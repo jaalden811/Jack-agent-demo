@@ -295,7 +295,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     verdict: primaryEvaluation.intentLabel,
     lifecycleStageGuess,
     enrichPublicSignals,
-    useQualification
+    useQualification,
+    userEnteredAccount: request.userEnteredAccount ?? null
   });
 
   const corroborationSummary: CorroborationSummary = {

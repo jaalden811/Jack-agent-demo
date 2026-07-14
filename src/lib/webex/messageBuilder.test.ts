@@ -188,6 +188,50 @@ describe("Webex message templates", () => {
     expect(salesMessage.markdown).toContain(`[Open full analysis](${includedLink.url})`);
     expect(salesMessage.markdown).not.toContain("localhost");
   });
+
+  it("Test 30: Bella's message includes the pursuit recommendation only when it is genuinely available", () => {
+    const result = buildResult();
+    result.opportunity_scoring = {
+      transcript_score: 82,
+      qualification_score: 60,
+      external_fit_score: 75,
+      account_confidence_score: 95,
+      final_pursuit_score: 78,
+      decision: "PURSUE_WITH_DISCOVERY",
+      confidence: 0.8,
+      score_version: "opportunity-fit-v1",
+      weights: { transcript_opportunity_score: 0.5, qualification_quality_score: 0.2, external_fit_score: 0.25, account_resolution_confidence: 0.05 },
+      factors: [
+        { factor: "Strong transcript intent and quantified impact", score_contribution: 20, evidence_ids: [] },
+        { factor: "Economic Buyer not yet identified", score_contribution: -5, evidence_ids: [] }
+      ],
+      gates: []
+    };
+    const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    expect(salesMessage.markdown).toContain("Pursuit recommendation");
+    expect(salesMessage.markdown).toContain("PURSUE_WITH_DISCOVERY");
+    expect(salesMessage.markdown).toContain("Strong transcript intent and quantified impact");
+  });
+
+  it("never overloads Jack's technical message with the commercial pursuit score", () => {
+    const result = buildResult();
+    result.opportunity_scoring = {
+      transcript_score: 82,
+      qualification_score: 60,
+      external_fit_score: 75,
+      account_confidence_score: 95,
+      final_pursuit_score: 78,
+      decision: "PURSUE_WITH_DISCOVERY",
+      confidence: 0.8,
+      score_version: "opportunity-fit-v1",
+      weights: {},
+      factors: [],
+      gates: []
+    };
+    const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    expect(technicalMessage.markdown).not.toContain("Pursuit recommendation");
+    expect(technicalMessage.markdown).not.toContain("78/100");
+  });
 });
 
 describe("Outlook email templates", () => {
