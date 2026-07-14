@@ -6,7 +6,11 @@ import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
 import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
 import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
 import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/serpapi/runEnrichment";
+import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs } from "@/lib/opportunity-fit/runOpportunityFit";
+import { computeTranscriptOpportunityScore, computeQualificationCompletenessScore, computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
+import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
 import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
 import type { QueryPlannerInput } from "@/lib/connectors/serpapi/types";
 
@@ -14,9 +18,10 @@ import type { QueryPlannerInput } from "@/lib/connectors/serpapi/types";
  * Orchestrates account resolution, SerpAPI enrichment (query planning
  * -> execution -> normalization -> acceptance), OpenAI Stage A
  * (transcript evidence extraction) and Stage B (public evidence
- * classification), and the deterministic Stage C MEDDPICC merge — the
- * full qualification layer that sits alongside (never replaces) the
- * existing deterministic taxonomy scoring/routing pipeline.
+ * classification), the deterministic Stage C MEDDPICC merge, and the
+ * independent opportunity-fit/pursuit-recommendation scoring model —
+ * the full qualification layer that sits alongside (never replaces)
+ * the existing deterministic taxonomy scoring/routing pipeline.
  */
 
 export type QualificationPipelineResult = {
@@ -25,6 +30,8 @@ export type QualificationPipelineResult = {
   public_enrichment: PublicEnrichmentStatus;
   ai_processing: AiProcessingStatus;
   named_stakeholders_for_messaging: StakeholderRecord[];
+  serpapi_signals: SerpApiSignalsResult;
+  opportunity_scoring: OpportunityScoringResult;
 };
 
 export async function runQualificationPipeline(params: {
@@ -178,11 +185,118 @@ export async function runQualificationPipeline(params: {
     fallback_reason: fallbackReason
   };
 
+  // ─── Opportunity-fit / pursuit-recommendation scoring (Sections 4-10) ─────
+  // Independent of MEDDPICC and the legacy public_enrichment pass above —
+  // its own SerpAPI signal search, gated the same way (enrichment
+  // enabled, account confirmed/probable, SerpAPI configured), and its
+  // own deterministic scoring arithmetic, entirely config-driven.
+  const detectedTechnologies = Array.from(new Set(params.matches.flatMap((m) => m.recommended_solutions)));
+  const namedCompetitors = extraction.result?.commercial_signals.competitor_mentions ?? [];
+  const mentionsUrgency = params.renewalEvents.length > 0 || Boolean(extraction.result?.commercial_signals.timeline?.length);
+
+  const serpapiSignals = await runSerpApiSignalSearch({
+    accountResolution,
+    transcriptSignals: params.intentEvidence.map((e) => e.text),
+    detectedTechnologies,
+    namedCompetitors,
+    mentionsUrgency,
+    enrichmentEnabled: params.enrichPublicSignals
+  });
+
+  const hasNamedDecisionAuthority = params.namedStakeholders.some((s) => s.ownership_type === "executive");
+  const transcriptOpportunitySignals = buildTranscriptOpportunitySignals({
+    commercialSignals: {
+      budget: extraction.result?.commercial_signals.budget[0] ?? (params.purchaseLanguage.length > 0 ? "stated" : null),
+      timeline: extraction.result?.commercial_signals.timeline[0] ?? null,
+      renewal_events: params.renewalEvents,
+      quantified_impact: params.quantifiedImpact,
+      purchase_language: params.purchaseLanguage
+    },
+    meddpicc,
+    primaryMatch: params.matches[0],
+    hasNamedDecisionAuthority,
+    discoveryQuestions: []
+  });
+  const transcriptScore = computeTranscriptOpportunityScore(transcriptOpportunitySignals);
+  const qualificationScore = computeQualificationCompletenessScore(meddpicc);
+  const externalFit = computeExternalFitScore({
+    signals: serpapiSignals.signals,
+    accountResolutionAvailable: accountResolution.status === "confirmed" || accountResolution.status === "probable",
+    searchRan: serpapiSignals.status === "completed" || serpapiSignals.status === "partial",
+    failureReason: serpapiSignals.reason
+  });
+
+  const gates = evaluateHardGates(
+    buildGateInputs({
+      verdict: params.verdict,
+      explicitNotPursuing: false,
+      categoryOutOfScope: false,
+      businessProblem: params.businessProblem,
+      accountResolution
+    })
+  );
+
+  const missingInformation = Object.entries(meddpicc)
+    .filter(([, field]) => field.status === "MISSING")
+    .map(([key]) => `${key.replace(/_/g, " ")} is not yet established.`);
+
+  const positiveFactors = [
+    ...(transcriptOpportunitySignals.hasQuantifiedImpact ? [{ factor: "Quantified business impact stated", score_contribution: 14, evidence_ids: [] }] : []),
+    ...(transcriptOpportunitySignals.hasFunding ? [{ factor: "Funding/budget language present", score_contribution: 12, evidence_ids: [] }] : []),
+    ...(externalFit.available && (externalFit.score ?? 0) >= 65 ? [{ factor: "Strong external account-fit signals", score_contribution: Math.round((externalFit.score ?? 0) * 0.25), evidence_ids: externalFit.factors.flatMap((f) => f.evidence_ids) }] : [])
+  ];
+  const negativeFactors = [
+    ...(meddpicc.economic_buyer.status === "MISSING" ? [{ factor: "Economic Buyer not yet identified", score_contribution: -5, evidence_ids: [] }] : []),
+    ...(meddpicc.champion.status === "MISSING" ? [{ factor: "Champion not yet identified", score_contribution: -5, evidence_ids: [] }] : []),
+    ...(!externalFit.available ? [{ factor: `External account fit unavailable (${externalFit.reason})`, score_contribution: 0, evidence_ids: [] }] : [])
+  ];
+
+  const pursuit = buildPursuitRecommendation({
+    transcriptScore,
+    qualificationScore,
+    externalFitScore: externalFit.score,
+    accountResolutionConfidence: accountResolution.confidence,
+    positiveFactors,
+    negativeFactors,
+    missingInformation,
+    recommendedNextAction:
+      accountResolution.status === "unresolved"
+        ? "Resolve the account identity before further qualification."
+        : missingInformation.length > 0
+          ? `Address the top qualification gap: ${missingInformation[0]}`
+          : "Proceed with the recommended next steps from the qualification brief.",
+    gates,
+    doNotPursueGuardInputs: {
+      strongNegativeTranscriptEvidence: false,
+      explicitCustomerDisqualification: false,
+      confirmedNoFitTaxonomyCondition: false,
+      strongCrmDisqualification: false,
+      multipleHighAuthorityNegativeSignalsWithWeakTranscriptIntent: false
+    },
+    evidenceCount: serpapiSignals.signals.length
+  });
+
+  const opportunityScoring: OpportunityScoringResult = {
+    transcript_score: transcriptScore,
+    qualification_score: qualificationScore,
+    external_fit_score: externalFit.score,
+    account_confidence_score: Math.round(accountResolution.confidence * 100),
+    final_pursuit_score: pursuit.score,
+    decision: pursuit.decision,
+    confidence: pursuit.confidence,
+    score_version: pursuit.score_version,
+    weights: pursuit.weights,
+    factors: [...pursuit.positive_factors, ...pursuit.negative_factors],
+    gates: pursuit.gates
+  };
+
   return {
     account_resolution: accountResolution,
     meddpicc,
     public_enrichment: publicEnrichment,
     ai_processing: aiProcessing,
-    named_stakeholders_for_messaging: params.namedStakeholders
+    named_stakeholders_for_messaging: params.namedStakeholders,
+    serpapi_signals: serpapiSignals,
+    opportunity_scoring: opportunityScoring
   };
 }

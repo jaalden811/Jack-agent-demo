@@ -44,7 +44,11 @@ export function evaluateHardGates(inputs: GateConditionInputs, evidenceIdsByGate
 
 function decisionForScore(score: number): PursuitDecision {
   const config = loadOpportunityFitScoringConfig();
-  const band = config.pursuit_score.decision_bands.find((b) => score >= b.min && score <= b.max);
+  // Decision bands are defined as inclusive integer ranges — round the
+  // (otherwise fractional) weighted score before lookup so it can
+  // never fall into a gap between two adjacent integer band boundaries.
+  const rounded = Math.round(score);
+  const band = config.pursuit_score.decision_bands.find((b) => rounded >= b.min && rounded <= b.max);
   return (band?.decision as PursuitDecision) ?? "HOLD";
 }
 

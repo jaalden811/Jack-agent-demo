@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
@@ -610,6 +611,18 @@ export type SecureNetworkingTriageResult = {
    * not only the ones selected as matches, so the full ranking (and
    * why one category dominated another) is always inspectable. */
   generic_diagnostics: GenericDiagnostics;
+  /** SerpAPI account-fit signal search trace and accepted signals —
+   * distinct from `public_enrichment` (which feeds MEDDPICC evidence
+   * merge); this feeds the independent external-fit/pursuit scoring
+   * model. Always `not_run` with a specific reason when the account is
+   * unresolved, enrichment is disabled, or SerpAPI is unconfigured. */
+  serpapi_signals: SerpApiSignalsResult;
+  /** The four independent, deterministic scores (transcript
+   * opportunity, qualification completeness, external account fit,
+   * pursuit recommendation) plus the full weighted breakdown, hard
+   * gates, and evidence-linked factors — every weight read from
+   * signal-agent-poc/config/opportunity_fit_scoring.json. */
+  opportunity_scoring: OpportunityScoringResult;
 };
 
 export type GenericDiagnostics = {

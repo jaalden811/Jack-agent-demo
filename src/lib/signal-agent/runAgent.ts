@@ -375,7 +375,9 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       },
       signals: groupGenericSignalsByBucket(genericSignals),
       category_scores: buildCategoryScores(evaluations, genericSignals)
-    }
+    },
+    serpapi_signals: qualification.serpapi_signals,
+    opportunity_scoring: qualification.opportunity_scoring
   };
 
   const auditOutcome = await appendAuditRecord(result);

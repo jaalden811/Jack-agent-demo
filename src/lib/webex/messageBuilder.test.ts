@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSalesMessage, buildTechnicalMessage, buildSalesEmail, buildTechnicalEmail } from "@/lib/webex/messageBuilder";
 import { buildDefaultAccountResolution, buildDefaultAiProcessing, buildDefaultMeddpicc, buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
+import { buildDefaultOpportunityScoring, buildDefaultSerpApiSignals } from "@/lib/opportunity-fit/defaults";
 import type { AnalysisLink } from "@/lib/qualification/types";
 import type { LaneRoutingDecision } from "@/lib/webex/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
@@ -107,7 +108,9 @@ function buildResult(): SecureNetworkingTriageResult {
     ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),
     analysis_link: noLink,
     transcript_diagnostics: { raw_characters: 0, raw_lines: 0, speaker_headers_detected: 0, turns_parsed: 0, sentences_parsed: 0, participants: [], rejected_header_candidates: [] },
-    generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] }
+    generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] },
+    serpapi_signals: buildDefaultSerpApiSignals(),
+    opportunity_scoring: buildDefaultOpportunityScoring()
   };
 }
 
