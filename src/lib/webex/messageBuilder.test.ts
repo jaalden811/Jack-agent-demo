@@ -144,12 +144,17 @@ describe("Webex message templates", () => {
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
     expect(salesMessage.markdown).toContain("Sales action");
-    expect(salesMessage.markdown).toContain("Customer stakeholders");
+    expect(salesMessage.markdown).toContain("Opportunity thesis");
+    expect(salesMessage.markdown).toContain("Bella next");
     expect(salesMessage.markdown).toContain("Technical counterpart");
     expect(technicalMessage.markdown).toContain("Technical action");
     expect(technicalMessage.markdown).toContain("Current environment");
+    expect(technicalMessage.markdown).toContain("Jack next");
+    // The sales lane leads with the commercial thesis + MEDDPICC; the
+    // technical lane leads with pain + environment + architecture — and
+    // never carries the commercial pursuit score.
     expect(salesMessage.markdown).not.toContain("Current environment");
-    expect(technicalMessage.markdown).not.toContain("Customer stakeholders");
+    expect(technicalMessage.markdown).not.toContain("**Pursuit:**");
   });
 
   it("never pastes the full transcript into a message", () => {
@@ -159,12 +164,12 @@ describe("Webex message templates", () => {
     expect(salesMessage.markdown).not.toContain("SENTENCE-MARKER-XYZ");
   });
 
-  it("keeps each message under ~1,200 characters", () => {
+  it("keeps each message within the Webex channel ceiling while allowing a rich brief", () => {
     const result = buildResult();
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
-    expect(salesMessage.character_count).toBeLessThanOrEqual(1200);
-    expect(technicalMessage.character_count).toBeLessThanOrEqual(1200);
+    expect(salesMessage.character_count).toBeLessThanOrEqual(2400);
+    expect(technicalMessage.character_count).toBeLessThanOrEqual(2400);
   });
 
   it("explains why the recipient received the message", () => {
@@ -208,9 +213,9 @@ describe("Webex message templates", () => {
       gates: []
     };
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
-    expect(salesMessage.markdown).toContain("Pursuit recommendation");
+    expect(salesMessage.markdown).toContain("Pursuit:");
     expect(salesMessage.markdown).toContain("PURSUE_WITH_DISCOVERY");
-    expect(salesMessage.markdown).toContain("Strong transcript intent and quantified impact");
+    expect(salesMessage.markdown).toContain("78/100");
   });
 
   it("never overloads Jack's technical message with the commercial pursuit score", () => {

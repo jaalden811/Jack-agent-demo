@@ -1,6 +1,7 @@
 import { getConfig } from "@/lib/config";
 import { getOpenAIClient } from "@/lib/openai/client";
-import { withOpenAiRetry, classifyOpenAiError } from "@/lib/openai/errorMapping";
+import { withOpenAiRetry } from "@/lib/openai/errorMapping";
+import { normalizeOpenAiError } from "@/lib/openai/errorNormalizer";
 import { publicEvidenceClassificationSchema } from "@/lib/qualification/schemas";
 import type { ClassifiedPublicResult } from "@/lib/qualification/types";
 import type { NormalizedSerpResult } from "@/lib/connectors/serpapi/types";
@@ -82,7 +83,7 @@ export async function classifyPublicEvidence(
     void validUrls; // retained for potential future direct-URL validation
     return { used: true, fallback_reason: null, classified: filtered };
   } catch (error) {
-    const code = classifyOpenAiError(error);
+    const code = normalizeOpenAiError(error, "public_evidence").safe_classification;
     return { used: false, fallback_reason: code, classified: [] };
   }
 }

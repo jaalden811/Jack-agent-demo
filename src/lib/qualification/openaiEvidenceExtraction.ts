@@ -1,6 +1,7 @@
 import { getConfig } from "@/lib/config";
 import { getOpenAIClient } from "@/lib/openai/client";
-import { withOpenAiRetry, classifyOpenAiError } from "@/lib/openai/errorMapping";
+import { withOpenAiRetry } from "@/lib/openai/errorMapping";
+import { normalizeOpenAiError } from "@/lib/openai/errorNormalizer";
 import { qualificationExtractionSchema } from "@/lib/qualification/schemas";
 import { buildDefaultMeddpicc } from "@/lib/qualification/defaults";
 import type { EvidenceExtractionResult } from "@/lib/qualification/types";
@@ -112,7 +113,7 @@ export async function extractTranscriptEvidence(input: EvidenceExtractionInput, 
     const parsed = JSON.parse(response.output_text) as EvidenceExtractionResult;
     return { used: true, fallback_reason: null, result: parsed };
   } catch (error) {
-    const code = classifyOpenAiError(error);
+    const code = normalizeOpenAiError(error, "extraction").safe_classification;
     return { used: false, fallback_reason: code, result: fallbackResult() };
   }
 }

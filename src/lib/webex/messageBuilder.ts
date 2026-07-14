@@ -1,6 +1,7 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { AnalysisLink } from "@/lib/qualification/types";
 import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } from "@/lib/webex/types";
+import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
 
 /**
  * Builds the concise, tailored Webex direct-message markdown and Outlook
@@ -18,10 +19,30 @@ import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } fr
  * plain-text run-ID reference is used instead (never a dead hyperlink).
  */
 
-const MAX_MESSAGE_CHARS = 1200;
+// Rich briefs need more room than a one-line alert. Webex supports long
+// markdown messages; the delivery validator enforces the hard ceiling
+// (WEBEX_HARD_CHAR_CEILING). We target a rich-but-scannable brief that
+// stays well under that ceiling.
+const MAX_MESSAGE_CHARS = 2300;
 
 function truncate(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
+}
+
+/** Joins pre-built brief sections into markdown, dropping empty sections
+ * and collapsing consecutive blank lines. */
+function joinSections(parts: Array<string | null | undefined>): string {
+  const out: string[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    if (part === "" && out[out.length - 1] === "") continue;
+    out.push(part);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function bulletList(lines: string[]): string {
+  return lines.map((l) => `- ${l}`).join("\n");
 }
 
 function analysisLinkMarkdown(analysisLink: AnalysisLink, runId: string): string {
@@ -38,41 +59,6 @@ function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
   return `<p><strong>Analysis reference:</strong> Run <code>${runId}</code>. Full analysis is available in the Signal-to-Solution app.</p>`;
 }
 
-/** Sales-lane pursuit-recommendation summary (Section 16) — decision,
- * score, top reasons, and up to three cited external signals. Only
- * rendered when opportunity_scoring is genuinely populated (it always
- * is once the qualification pipeline runs, but degrades to an empty
- * string harmlessly if not). */
-function pursuitRecommendationMarkdown(result: SecureNetworkingTriageResult): string {
-  const scoring = result.opportunity_scoring;
-  if (!scoring || scoring.final_pursuit_score === 0 && scoring.decision === "HOLD" && scoring.factors.length === 0) return "";
-
-  const reasons = scoring.factors
-    .filter((f) => f.score_contribution > 0)
-    .slice(0, 3)
-    .map((f) => `- ${f.factor}`);
-  const gaps = scoring.factors
-    .filter((f) => f.score_contribution < 0)
-    .slice(0, 2)
-    .map((f) => `- ${f.factor}`);
-
-  const externalSignalLines = result.serpapi_signals.signals
-    .slice(0, 3)
-    .map((s) => `- [${s.source_title}](${s.source_url})`);
-
-  const lines = [
-    `**Pursuit recommendation:** ${scoring.decision} — ${Math.round(scoring.final_pursuit_score)}/100`,
-    "",
-    "**Why**",
-    ...(reasons.length > 0 ? reasons : ["- See qualification brief for detail."]),
-    ...gaps
-  ];
-  if (externalSignalLines.length > 0) {
-    lines.push("", "**External signals**", ...externalSignalLines);
-  }
-  return lines.join("\n");
-}
-
 /** Technical-lane variant — architecture-relevant strategy/technology
  * alignment and trigger events only, never the commercial score number
  * (Section 16: "Do not overload Jack's technical message with the
@@ -82,13 +68,6 @@ function technicalStrategyContextMarkdown(result: SecureNetworkingTriageResult):
   if (relevantSignals.length === 0) return "";
   const lines = ["**Account strategy context**", ...relevantSignals.map((s) => `- ${s.claim.slice(0, 100)} ([source](${s.source_url}))`)];
   return lines.join("\n");
-}
-
-function commercialStakeholders(result: SecureNetworkingTriageResult): string {
-  const names = result.stakeholders
-    .filter((s) => s.ownership_type === "executive" || s.ownership_type === "operational")
-    .map((s) => (s.role ? `${s.name} (${s.role})` : s.name));
-  return names.length > 0 ? names.join(", ") : "Not identified in transcript";
 }
 
 function technicalCounterpartText(decision: LaneRoutingDecision): string {
@@ -116,24 +95,50 @@ export function buildSalesMessage(params: {
 }): WebexMessagePreview {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
+  const brief = buildDeterministicBrief(result);
+  const confidencePct = Math.round(summary.confidence * 100);
 
-  const lines = [
-    `**Sales action — ${summary.verdict}**`,
-    "",
-    `**Account:** ${summary.account ?? "Unknown"}`,
-    `**Lifecycle:** ${decision.lifecycle_stage}`,
-    `**Opportunity:** ${summary.primary_opportunity ?? "Not identified"}`,
-    `**Why now:** ${whyNowEvidence(result)}`,
-    `**Customer stakeholders:** ${truncate(commercialStakeholders(result), 160)}`,
-    `**Recommended action:** ${decision.actions[0] ?? "Review the full analysis"}`,
-    `**Technical counterpart:** ${technicalCounterpartText(decision)}`,
-    ""
-  ];
-  const pursuitBlock = pursuitRecommendationMarkdown(result);
-  if (pursuitBlock) lines.push(pursuitBlock, "");
-  lines.push(analysisLinkMarkdown(analysisLink, runId), "", "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot.");
+  // Webex-specific caps so the action-oriented sections (Bella next,
+  // risks) always survive truncation — the full-length brief is retained
+  // for the UI and email.
+  const whyNow = brief.why_now.slice(0, 4).map((s) => truncate(s, 120));
+  const stakeholders = brief.stakeholder_lines.filter((s) => !s.includes("(role only)")).slice(0, 5);
+  const salesActions = brief.sales_actions.slice(0, 5);
+  const topRisks = brief.top_risks.slice(0, 4);
 
-  const markdown = truncate(lines.join("\n"), MAX_MESSAGE_CHARS);
+  const markdown = truncate(
+    joinSections([
+      `**Sales action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**`,
+      brief.pursuit_line ? `**Pursuit:** ${brief.pursuit_line}` : null,
+      `**Account:** ${summary.account ?? "Not resolved"}${brief.account_action ? ` — ${brief.account_action}` : ""}`,
+      `**Lifecycle:** ${decision.lifecycle_stage}`,
+      "",
+      "**Opportunity thesis**",
+      brief.opportunity_thesis,
+      whyNow.length > 0 ? "" : null,
+      whyNow.length > 0 ? "**Why now**" : null,
+      whyNow.length > 0 ? bulletList(whyNow) : null,
+      "",
+      "**MEDDPICC**",
+      bulletList(brief.meddpicc_lines),
+      "",
+      "**Bella next**",
+      bulletList(salesActions),
+      topRisks.length > 0 ? "" : null,
+      topRisks.length > 0 ? "**Top risks**" : null,
+      topRisks.length > 0 ? bulletList(topRisks) : null,
+      stakeholders.length > 0 ? "" : null,
+      stakeholders.length > 0 ? "**Stakeholders**" : null,
+      stakeholders.length > 0 ? bulletList(stakeholders) : null,
+      "",
+      `**Technical counterpart:** ${technicalCounterpartText(decision)} — Jack to define architecture, integrations, and POV success criteria.`,
+      "",
+      analysisLinkMarkdown(analysisLink, runId),
+      "",
+      "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot."
+    ]),
+    MAX_MESSAGE_CHARS
+  );
   return {
     lane: "sales",
     recipient_name: decision.recipient_name,
@@ -155,32 +160,45 @@ export function buildTechnicalMessage(params: {
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
 
+  const brief = buildDeterministicBrief(result);
+
   const currentEnvironment = primaryMatch?.solution_decision.retained_existing_platforms.length
     ? primaryMatch.solution_decision.retained_existing_platforms.join(", ")
     : "Not stated in transcript";
 
   const solutionMotion = primaryMatch?.recommended_solutions.length ? primaryMatch.recommended_solutions.join(", ") : "Not yet routed";
 
-  const recommendedAction = decision.actions[0] ?? "Schedule technical discovery / architecture review.";
   const evidenceSnippets = (primaryMatch?.matched_text ?? []).slice(0, 2).map((snippet) => truncate(snippet, 160));
 
-  const lines = [
-    `**Technical action — ${summary.verdict}**`,
-    "",
-    `**Account:** ${summary.account ?? "Unknown"}`,
-    `**Lifecycle:** ${decision.lifecycle_stage}`,
-    `**Customer pain:** ${truncate(summary.business_problem, 220)}`,
-    `**Current environment:** ${truncate(currentEnvironment, 160)}`,
-    `**Solution motion:** ${truncate(solutionMotion, 160)}`,
-    `**Recommended action:** ${truncate(recommendedAction, 160)}`,
-    `**Evidence:** ${evidenceSnippets.map((snippet) => `"${snippet}"`).join(" / ") || "No verbatim snippet available."}`,
-    ""
-  ];
-  const strategyBlock = technicalStrategyContextMarkdown(result);
-  if (strategyBlock) lines.push(strategyBlock, "");
-  lines.push(analysisLinkMarkdown(analysisLink, runId), "", "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot.");
-
-  const markdown = truncate(lines.join("\n"), MAX_MESSAGE_CHARS);
+  // Technical lane is deliberately distinct from sales: architecture,
+  // integrations, evidence, and validation — and the commercial pursuit
+  // score is intentionally omitted (Section 13).
+  const markdown = truncate(
+    joinSections([
+      `**Technical action — ${summary.verdict.replace(/_/g, " ")}**`,
+      `**Account:** ${summary.account ?? "Not resolved"}`,
+      `**Lifecycle:** ${decision.lifecycle_stage}`,
+      "",
+      "**Customer pain**",
+      truncate(summary.business_problem, 320),
+      "",
+      `**Current environment:** ${truncate(currentEnvironment, 200)}`,
+      `**Solution motion:** ${truncate(solutionMotion, 200)}`,
+      "",
+      "**Jack next — architecture & validation**",
+      bulletList(brief.technical_actions),
+      "",
+      "**Evidence**",
+      evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.",
+      "",
+      technicalStrategyContextMarkdown(result) || null,
+      "",
+      analysisLinkMarkdown(analysisLink, runId),
+      "",
+      "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot."
+    ]),
+    MAX_MESSAGE_CHARS
+  );
   return {
     lane: "technical",
     recipient_name: decision.recipient_name,

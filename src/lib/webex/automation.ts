@@ -9,7 +9,8 @@ import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
 import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
-import type { AnalysisLink } from "@/lib/qualification/types";
+import { validateMessageQuality } from "@/lib/webex/messageQuality";
+import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
@@ -90,8 +91,11 @@ function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
   return `${lane}:${channel}`;
 }
 
-const WEBEX_HARD_CHAR_CEILING = 2400; // 2x the ~1,200 target — safety net, not the target itself
-const SYNTHESIS_CHAR_LIMIT = 1800;
+// The rich deterministic brief targets ~2300 chars; the ceiling gives
+// AI synthesis a little headroom above that while staying well within
+// Webex's markdown limit.
+const WEBEX_HARD_CHAR_CEILING = 2600;
+const SYNTHESIS_CHAR_LIMIT = 2300;
 
 function stripHtml(html: string): string {
   return html
@@ -101,26 +105,6 @@ function stripHtml(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** Section 14 "Validation before delivery" (subset enforced in code —
- * evidence-ID/product-provenance checks live in the deterministic
- * MEDDPICC merge and are never delegated to the model). Any failure
- * here means the deterministic template is used instead — synthesis
- * failing safely never blocks delivery. */
-function validateSynthesizedMessages(messages: { sales_webex_markdown: string; technical_webex_markdown: string }, analysisLink: AnalysisLink): { valid: boolean; reason: string | null } {
-  const bodies = [messages.sales_webex_markdown, messages.technical_webex_markdown];
-  for (const body of bodies) {
-    if (!body || body.trim().length === 0) return { valid: false, reason: "OPENAI_OUTPUT_PARSE_FAILURE: empty message" };
-    if (body.length > WEBEX_HARD_CHAR_CEILING) return { valid: false, reason: "synthesized message exceeded the channel length ceiling" };
-    if (/localhost|127\.0\.0\.1/i.test(body)) return { valid: false, reason: "synthesized message contained a localhost link" };
-  }
-  if (!analysisLink.included && bodies.some((body) => body.includes("http://") || body.includes("https://"))) {
-    // No valid public link exists — a synthesized message must not
-    // have introduced one anyway.
-    return { valid: false, reason: "synthesized message included a link despite no valid public analysis link" };
-  }
-  return { valid: true, reason: null };
 }
 
 /** Stage D: replaces the deterministic Webex/email content with
@@ -147,7 +131,22 @@ async function applyAiMessageSynthesis(params: {
     .slice(0, 3)
     .map((item) => ({ title: item.title ?? "Source", url: item.url as string, summary: item.quote_or_snippet }));
 
-  const outcome = await synthesizeQualifiedMessages({
+  // Allowed URLs: the validated public analysis link plus any real
+  // SerpAPI source URLs; anything else in an AI message is treated as
+  // invented and rejected.
+  const allowedUrls = [
+    ...(params.analysisLink.included && params.analysisLink.url ? [params.analysisLink.url] : []),
+    ...params.result.serpapi_signals.signals.map((s) => s.source_url),
+    ...(params.result.public_enrichment?.accepted_evidence ?? []).map((e) => e.url).filter((u): u is string => Boolean(u))
+  ];
+  const qualityContext = {
+    verdict: params.result.executive_summary.verdict,
+    allowedUrls,
+    charCeiling: WEBEX_HARD_CHAR_CEILING,
+    requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
+  };
+
+  const synthesisArgs = {
     result: params.result,
     meddpicc: params.result.meddpicc,
     accountResolution: params.result.account_resolution,
@@ -159,18 +158,34 @@ async function applyAiMessageSynthesis(params: {
     webexCharLimit: SYNTHESIS_CHAR_LIMIT,
     publicEvidenceSummaries,
     enabled: true
-  });
+  };
 
-  if (!outcome.used || !outcome.messages) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: outcome.fallback_reason };
+  // Section 15: try synthesis, validate; on validation failure retry ONCE
+  // with the failures fed back; if still invalid, fall through to the
+  // rich deterministic messages (recording the reason).
+  let lastFailureReason: string | null = null;
+  let synthesized: SynthesizedMessages | null = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const outcome = await synthesizeQualifiedMessages({ ...synthesisArgs, validationFeedback: attempt === 0 ? undefined : lastFailureReason ? lastFailureReason.split("; ") : undefined });
+    if (!outcome.used || !outcome.messages) {
+      lastFailureReason = outcome.fallback_reason;
+      break; // a provider/parse failure will not be fixed by a retry with feedback
+    }
+    const validation = validateMessageQuality({
+      salesMarkdown: outcome.messages.sales_webex_markdown,
+      technicalMarkdown: outcome.messages.technical_webex_markdown,
+      context: qualityContext
+    });
+    if (validation.valid) {
+      synthesized = outcome.messages;
+      break;
+    }
+    lastFailureReason = `message quality validation failed: ${validation.failures.join("; ")}`;
   }
 
-  const validation = validateSynthesizedMessages(outcome.messages, params.analysisLink);
-  if (!validation.valid) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: validation.reason };
+  if (!synthesized) {
+    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: lastFailureReason };
   }
-
-  const synthesized = outcome.messages;
   const messages = params.messages.map((message) =>
     message.lane === "sales"
       ? { ...message, markdown: synthesized.sales_webex_markdown, character_count: synthesized.sales_webex_markdown.length, synthesized_by_ai: true }

@@ -663,6 +663,18 @@ export function SetupDrawer({
                 <span>Authentication:</span>
                 <span className={agentStatus?.openai.authentication.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.authentication.message ?? "—"}</span>
               </div>
+              {agentStatus?.openai.provider_state && (
+                <>
+                  <div className="provider-line">
+                    <span>Provider state:</span>
+                    <span className={agentStatus.openai.provider_state.operational ? "provider-yes" : "provider-no"}>{agentStatus.openai.provider_state.state}</span>
+                  </div>
+                  <div className="provider-line" style={{ fontSize: "0.78rem" }}>
+                    <span className="muted">Required action:</span>
+                    <span className="muted">{agentStatus.openai.provider_state.required_action}</span>
+                  </div>
+                </>
+              )}
               {[agentStatus?.openai.authentication.diagnostic, agentStatus?.openai.embeddings.diagnostic, agentStatus?.openai.synthesis.diagnostic]
                 .filter((d) => d && !d.operational)
                 .map((d) =>
@@ -670,7 +682,7 @@ export function SetupDrawer({
                     <div className="provider-line" key={d.operation} style={{ fontSize: "0.78rem" }}>
                       <span className="muted">{d.operation} diagnostic:</span>
                       <span className="muted">
-                        HTTP {d.http_status ?? "—"} · {d.error_code ?? "unclassified"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
+                        {d.safe_classification ?? "unclassified"} · HTTP {d.http_status ?? "—"} · {d.error_code ?? d.error_type ?? "—"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
                       </span>
                     </div>
                   ) : null

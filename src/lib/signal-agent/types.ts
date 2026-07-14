@@ -412,13 +412,17 @@ export type SanitizedProviderError = {
  * provider error type/code, request ID, and a specific classification
  * (never a generic "request rejected"). See @/lib/signal-agent/openaiStatus. */
 export type OpenAiOperationDiagnostic = {
-  operation: "authentication" | "embeddings" | "synthesis";
+  operation: "authentication" | "embeddings" | "synthesis" | "extraction" | "qualification" | "message_synthesis" | "public_evidence";
   configured: boolean;
   operational: boolean;
   model: string | null;
   http_status: number | null;
   error_type: string | null;
   error_code: string | null;
+  /** The stable safe classification (e.g. OPENAI_QUOTA_EXCEEDED) — the UI
+   * should surface this, never "unclassified", whenever the error
+   * carried any usable field. */
+  safe_classification: string | null;
   safe_message: string;
   request_id: string | null;
   retryable: boolean;
@@ -445,6 +449,19 @@ export type OpenAiStatus = {
   authentication: OpenAiCapabilityStatus;
   embeddings: OpenAiCapabilityStatus;
   synthesis: OpenAiCapabilityStatus;
+  /** Single overall provider state (Section 3): missing / configured /
+   * authenticated / operational / quota_exhausted / permission_rejected
+   * / model_unavailable / temporarily_unavailable, plus whether the key
+   * itself must be replaced and the concrete required action. Quota
+   * exhaustion is never a key-replacement condition. */
+  provider_state: {
+    state: string;
+    configured: boolean;
+    authenticated: boolean;
+    operational: boolean;
+    requires_key_replacement: boolean;
+    required_action: string;
+  };
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of
