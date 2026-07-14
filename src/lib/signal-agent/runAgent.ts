@@ -9,6 +9,7 @@ import { buildRouting } from "@/lib/signal-agent/routing";
 import { draftNotification } from "@/lib/signal-agent/notification";
 import { appendAuditRecord, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
 import { extractBuyingIntentEvidence, extractStakeholders } from "@/lib/signal-agent/intentExtraction";
+import { extractNamedStakeholders, inferFunctionalOwners } from "@/lib/signal-agent/stakeholderExtraction";
 import { buildCommercialSignals } from "@/lib/signal-agent/commercialSignals";
 import { synthesizeExecutiveBrief } from "@/lib/signal-agent/openaiSynthesis";
 import { fetchPublicSignals } from "@/lib/signal-agent/publicSignals";
@@ -35,7 +36,8 @@ import type {
 const DEMO_TRANSCRIPT_FILES: Record<string, string> = {
   high_intent: "data/transcripts/high_intent_orchestrator.txt",
   noise: "data/transcripts/noise_general_interest.txt",
-  secure_networking_triage: "data/transcripts/secure_networking_deal_signal.txt"
+  secure_networking_triage: "data/transcripts/secure_networking_deal_signal.txt",
+  cross_domain_data_platform: "data/transcripts/cross_domain_data_platform_deal_signal.txt"
 };
 
 function resolveTranscriptText(request: RunRequest): string {
@@ -46,6 +48,13 @@ function resolveTranscriptText(request: RunRequest): string {
   const relativePath = DEMO_TRANSCRIPT_FILES[key];
   const fullPath = path.join(process.cwd(), "signal-agent-poc", relativePath);
   return readFileSync(fullPath, "utf8");
+}
+
+function computeAnalysisMode(embeddingsUsed: boolean, synthesisUsed: boolean): SecureNetworkingTriageResult["providers"]["analysis_mode"] {
+  if (embeddingsUsed && synthesisUsed) return "embeddings_and_synthesis";
+  if (embeddingsUsed) return "embeddings_assisted";
+  if (synthesisUsed) return "synthesis_assisted";
+  return "deterministic";
 }
 
 function relationshipForRank(rank: number): MatchRelationship {
@@ -109,6 +118,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
 
   const intentEvidence = extractBuyingIntentEvidence(transcript);
   const stakeholders = extractStakeholders(transcript);
+  const namedStakeholders = extractNamedStakeholders(transcript);
+  const functionalOwners = inferFunctionalOwners(transcript, namedStakeholders);
 
   const useOpenAI = request.options?.useOpenAIEmbeddings ?? true;
   const embeddingBundle = await embedTranscript(transcript, useOpenAI);
@@ -276,6 +287,11 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       recommended_next_action: finalExecutiveSummary.recommended_next_action
     },
     stakeholders,
+    stakeholder_analysis: {
+      participants: transcript.participantRecords,
+      named_stakeholders: namedStakeholders,
+      functional_owners: functionalOwners
+    },
     commercial_signals: commercialSignals,
     matches,
     solution_architecture: solutionArchitecture,
@@ -287,7 +303,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       embeddings_used: effectiveBundle.mode === "openai_embeddings",
       synthesis_used: synthesis.used,
       fallback_reason: !synthesis.used ? synthesis.fallback_reason : effectiveBundle.mode === "fallback" ? (effectiveBundle.warning ?? "deterministic fallback") : null,
-      semantic_mode: effectiveBundle.mode
+      semantic_mode: effectiveBundle.mode,
+      analysis_mode: computeAnalysisMode(effectiveBundle.mode === "openai_embeddings", synthesis.used)
     },
     reference_pack: buildReferencePack(catalog),
     corroboration_summary: corroborationSummary,

@@ -133,14 +133,16 @@ describe("Webex delivery never hard-codes a room ID", () => {
 });
 
 describe("Setup drawer surfaces OpenAI configured status and the Webex scope diagnostics", () => {
-  it("SetupDrawer's AI providers tab shows OpenAI configured/model/embeddings/synthesis/last-test/last-result", () => {
+  it("SetupDrawer's AI providers tab shows OpenAI configured/embedding+synthesis models/embeddings+synthesis operational status independently", () => {
     const source = readFileSync(path.join(COMPONENTS_DIR, "SetupDrawer.tsx"), "utf8");
     expect(source).toContain("agentStatus?.openai.configured");
-    expect(source).toContain("agentStatus?.openai.model");
-    expect(source).toContain("agentStatus?.openai.embeddings_enabled");
-    expect(source).toContain("agentStatus?.openai.synthesis_enabled");
-    expect(source).toContain("agentStatus?.openai.last_check");
-    expect(source).toContain("Test OpenAI");
+    expect(source).toContain("agentStatus?.openai.embedding_model");
+    expect(source).toContain("agentStatus?.openai.synthesis_model");
+    expect(source).toContain("agentStatus?.openai.embeddings.usable");
+    expect(source).toContain("agentStatus?.openai.synthesis.usable");
+    expect(source).toContain("Test authentication");
+    expect(source).toContain("Test embeddings");
+    expect(source).toContain("Test synthesis");
     expect(source).toContain("Test Search");
   });
 

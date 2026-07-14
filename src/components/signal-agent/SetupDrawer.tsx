@@ -315,19 +315,54 @@ export function SetupDrawer({
           )}
           {!diagnostics?.configured && <div className="warning slim">WEBEX_CLIENT_ID / WEBEX_CLIENT_SECRET are not configured on the server.</div>}
 
-          <h3>Requested scopes</h3>
-          <ul className="compact-list">
-            {(diagnostics?.requested_scopes ?? []).map((scope) => (
-              <li key={scope}>
-                <code>{scope}</code>
-              </li>
-            ))}
-            {diagnostics && diagnostics.requested_scopes.length === 0 && <li className="muted">No scopes configured.</li>}
+          <h3>Capabilities</h3>
+          <p className="muted" style={{ fontSize: "0.85rem" }}>
+            Core OAuth (identity, outbound messaging, meeting schedules) and transcript access are separate, independently-granted
+            capabilities — a rejected transcript scope never blocks the rest of the connection.
+          </p>
+          <ul className="compact-list capability-list">
+            <li>
+              Core OAuth: <span className={status?.capabilities.core_oauth ? "provider-yes" : "provider-no"}>{status?.capabilities.core_oauth ? "Connected" : "Not connected"}</span>
+            </li>
+            <li>
+              Identity (spark:people_read): <span className={status?.capabilities.identity ? "provider-yes" : "provider-no"}>{status?.capabilities.identity ? "Granted" : "Not granted"}</span>
+            </li>
+            <li>
+              Messaging (spark:messages_write): <span className={status?.capabilities.messaging ? "provider-yes" : "provider-no"}>{status?.capabilities.messaging ? "Granted" : "Not granted"}</span>
+            </li>
+            <li>
+              Meeting schedules (meeting:schedules_read): <span className={status?.capabilities.meeting_schedules ? "provider-yes" : "provider-no"}>{status?.capabilities.meeting_schedules ? "Granted" : "Not granted"}</span>
+            </li>
+            <li>
+              Meeting transcripts (meeting:transcripts_read, optional):{" "}
+              <span className={status?.capabilities.meeting_transcripts ? "provider-yes" : "provider-no"}>{status?.capabilities.meeting_transcripts ? "Granted" : "Not granted"}</span>
+            </li>
+            <li>
+              Public webhook URL: <span className={status?.webhook_target ? "provider-yes" : "provider-no"}>{status?.webhook_target ?? "Not set"}</span>
+            </li>
+            <li>
+              Webhook registration: <span className={status?.webhook_registered ? "provider-yes" : "provider-no"}>{status?.webhook_registered ? "Registered" : "Not registered"}</span>
+            </li>
+            <li>
+              Manual transcript import:{" "}
+              <span className={status?.capabilities.manual_transcript_import_available ? "provider-yes" : "provider-no"}>
+                {status?.capabilities.manual_transcript_import_available ? "Available" : "Not available"}
+              </span>
+            </li>
+            <li>
+              Transcript autopilot: <span className={status?.autopilot_enabled ? "provider-yes" : "provider-no"}>{status?.autopilot_enabled ? "Enabled" : "Disabled"}</span>
+            </li>
+            <li>
+              Outbound delivery: <span className={status?.capabilities.outbound_delivery_available ? "provider-yes" : "provider-no"}>{status?.capabilities.outbound_delivery_available ? "Available" : "Not available"}</span>
+            </li>
           </ul>
 
           <div className="actions">
             <a className="button secondary" href="/api/webex/oauth/start">
-              {status?.connected ? "Reconnect" : "Connect"}
+              {status?.connected ? "Reconnect" : "Connect Webex"}
+            </a>
+            <a className="button secondary" href="/api/webex/oauth/enable-transcripts">
+              {status?.capabilities.meeting_transcripts ? "Re-authorize transcript access" : "Enable transcript access"}
             </a>
             <button type="button" className="button secondary" onClick={() => (window.location.href = "/api/webex/oauth/start")}>
               Retry connection
@@ -355,6 +390,16 @@ export function SetupDrawer({
               </button>
             )}
           </div>
+
+          <h3>Requested scopes</h3>
+          <ul className="compact-list">
+            {(diagnostics?.requested_scopes ?? []).map((scope) => (
+              <li key={scope}>
+                <code>{scope}</code>
+              </li>
+            ))}
+            {diagnostics && diagnostics.requested_scopes.length === 0 && <li className="muted">No scopes configured.</li>}
+          </ul>
 
           <h3>Diagnose: basic connection</h3>
           <p className="muted" style={{ fontSize: "0.85rem" }}>
@@ -583,32 +628,50 @@ export function SetupDrawer({
             <div className="provider-check">
               <strong>OpenAI</strong>
               <div className="provider-line">
-                <span>Configured:</span>
+                <span>API key configured:</span>
                 <span className={agentStatus?.openai.configured ? "provider-yes" : "provider-no"}>{agentStatus?.openai.configured ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Model:</span>
-                <span>{agentStatus?.openai.model ?? "—"}</span>
+                <span>Embedding model:</span>
+                <span>{agentStatus?.openai.embedding_model ?? "—"}</span>
               </div>
               <div className="provider-line">
-                <span>Embeddings enabled:</span>
-                <span className={agentStatus?.openai.embeddings_enabled ? "provider-yes" : "provider-no"}>{agentStatus?.openai.embeddings_enabled ? "Yes" : "No"}</span>
+                <span>Embeddings operational:</span>
+                <span className={agentStatus?.openai.embeddings.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.embeddings.usable ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Synthesis enabled:</span>
-                <span className={agentStatus?.openai.synthesis_enabled ? "provider-yes" : "provider-no"}>{agentStatus?.openai.synthesis_enabled ? "Yes" : "No"}</span>
+                <span>Synthesis model:</span>
+                <span>{agentStatus?.openai.synthesis_model ?? "—"}</span>
               </div>
               <div className="provider-line">
-                <span>Last test:</span>
-                <span>{agentStatus?.openai.last_check ?? "—"}</span>
+                <span>Synthesis operational:</span>
+                <span className={agentStatus?.openai.synthesis.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.synthesis.usable ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Last result:</span>
-                <span>{agentStatus?.openai.message ?? "—"}</span>
+                <span>Last embedding test:</span>
+                <span>
+                  {agentStatus?.openai.embeddings.last_check ?? "—"} — {agentStatus?.openai.embeddings.message ?? "—"}
+                </span>
+              </div>
+              <div className="provider-line">
+                <span>Last synthesis test:</span>
+                <span>
+                  {agentStatus?.openai.synthesis.last_check ?? "—"} — {agentStatus?.openai.synthesis.message ?? "—"}
+                </span>
+              </div>
+              <div className="provider-line">
+                <span>Authentication:</span>
+                <span className={agentStatus?.openai.authentication.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.authentication.message ?? "—"}</span>
               </div>
               <div className="actions">
                 <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
-                  {busy === "test-openai" ? "Testing…" : "Test OpenAI"}
+                  {busy === "test-openai" ? "Testing…" : "Test authentication"}
+                </button>
+                <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
+                  {busy === "test-openai" ? "Testing…" : "Test embeddings"}
+                </button>
+                <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
+                  {busy === "test-openai" ? "Testing…" : "Test synthesis"}
                 </button>
               </div>
             </div>

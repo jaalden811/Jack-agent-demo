@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
 import { normalizeScopes } from "@/lib/webex/scopes";
+import { getCoreScopes, TRANSCRIPT_SCOPE } from "@/lib/webex/scopePolicy";
 import { SCOPE_DIAGNOSTIC_TESTS } from "@/lib/webex/scopeDiagnostics";
 import { readIdentityRecord, readLastOAuthError, readScopeTestResults, readTokenRecord } from "@/lib/webex/store";
 import type { WebexDiagnostics, WebexScopeTestResult } from "@/lib/webex/types";
@@ -37,16 +38,23 @@ export async function GET() {
     };
   });
 
+  const grantedScopes = tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [];
+
   const diagnostics: WebexDiagnostics = {
     configured: config.hasWebexOAuth,
     connected: Boolean(tokenRecord),
     redirect_uri: config.WEBEX_REDIRECT_URI,
     requested_scopes_raw: config.WEBEX_SCOPES,
     requested_scopes: normalizeScopes(config.WEBEX_SCOPES),
+    // "Connect Webex" only ever requests this core subset; the optional
+    // transcript scope is requested separately by "Enable transcript access".
+    core_scopes: getCoreScopes(config.WEBEX_SCOPES),
+    transcript_scope: TRANSCRIPT_SCOPE,
+    transcript_scope_granted: grantedScopes.includes(TRANSCRIPT_SCOPE),
     authorization_url_origin: "https://webexapis.com",
     client_id_configured: Boolean(config.WEBEX_CLIENT_ID),
     client_secret_configured: Boolean(config.WEBEX_CLIENT_SECRET),
-    granted_scopes: tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [],
+    granted_scopes: grantedScopes,
     connected_user: tokenRecord ? { name: identity?.displayName ?? null, email: identity?.email ?? null } : null,
     token_refresh_status: health,
     last_error_code: lastError?.code ?? null,

@@ -53,7 +53,9 @@ export function WebexTranscriptMode({
       const meetingsData = await meetingsResponse.json();
       const transcriptsData = await transcriptsResponse.json();
       if (!meetingsResponse.ok || !transcriptsResponse.ok) {
-        setNotice(meetingsData.error ?? transcriptsData.error ?? "Could not load meetings/transcripts.");
+        const detail = transcriptsData.detail ?? meetingsData.detail;
+        const message = transcriptsData.error ?? meetingsData.error ?? "Could not load meetings/transcripts.";
+        setNotice(detail ? `${message} ${detail}` : message);
         return [];
       }
       setMeetings(meetingsData.items ?? []);
@@ -149,6 +151,13 @@ export function WebexTranscriptMode({
       </div>
 
       {notice && <div className="warning slim">{notice}</div>}
+
+      {status?.connected && !status.capabilities.meeting_transcripts && (
+        <div className="warning slim">
+          Webex core connection is working, but transcript access (meeting:transcripts_read) has not been granted yet.{" "}
+          <a href="/api/webex/oauth/enable-transcripts">Enable transcript access</a> before importing a transcript.
+        </div>
+      )}
 
       <div className="actions">
         {!status?.connected && (

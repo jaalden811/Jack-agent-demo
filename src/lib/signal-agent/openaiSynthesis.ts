@@ -1,4 +1,5 @@
 import { getConfig } from "@/lib/config";
+import { describeOpenAiFailure } from "@/lib/signal-agent/openaiStatus";
 import type { MatchOutput } from "@/lib/signal-agent/types";
 
 /**
@@ -71,15 +72,17 @@ export async function synthesizeExecutiveBrief(params: {
   try {
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey: config.OPENAI_API_KEY, timeout: 15000, maxRetries: 0 });
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 900,
+    // Synthesis (text generation) always uses OPENAI_SYNTHESIS_MODEL via
+    // the Responses API — never the embedding model/endpoint.
+    const response = await client.responses.create({
+      model: config.OPENAI_SYNTHESIS_MODEL,
+      input: prompt,
+      text: { format: { type: "json_object" } },
+      max_output_tokens: 900,
       temperature: 0.2
     });
 
-    const text = response.choices[0]?.message?.content ?? "{}";
+    const text = response.output_text || "{}";
     const parsed = JSON.parse(text) as Partial<SynthesisOutput>;
 
     if (
@@ -106,18 +109,7 @@ export async function synthesizeExecutiveBrief(params: {
     };
   } catch (error) {
     console.warn("Signal agent: OpenAI synthesis unavailable, retaining deterministic brief.");
-    return { used: false, fallback_reason: describeSynthesisFailure(error), output: null };
+    const reason = error instanceof SyntaxError ? "model returned malformed JSON" : describeOpenAiFailure(error);
+    return { used: false, fallback_reason: reason, output: null };
   }
-}
-
-function describeSynthesisFailure(error: unknown): string {
-  const status = (error as { status?: number })?.status;
-  const name = (error as { name?: string })?.name;
-  if (name === "APIConnectionTimeoutError") return "timeout";
-  if (status === 401 || status === 403) return "request rejected (invalid or unauthorized key)";
-  if (status === 404) return "model unavailable";
-  if (status === 429) return "request rejected (rate limited)";
-  if (status && status >= 500) return "request rejected (provider error)";
-  if (error instanceof SyntaxError) return "model returned malformed JSON";
-  return "request rejected";
 }

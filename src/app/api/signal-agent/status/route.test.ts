@@ -4,6 +4,8 @@ import { GET } from "@/app/api/signal-agent/status/route";
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;
   delete process.env.SEARCH_API_KEY;
+  delete process.env.OPENAI_SYNTHESIS_MODEL;
+  delete process.env.OPENAI_MODEL;
 });
 
 describe("GET /api/signal-agent/status", () => {
@@ -13,9 +15,11 @@ describe("GET /api/signal-agent/status", () => {
     const json = await response.json();
 
     expect(json.openai.configured).toBe(false);
-    expect(json.openai.usable).toBe(false);
-    expect(json.openai.message).toBe("no configured key");
-    expect(json.openai.message).not.toBe("fallback");
+    expect(json.openai.authentication.usable).toBe(false);
+    expect(json.openai.embeddings.usable).toBe(false);
+    expect(json.openai.synthesis.usable).toBe(false);
+    expect(json.openai.authentication.message).toBe("no configured key");
+    expect(json.openai.authentication.message).not.toBe("fallback");
   });
 
   it("reports the taxonomy as loaded from the Cisco mapping JSON", async () => {
@@ -39,29 +43,48 @@ describe("GET /api/signal-agent/status", () => {
     }
   });
 
-  it("reports 'embeddings disabled by user' when the caller explicitly turns OpenAI off", async () => {
+  it("reports 'disabled by user' for all capabilities when the caller explicitly turns OpenAI off", async () => {
     process.env.OPENAI_API_KEY = "sk-test-not-a-real-key-abcdefghijklmnop";
     try {
       const response = await GET(new Request("http://localhost/api/signal-agent/status?useOpenAI=false"));
       const json = await response.json();
       expect(json.openai.configured).toBe(true);
-      expect(json.openai.usable).toBe(false);
-      expect(json.openai.message).toBe("embeddings disabled by user");
+      expect(json.openai.authentication.usable).toBe(false);
+      expect(json.openai.embeddings.usable).toBe(false);
+      expect(json.openai.synthesis.usable).toBe(false);
+      expect(json.openai.authentication.message).toBe("disabled by user");
     } finally {
       delete process.env.OPENAI_API_KEY;
     }
   });
 
-  it("exposes configured/model/embeddings_enabled/synthesis_enabled/last_check for the Setup drawer's AI providers tab", async () => {
+  it("exposes separate embedding_model and synthesis_model, defaulting synthesis to gpt-4o-mini", async () => {
     const response = await GET(new Request("http://localhost/api/signal-agent/status"));
     const json = await response.json();
-    expect(json.openai).toHaveProperty("configured");
-    expect(json.openai).toHaveProperty("model");
-    expect(json.openai).toHaveProperty("embeddings_enabled");
-    expect(json.openai).toHaveProperty("synthesis_enabled");
-    expect(json.openai).toHaveProperty("last_check");
-    expect(json.openai.embeddings_enabled).toBe(false);
-    expect(json.openai.synthesis_enabled).toBe(false);
+    expect(json.openai.embedding_model).toBe("text-embedding-3-small");
+    expect(json.openai.synthesis_model).toBe("gpt-4o-mini");
+    expect(json.openai.embedding_model).not.toBe(json.openai.synthesis_model);
   });
 
+  it("respects an explicitly configured OPENAI_SYNTHESIS_MODEL", async () => {
+    process.env.OPENAI_SYNTHESIS_MODEL = "gpt-4.1-mini";
+    try {
+      const response = await GET(new Request("http://localhost/api/signal-agent/status"));
+      const json = await response.json();
+      expect(json.openai.synthesis_model).toBe("gpt-4.1-mini");
+    } finally {
+      delete process.env.OPENAI_SYNTHESIS_MODEL;
+    }
+  });
+
+  it("accepts the legacy OPENAI_MODEL env var as a synthesis-model alias", async () => {
+    process.env.OPENAI_MODEL = "gpt-4o";
+    try {
+      const response = await GET(new Request("http://localhost/api/signal-agent/status"));
+      const json = await response.json();
+      expect(json.openai.synthesis_model).toBe("gpt-4o");
+    } finally {
+      delete process.env.OPENAI_MODEL;
+    }
+  });
 });

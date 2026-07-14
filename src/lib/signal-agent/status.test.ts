@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeOpenAiFailure } from "@/lib/signal-agent/status";
+import { describeOpenAiFailure } from "@/lib/signal-agent/openaiStatus";
 
 describe("describeOpenAiFailure — specific safe reasons for the Setup drawer", () => {
   it("maps a timeout to 'timeout'", () => {

@@ -5,6 +5,7 @@ import type { SignalAgentStatus } from "@/lib/signal-agent/types";
 import type { WebexAutomationRunResult } from "@/lib/webex/types";
 import { ExecutiveSummaryTab } from "@/components/signal-agent/tabs/ExecutiveSummaryTab";
 import { OpportunitySignalsTab } from "@/components/signal-agent/tabs/OpportunitySignalsTab";
+import { StakeholdersTab } from "@/components/signal-agent/tabs/StakeholdersTab";
 import { SolutionArchitectureTab } from "@/components/signal-agent/tabs/SolutionArchitectureTab";
 import { ScoreEvidenceTab } from "@/components/signal-agent/tabs/ScoreEvidenceTab";
 import { RoutingPreviewTab } from "@/components/signal-agent/tabs/RoutingPreviewTab";
@@ -13,6 +14,7 @@ import { AuditTab } from "@/components/signal-agent/tabs/AuditTab";
 
 const TABS = [
   { id: "executive", label: "Executive summary" },
+  { id: "stakeholders", label: "Stakeholders" },
   { id: "signals", label: "Opportunity signals" },
   { id: "architecture", label: "Solution architecture" },
   { id: "score", label: "Score & evidence" },
@@ -53,6 +55,7 @@ export function ResultTabs({
 
       <div className="tab-panel">
         {activeTab === "executive" && <ExecutiveSummaryTab result={result} />}
+        {activeTab === "stakeholders" && <StakeholdersTab result={result} />}
         {activeTab === "signals" && <OpportunitySignalsTab result={result} />}
         {activeTab === "architecture" && <SolutionArchitectureTab result={result} />}
         {activeTab === "score" && <ScoreEvidenceTab result={result} />}

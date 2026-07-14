@@ -41,13 +41,15 @@ afterEach(() => {
 });
 
 describe("GET /api/webex/oauth/start", () => {
-  it("redirects to the Webex authorize URL with the configured scopes", async () => {
-    process.env.WEBEX_SCOPES = "meeting:transcripts_read spark:people_read";
+  it("redirects to the Webex authorize URL with the configured core scopes, excluding the optional transcript scope", async () => {
+    process.env.WEBEX_SCOPES = "meeting:transcripts_read spark:people_read spark:messages_write meeting:schedules_read";
     const response = await startGet();
     expect(response.status).toBe(307);
     const location = response.headers.get("location")!;
     expect(location).toContain("https://webexapis.com/v1/authorize");
-    expect(location).toContain("meeting%3Atranscripts_read");
+    expect(location).toContain("spark%3Apeople_read");
+    // "Connect Webex" never requests the optional transcript scope.
+    expect(location).not.toContain("meeting%3Atranscripts_read");
   });
 
   it("returns 400 when WEBEX_CLIENT_ID is not configured", async () => {
@@ -202,7 +204,9 @@ describe("GET /api/webex/diagnostics", () => {
     expect(data.client_id_configured).toBe(true);
     expect(data.client_secret_configured).toBe(true);
     expect(data.last_error_code).toBe("invalid_scope");
-    expect(data.last_failed_scope_set).toEqual(["meeting:transcripts_read", "spark:messages_write"]);
+    // The default "Connect Webex" flow's scope set excludes the optional
+    // transcript scope, even if it happens to be present in WEBEX_SCOPES.
+    expect(data.last_failed_scope_set).toEqual(["spark:messages_write"]);
     expect(JSON.stringify(data)).not.toContain("test-client-id");
     expect(JSON.stringify(data)).not.toContain("test-client-secret");
   });

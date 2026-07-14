@@ -3,6 +3,7 @@ import { getConfig } from "@/lib/config";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { normalizeScopes } from "@/lib/webex/scopes";
+import { TRANSCRIPT_SCOPE } from "@/lib/webex/scopePolicy";
 import { getAutomationReadiness } from "@/lib/webex/automationSettings";
 import { readIdentityRecord, readTokenRecord, readWebhookRecord, readRecentWebexAudit, readLastOAuthError } from "@/lib/webex/store";
 import type { WebexStatus } from "@/lib/webex/types";
@@ -24,6 +25,9 @@ export async function GET() {
   ]);
 
   const connected = Boolean(tokenRecord);
+  const grantedScopes = tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [];
+  const hasScope = (scope: string) => connected && grantedScopes.includes(scope);
+  const transcriptGranted = hasScope(TRANSCRIPT_SCOPE);
 
   const lastTranscriptRecord = recentAudit.find((record) => record.event === "transcript_processed");
   const lastMessages = recentAudit
@@ -40,9 +44,11 @@ export async function GET() {
     ? "A public URL is required for Webex transcript webhooks."
     : !connected
       ? "Connect Webex before enabling autopilot."
-      : sender.mode === "unavailable"
-        ? "Connect Webex (or configure an optional bot token) before enabling autopilot."
-        : null;
+      : !transcriptGranted
+        ? "Enable transcript access (meeting:transcripts_read) before enabling autopilot."
+        : sender.mode === "unavailable"
+          ? "Connect Webex (or configure an optional bot token) before enabling autopilot."
+          : null;
 
   const status: WebexStatus = {
     configured: config.hasWebexOAuth,
@@ -50,13 +56,22 @@ export async function GET() {
     connected_user: { name: identity?.displayName ?? null, email: identity?.email ?? null },
     redirect_uri: config.WEBEX_REDIRECT_URI,
     requested_scopes: normalizeScopes(config.WEBEX_SCOPES),
-    granted_scopes: tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [],
+    granted_scopes: grantedScopes,
     token_refresh_health: health,
     webex_delivery: {
       available: sender.mode !== "unavailable",
       sender_mode: sender.mode,
       sender_identity: sender.senderIdentity,
       message_scope_granted: sender.messageScopeGranted
+    },
+    capabilities: {
+      core_oauth: connected,
+      identity: hasScope("spark:people_read"),
+      messaging: hasScope("spark:messages_write"),
+      meeting_schedules: hasScope("meeting:schedules_read"),
+      meeting_transcripts: transcriptGranted,
+      manual_transcript_import_available: transcriptGranted,
+      outbound_delivery_available: sender.mode !== "unavailable"
     },
     bot_configured: config.hasWebexBot,
     webhook_registered: Boolean(webhook),

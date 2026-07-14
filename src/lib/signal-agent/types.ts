@@ -149,6 +149,9 @@ export type TranscriptSentence = {
   speaker: string | null;
   isCustomer: boolean;
   text: string;
+  /** Normalized MM:SS or HH:MM:SS timestamp when the source line had
+   * one — never treated as part of the speaker name. */
+  timestamp: string | null;
 };
 
 export type TranscriptChunk = {
@@ -156,13 +159,33 @@ export type TranscriptChunk = {
   speaker: string | null;
   isCustomer: boolean;
   text: string;
+  timestamp: string | null;
   contextBefore: string | null;
   contextAfter: string | null;
 };
 
+export type ParticipantClassification = "customer" | "vendor" | "internal" | "unknown";
+
+/** A structural record of everyone who spoke or appeared in a
+ * participant header — built purely from transcript text, never
+ * invented. See @/lib/signal-agent/transcript#ingestTranscript. */
+export type ParticipantRecord = {
+  name: string;
+  title: string | null;
+  organization: string | null;
+  classification: ParticipantClassification;
+  turnCount: number;
+  firstEvidenceIndex: number | null;
+  lastEvidenceIndex: number | null;
+};
+
 export type IngestedTranscript = {
   account: string | null;
+  /** Legacy "Name (role)" string list — retained for backward
+   * compatibility with existing consumers; derived from
+   * participantRecords. */
   participants: string[];
+  participantRecords: ParticipantRecord[];
   sentences: TranscriptSentence[];
   chunks: TranscriptChunk[];
   rawText: string;
@@ -201,12 +224,48 @@ export type BuyingIntentEvidence = {
   score_contribution: number;
 };
 
-export type StakeholderOwnershipType = "executive" | "operational" | "technical" | "security" | "application";
+export type StakeholderOwnershipType =
+  | "executive"
+  | "operational"
+  | "technical"
+  | "security"
+  | "application"
+  | "reliability"
+  | "infrastructure"
+  | "finance_vendor_management"
+  | "security_architecture"
+  | "enterprise_architecture"
+  | "cloud_platform"
+  | "itsm";
 
 export type Stakeholder = {
   name: string;
   role: string;
   ownership_type: StakeholderOwnershipType;
+};
+
+export type StakeholderTier = "explicit" | "inferred_functional";
+
+/** Three-tier stakeholder model (Section 3): explicitly named
+ * individuals are `tier: "explicit"`; a function that appears
+ * responsible without a definitively named individual is
+ * `tier: "inferred_functional"` and `name` is null — never a
+ * fabricated person. */
+export type StakeholderRecord = {
+  name: string | null;
+  function_or_role: string;
+  ownership_type: StakeholderOwnershipType;
+  tier: StakeholderTier;
+  evidence: string;
+  location: string | null;
+  confidence: number;
+  why_it_matters: string;
+};
+
+export type StakeholderAnalysis = {
+  participants: ParticipantRecord[];
+  named_stakeholders: StakeholderRecord[];
+  functional_owners: StakeholderRecord[];
 };
 
 export type RuleEvaluationStatus = "matched" | "contradicted" | "not_evidenced";
@@ -278,7 +337,7 @@ export const webexSourceSchema = z.object({
 });
 
 export const runRequestSchema = z.object({
-  transcriptId: z.enum(["high_intent", "noise", "secure_networking_triage"]).optional(),
+  transcriptId: z.enum(["high_intent", "noise", "secure_networking_triage", "cross_domain_data_platform"]).optional(),
   customTranscript: z.string().trim().max(20000).optional(),
   accountOverride: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   webexSource: webexSourceSchema.optional(),
@@ -303,19 +362,39 @@ export type ProviderStatusEntry = {
   used_for: string;
   last_check?: string;
   message: string;
-  /** OpenAI-only: whether this key/model would currently be used for
-   * semantic matching / executive-brief synthesis respectively. Both
-   * default to the same live probe result (`usable`) since both uses
-   * share the same configured key and model. */
-  embeddings_enabled?: boolean;
-  synthesis_enabled?: boolean;
+};
+
+export type SanitizedProviderError = {
+  http_status: number | null;
+  error_type: string | null;
+  error_code: string | null;
+  message: string;
+};
+
+export type OpenAiCapabilityStatus = {
+  usable: boolean;
+  message: string;
+  error: SanitizedProviderError | null;
+  last_check: string | null;
+};
+
+/** OpenAI has two independent capabilities, each with its own model and
+ * its own API call — an embedding-only model can never serve synthesis,
+ * so each is tested (and can fail) independently. */
+export type OpenAiStatus = {
+  configured: boolean;
+  embedding_model: string;
+  synthesis_model: string;
+  authentication: OpenAiCapabilityStatus;
+  embeddings: OpenAiCapabilityStatus;
+  synthesis: OpenAiCapabilityStatus;
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of
  * ProviderStatusSnapshot in @/lib/types, reusing @/lib/config's
  * getConfig() as the single source of truth for what is configured. */
 export type SignalAgentStatus = {
-  openai: ProviderStatusEntry;
+  openai: OpenAiStatus;
   search: ProviderStatusEntry;
   firecrawl: ProviderStatusEntry;
   contact_enrichment: ProviderStatusEntry;
@@ -411,6 +490,10 @@ export type SecureNetworkingTriageResult = {
     recommended_next_action: string;
   };
   stakeholders: Stakeholder[];
+  /** Three-tier stakeholder model: call participants, explicitly named
+   * stakeholders, and evidence-backed inferred functional owners. Never
+   * fabricates a person's name. */
+  stakeholder_analysis: StakeholderAnalysis;
   commercial_signals: {
     budget: string | null;
     timeline: string | null;
@@ -433,6 +516,10 @@ export type SecureNetworkingTriageResult = {
     synthesis_used: boolean;
     fallback_reason: string | null;
     semantic_mode: SemanticMode;
+    /** Which capability combination actually produced this result —
+     * embeddings and synthesis degrade fully independently, so any
+     * combination is possible. Never implies one blocks the other. */
+    analysis_mode: "deterministic" | "embeddings_assisted" | "synthesis_assisted" | "embeddings_and_synthesis";
   };
   reference_pack: ReferencePack;
   corroboration_summary: CorroborationSummary;

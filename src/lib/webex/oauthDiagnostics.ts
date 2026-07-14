@@ -16,12 +16,20 @@ function messageOf(error: unknown): string {
   return typeof error === "string" ? error : "Unknown error";
 }
 
-export function classifyWebexOAuthError(error: unknown, phase: OAuthPhase): WebexOAuthErrorRecord {
+const TRANSCRIPT_SCOPE_REJECTED_MESSAGE =
+  "Core Webex OAuth works, but transcript access was rejected. Edit the Webex Integration, enable meeting:transcripts_read, save the integration, reset OAuth state, and reconnect.";
+
+function classifyRawScopeIssue(lower: string): boolean {
+  return lower.includes("invalid_scope") || lower.includes("invalid scope");
+}
+
+export function classifyWebexOAuthError(error: unknown, phase: OAuthPhase, purpose: OAuthPurpose = "connect"): WebexOAuthErrorRecord {
   const rawMessage = messageOf(error);
   const lower = rawMessage.toLowerCase();
   const status = error instanceof WebexApiError ? error.status : undefined;
 
   let code: WebexOAuthErrorCode;
+  let message = rawMessage;
 
   if (lower.includes("redirect_uri") || lower.includes("redirect uri")) {
     code = "redirect_uri_mismatch";
@@ -29,8 +37,17 @@ export function classifyWebexOAuthError(error: unknown, phase: OAuthPhase): Webe
     code = "invalid_client_secret";
   } else if (lower.includes("invalid_client") || lower.includes("unknown client") || lower.includes("client not found")) {
     code = "invalid_client";
-  } else if ((lower.includes("invalid_scope") || lower.includes("invalid scope")) && phase !== "identity_lookup") {
-    code = "invalid_scope";
+  } else if (classifyRawScopeIssue(lower) && phase !== "identity_lookup") {
+    // A scope rejection during the dedicated "Enable transcript access"
+    // flow is a precise, actionable signal — not a generic invalid_scope
+    // — because that flow requests exactly core+transcript scopes and
+    // core scopes are already proven to work independently.
+    if (purpose === "enable_transcripts") {
+      code = "transcript_scope_rejected";
+      message = TRANSCRIPT_SCOPE_REJECTED_MESSAGE;
+    } else {
+      code = "invalid_scope";
+    }
   } else if (lower.includes("access_denied") || lower.includes("denied") || lower.includes("user cancelled") || lower.includes("user canceled")) {
     code = "user_denied";
   } else if (phase === "identity_lookup") {
@@ -43,24 +60,30 @@ export function classifyWebexOAuthError(error: unknown, phase: OAuthPhase): Webe
     code = "token_exchange_failed";
   }
 
-  return { code, message: rawMessage, occurredAt: new Date().toISOString() };
+  return { code, message, occurredAt: new Date().toISOString() };
 }
+
+export type OAuthPurpose = "connect" | "enable_transcripts";
 
 /** Maps the `error` query param Webex appends to the redirect (e.g. when
  * the user declines consent on the authorize screen) to our error codes. */
-export function classifyAuthorizeRedirectError(errorParam: string, errorDescription: string | null): WebexOAuthErrorRecord {
+export function classifyAuthorizeRedirectError(errorParam: string, errorDescription: string | null, purpose: OAuthPurpose = "connect"): WebexOAuthErrorRecord {
   const lower = errorParam.toLowerCase();
   let code: WebexOAuthErrorCode = "token_exchange_failed";
+  let message = errorDescription || `Webex returned error=${errorParam} on the authorize redirect.`;
+
   if (lower === "access_denied") code = "user_denied";
   else if (lower.includes("redirect_uri")) code = "redirect_uri_mismatch";
-  else if (lower.includes("invalid_scope")) code = "invalid_scope";
-  else if (lower.includes("invalid_client")) code = "invalid_client";
+  else if (lower.includes("invalid_scope")) {
+    if (purpose === "enable_transcripts") {
+      code = "transcript_scope_rejected";
+      message = TRANSCRIPT_SCOPE_REJECTED_MESSAGE;
+    } else {
+      code = "invalid_scope";
+    }
+  } else if (lower.includes("invalid_client")) code = "invalid_client";
 
-  return {
-    code,
-    message: errorDescription || `Webex returned error=${errorParam} on the authorize redirect.`,
-    occurredAt: new Date().toISOString()
-  };
+  return { code, message, occurredAt: new Date().toISOString() };
 }
 
 export const OAUTH_ERROR_HELP: Record<WebexOAuthErrorCode, string> = {
@@ -69,6 +92,7 @@ export const OAUTH_ERROR_HELP: Record<WebexOAuthErrorCode, string> = {
   invalid_client: "Webex rejected the client ID. Check WEBEX_CLIENT_ID against the OAuth Integration's Client ID.",
   invalid_client_secret: "Webex rejected the client secret. Check WEBEX_CLIENT_SECRET against the OAuth Integration's Client Secret (secrets can be regenerated/rotated).",
   invalid_scope: "One or more requested scopes are not enabled on the Webex OAuth Integration. Check WEBEX_SCOPES against the scopes enabled for this integration.",
+  transcript_scope_rejected: TRANSCRIPT_SCOPE_REJECTED_MESSAGE,
   user_denied: "The user declined to authorize the app on the Webex consent screen.",
   state_mismatch: "The OAuth state returned by Webex did not match the state this server issued — the login attempt may have expired or been replayed. Try connecting again.",
   token_exchange_failed: "Webex rejected the authorization-code-to-token exchange. See the message for Webex's specific reason.",

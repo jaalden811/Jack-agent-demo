@@ -18,6 +18,7 @@ function buildResult(): SecureNetworkingTriageResult {
       recommended_next_action: "Schedule an architecture workshop."
     },
     stakeholders: [],
+    stakeholder_analysis: { participants: [], named_stakeholders: [], functional_owners: [] },
     commercial_signals: {
       budget: "$1.4M approved budget",
       timeline: "this quarter",
@@ -69,7 +70,7 @@ function buildResult(): SecureNetworkingTriageResult {
     discovery_questions: [],
     internal_brief: "",
     notification_text: null,
-    providers: { embeddings_used: false, synthesis_used: false, fallback_reason: null, semantic_mode: "fallback" },
+    providers: { embeddings_used: false, synthesis_used: false, fallback_reason: null, semantic_mode: "fallback", analysis_mode: "deterministic" },
     reference_pack: {
       taxonomy_file: "",
       taxonomy_version: "1.0",
