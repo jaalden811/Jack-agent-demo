@@ -12,6 +12,12 @@ export function SummaryCard({ result }: { result: SecureNetworkingTriageResult }
       <div className="summary-headline">
         <VerdictBadge verdict={summary.verdict} />
         <span className="summary-confidence">{Math.round(summary.confidence * 100)}% confidence</span>
+        <span className="topbar-pill pending" title="Which capability combination produced this result">
+          Analysis mode: {result.providers.analysis_mode.replace(/_/g, " ")}
+        </span>
+        <span className="topbar-pill pending" title="Structural call participants detected by the transcript parser">
+          Participants: {result.transcript_meta.participant_count}
+        </span>
       </div>
 
       <div className="summary-body">

@@ -6,12 +6,13 @@ import type { WebexTranscriptSource } from "@/lib/webex/types";
 import { WebexTranscriptMode } from "@/components/signal-agent/webex/WebexTranscriptMode";
 
 export type TranscriptRunPayload = {
-  transcriptId?: "high_intent" | "noise" | "secure_networking_triage";
+  transcriptId?: "high_intent" | "noise" | "secure_networking_triage" | "cross_domain_data_platform";
   customTranscript?: string;
   webexSource?: WebexTranscriptSource;
 };
 
-const DEMO_OPTIONS: Array<{ id: "secure_networking_triage" | "high_intent" | "noise"; label: string }> = [
+const DEMO_OPTIONS: Array<{ id: "secure_networking_triage" | "high_intent" | "noise" | "cross_domain_data_platform"; label: string }> = [
+  { id: "cross_domain_data_platform", label: "Cross-domain observability & data platform (multi-stakeholder fixture)" },
   { id: "secure_networking_triage", label: "Secure networking deal signal (regression fixture)" },
   { id: "high_intent", label: "Collaboration modernization (HIGH_INTENT)" },
   { id: "noise", label: "General curiosity (NOISE)" }
@@ -29,7 +30,7 @@ export function TranscriptCard({
   onViewTranscript: () => void;
 }) {
   const [mode, setMode] = useState<"demo" | "paste" | "webex">("demo");
-  const [demoId, setDemoId] = useState<"secure_networking_triage" | "high_intent" | "noise">("secure_networking_triage");
+  const [demoId, setDemoId] = useState<"secure_networking_triage" | "high_intent" | "noise" | "cross_domain_data_platform">("cross_domain_data_platform");
   const [pastedText, setPastedText] = useState("");
   const [title, setTitle] = useState("");
   const [accountName, setAccountName] = useState("");

@@ -1,0 +1,33 @@
+Account: Meridian Health Systems
+Meeting: Cross-Domain Observability and Security Data Platform Discovery
+Date: 2026-06-18
+
+Maya Chen — Cisco Account Executive
+Daniel Cho — Customer, Platform Reliability Lead
+Priya Nair — Customer, Applications Engineering Lead
+Renee Ibarra — Customer, Infrastructure Operations Director
+Sam Okafor — Customer, Security Operations Lead
+Jordan Blake — Customer, Security Architecture Lead
+Erin Walsh — Customer, Finance and Vendor Management
+
+00:00 — Maya: Thanks everyone for joining. Today we want to understand where the biggest operational and security gaps are so we can scope the right platform.
+00:05 — Daniel: Appreciate you setting this up. Our biggest pain is that we can't do cross-domain machine data search across our environment. When something breaks, we're jumping between five different tools just to find the right logs.
+00:32 — Priya: On the applications side, our microservices are a black box. We can't correlate traces, metrics, and logs across our Kubernetes clusters, and we've started instrumenting with OpenTelemetry but have nowhere consistent to send the data.
+00:38 — Priya: We need real observability across our cloud-native applications and infrastructure. We want to instrument and troubleshoot cloud-native applications and infrastructure, correlate traces, metrics, logs, and user experience data across our databases and infrastructure, and reduce our mean time to root cause in these distributed systems. APM alone isn't enough anymore.
+01:10 — Renee: Infrastructure has the same problem. We need infrastructure monitoring and application performance visibility in one place, not five different dashboards.
+01:40 — Daniel: In May we had a major incident that took almost six hours to root-cause. Our proof-of-value target for any new platform is simple: recreate the May incident using historical or representative data, and show a responder identifying the likely failure path in under 20 minutes.
+02:15 — Priya: We also don't have real event correlation or change correlation. Our NOC has thousands of infrastructure alerts with no service context, so we can't tell which technical issue is actually affecting a business service.
+02:40 — Renee: Right, we need to connect technical telemetry to business-service health, not just raw infrastructure monitoring.
+03:05 — Sam: From a security side, we run a lot of separate security investigation tools. We need centralized logs for security and compliance, and our SIEM today is expensive and hard to scale. Audit reporting takes far too long.
+03:15 — Sam: We want to ingest, search, and analyze security data from many sources at scale, support compliance reporting, threat hunting, and custom detections, and consolidate SIEM, SOAR, UEBA, and security analytics into one place. We also want to correlate security telemetry into prioritized incidents, reduce SOC tool switching, and accelerate investigation and response, and automate threat detection, investigation, and remediation workflows.
+03:35 — Jordan: I'm on security architecture, and one requirement from us is role-based access and data segregation — different teams need to see different data, and we can't have a flat security model across every source.
+04:00 — Sam: We also want to integrate this with ServiceNow so incidents and detections automatically create and update tickets through our existing ServiceNow workflow, instead of analysts copying data by hand.
+04:25 — Renee: On the data management side, we need to filter, route, and tier data with different retention. Debug logs only need to last seven days, standard logs thirty days, and security needs to keep selected sources much longer for compliance.
+04:50 — Erin: I'm finance and vendor management for this initiative. We are currently paying for five overlapping tools, and ingestion costs alone are a major line item. Consolidating onto one data platform is as much a cost story as a capability story.
+05:15 — Erin: Finance has already estimated that this quarter alone, these fragmented tools and the resulting incident delays have cost us about $1.8 million in lost revenue from delayed orders.
+05:40 — Maya: That's a significant number. What's driving your timeline?
+05:45 — Erin: Our budget planning cycle closes this quarter in October, so we need a firm architecture and commercial plan before then. On top of that, two of our existing monitoring contracts renew in January and March, so we'd like any new platform decision made before those renewal dates.
+06:10 — Daniel: We'd also want this reviewed by our enterprise architecture review board before anything is finalized. They'll want to see how this fits our broader data strategy.
+06:30 — Priya: And our cloud platform engineering team will need to validate how this integrates with our existing Kubernetes and cloud-native services before we commit.
+06:50 — Sam: To be clear, we are not just curious about this. This is a funded initiative with an executive sponsor and board approval.
+07:05 — Daniel: Agreed. We'd like to scope an architecture workshop to validate the design, and if the pilot metrics hold up, we're prepared to purchase this quarter.
