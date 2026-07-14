@@ -1,7 +1,8 @@
 import { getConfig } from "@/lib/config";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { readRecentAuditRecords, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
-import type { ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
+import { checkOpenAiAuthentication, checkOpenAiEmbeddings, checkOpenAiSynthesis } from "@/lib/signal-agent/openaiStatus";
+import type { OpenAiCapabilityStatus, OpenAiStatus, ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
 
 /**
  * Server-side operational status for the Signal-to-Solution Triage app.
@@ -17,44 +18,39 @@ import type { ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/
  * specific reason (never just "fallback").
  */
 
-async function probeOpenAi(apiKey: string, model: string): Promise<ProviderStatusEntry> {
-  const base: ProviderStatusEntry = {
-    configured: true,
-    usable: false,
-    model,
-    used_for: "semantic transcript matching",
-    last_check: new Date().toISOString(),
-    message: "Not checked"
+const NOT_CHECKED: OpenAiCapabilityStatus = { usable: false, message: "not checked", error: null, last_check: null };
+
+async function buildOpenAiStatus(options: { useOpenAI?: boolean }): Promise<OpenAiStatus> {
+  const config = getConfig();
+  const base: OpenAiStatus = {
+    configured: Boolean(config.OPENAI_API_KEY),
+    embedding_model: config.OPENAI_EMBEDDING_MODEL,
+    synthesis_model: config.OPENAI_SYNTHESIS_MODEL,
+    authentication: NOT_CHECKED,
+    embeddings: NOT_CHECKED,
+    synthesis: NOT_CHECKED
   };
 
-  let client: import("openai").default;
-  try {
-    const { default: OpenAI } = await import("openai");
-    client = new OpenAI({ apiKey, timeout: 5000, maxRetries: 0 });
-  } catch {
-    return { ...base, usable: false, message: "API client initialization failure" };
+  if (!config.OPENAI_API_KEY) {
+    const notConfigured: OpenAiCapabilityStatus = { usable: false, message: "no configured key", error: null, last_check: new Date().toISOString() };
+    return { ...base, authentication: notConfigured, embeddings: notConfigured, synthesis: notConfigured };
   }
 
-  try {
-    await client.models.retrieve(model);
-    return { ...base, usable: true, message: "Ready" };
-  } catch (error) {
-    const message = describeOpenAiFailure(error);
-    return { ...base, usable: false, message };
+  if (options.useOpenAI === false) {
+    const disabled: OpenAiCapabilityStatus = { usable: false, message: "disabled by user", error: null, last_check: new Date().toISOString() };
+    return { ...base, authentication: disabled, embeddings: disabled, synthesis: disabled };
   }
-}
 
-export function describeOpenAiFailure(error: unknown): string {
-  const status = (error as { status?: number })?.status;
-  const code = (error as { code?: string })?.code;
-  const name = (error as { name?: string })?.name;
+  // Each capability is checked with its own API call so one failing
+  // (e.g. an embedding-only key rejected for synthesis) never masks or
+  // is masked by the other.
+  const [authentication, embeddings, synthesis] = await Promise.all([
+    checkOpenAiAuthentication(config.OPENAI_API_KEY),
+    checkOpenAiEmbeddings(config.OPENAI_API_KEY, config.OPENAI_EMBEDDING_MODEL),
+    checkOpenAiSynthesis(config.OPENAI_API_KEY, config.OPENAI_SYNTHESIS_MODEL)
+  ]);
 
-  if (name === "APIConnectionTimeoutError" || code === "ETIMEDOUT") return "timeout";
-  if (status === 401 || status === 403) return "request rejected (invalid or unauthorized key)";
-  if (status === 404) return "model unavailable";
-  if (status === 429) return "request rejected (rate limited)";
-  if (status && status >= 500) return "request rejected (provider error)";
-  return "request rejected";
+  return { ...base, authentication, embeddings, synthesis };
 }
 
 async function probeSearch(apiKey: string, provider: string): Promise<ProviderStatusEntry> {
@@ -100,34 +96,7 @@ export async function getSignalAgentStatus(options: { useOpenAI?: boolean } = {}
   const config = getConfig();
   const catalog = getCatalog();
 
-  const openaiBase: ProviderStatusEntry =
-    !config.OPENAI_API_KEY
-      ? {
-          configured: false,
-          usable: false,
-          model: config.OPENAI_EMBEDDING_MODEL,
-          used_for: "semantic transcript matching",
-          last_check: new Date().toISOString(),
-          message: "no configured key"
-        }
-      : options.useOpenAI === false
-        ? {
-            configured: true,
-            usable: false,
-            model: config.OPENAI_EMBEDDING_MODEL,
-            used_for: "semantic transcript matching",
-            last_check: new Date().toISOString(),
-            message: "embeddings disabled by user"
-          }
-        : await probeOpenAi(config.OPENAI_API_KEY, config.OPENAI_EMBEDDING_MODEL);
-
-  // Embeddings (semantic matching) and synthesis (executive brief) share
-  // the same configured key/model, so both reflect the same live probe.
-  const openai: ProviderStatusEntry = {
-    ...openaiBase,
-    embeddings_enabled: openaiBase.usable,
-    synthesis_enabled: openaiBase.usable
-  };
+  const openai = await buildOpenAiStatus(options);
 
   const search: ProviderStatusEntry = !config.SEARCH_API_KEY
     ? {
