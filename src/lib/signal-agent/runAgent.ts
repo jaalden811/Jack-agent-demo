@@ -291,11 +291,15 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     businessProblem: finalExecutiveSummary.business_problem,
     renewalEvents: commercialSignals.renewal_events,
     purchaseLanguage: commercialSignals.purchase_language,
+    budget: commercialSignals.budget,
+    timeline: commercialSignals.timeline,
     matches,
     verdict: primaryEvaluation.intentLabel,
     lifecycleStageGuess,
     enrichPublicSignals,
-    useQualification
+    useQualification,
+    userEnteredAccount: request.userEnteredAccount ?? null,
+    nextStepSignals: genericSignals.filter((s) => s.bucket === "next_steps").map((s) => s.text)
   });
 
   const corroborationSummary: CorroborationSummary = {
@@ -375,7 +379,9 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       },
       signals: groupGenericSignalsByBucket(genericSignals),
       category_scores: buildCategoryScores(evaluations, genericSignals)
-    }
+    },
+    serpapi_signals: qualification.serpapi_signals,
+    opportunity_scoring: qualification.opportunity_scoring
   };
 
   const auditOutcome = await appendAuditRecord(result);

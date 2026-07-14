@@ -65,6 +65,35 @@ describe("ingestTranscript — multi-format speaker parsing", () => {
     expect(maya.firstEvidenceIndex).toBe(0);
     expect(maya.lastEvidenceIndex).toBeGreaterThan(maya.firstEvidenceIndex!);
   });
+
+  it("in a timestamped transcript, an in-turn sentence with a leading 'clause: ...' never fabricates a participant", () => {
+    // "Three answers: What is affected? ..." is ordinary dialogue, not a
+    // new speaker — because the transcript uses timestamped headers
+    // throughout, the bare "Name: text" fallback must be disabled so a
+    // sentence with a leading colon-clause cannot become a fake speaker.
+    const text = [
+      "21:34 — Erin:",
+      "Three answers: What is affected? How bad is it? When will it be fixed?",
+      "21:43 — Priya:",
+      "Sometimes which customers are affected."
+    ].join("\n");
+    const transcript = ingestTranscript(text);
+    const names = transcript.participantRecords.map((p) => p.name);
+    expect(names).toEqual(["Erin", "Priya"]);
+    expect(names).not.toContain("Three answers");
+    // The "Three answers…" line is retained as Erin's dialogue content,
+    // never dropped.
+    expect(transcript.sentences.some((s) => s.speaker === "Erin" && s.text.includes("What is affected"))).toBe(true);
+  });
+
+  it("keeps the bare 'Name: text' format working when the transcript uses NO timestamped headers", () => {
+    // Format-consistency cuts both ways: with no timestamped headers at
+    // all, the plain "Name: text" format is the real format and must
+    // still parse into distinct speakers.
+    const text = ["Renee: We have board approval for this initiative.", "Marcus: Security needs data segregation before we proceed."].join("\n");
+    const transcript = ingestTranscript(text);
+    expect(transcript.participantRecords.map((p) => p.name).sort()).toEqual(["Marcus", "Renee"]);
+  });
 });
 
 describe("ingestTranscript — participant headers before the conversation", () => {

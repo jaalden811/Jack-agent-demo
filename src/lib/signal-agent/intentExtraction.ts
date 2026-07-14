@@ -160,8 +160,18 @@ export function scoreBuyingIntentEvidence(evidence: BuyingIntentEvidence[]): num
 export function extractStakeholders(transcript: IngestedTranscript): Stakeholder[] {
   const stakeholders: Stakeholder[] = [];
   for (const record of transcript.participantRecords) {
-    if (record.classification !== "customer" || !record.title) continue;
-    stakeholders.push({ name: record.name, role: record.title, ownership_type: classifyOwnership(record.title) });
+    if (record.classification !== "customer") continue;
+    // A customer-side participant is a stakeholder if they either have a
+    // discernible role/title (from a header/Participants: line) OR
+    // actually spoke on the call (turnCount > 0) — a dialogue-only
+    // transcript (e.g. "00:00 — Erin: ...") has no per-speaker title
+    // yet the speakers are unambiguously real named stakeholders, so
+    // requiring a title silently dropped every one of them. When no
+    // explicit title exists, a neutral generic role is used (never a
+    // fabricated title).
+    if (!record.title && record.turnCount === 0) continue;
+    const role = record.title ?? "Customer stakeholder";
+    stakeholders.push({ name: record.name, role, ownership_type: classifyOwnership(role) });
   }
   return stakeholders;
 }

@@ -12,6 +12,7 @@ import { RoutingPreviewTab } from "@/components/signal-agent/tabs/RoutingPreview
 import { InternalBriefTab } from "@/components/signal-agent/tabs/InternalBriefTab";
 import { AuditTab } from "@/components/signal-agent/tabs/AuditTab";
 import { SourcesEnrichmentTab } from "@/components/signal-agent/tabs/SourcesEnrichmentTab";
+import { SerpApiSignalsTab } from "@/components/signal-agent/tabs/SerpApiSignalsTab";
 
 const TABS = [
   { id: "executive", label: "Executive summary" },
@@ -20,6 +21,7 @@ const TABS = [
   { id: "architecture", label: "Solution architecture" },
   { id: "score", label: "Score & evidence" },
   { id: "sources", label: "Sources & enrichment" },
+  { id: "serpapi", label: "SerpAPI signals" },
   { id: "routing", label: "Routing preview" },
   { id: "brief", label: "Internal brief" },
   { id: "audit", label: "Audit" }
@@ -62,6 +64,7 @@ export function ResultTabs({
         {activeTab === "architecture" && <SolutionArchitectureTab result={result} />}
         {activeTab === "score" && <ScoreEvidenceTab result={result} />}
         {activeTab === "sources" && <SourcesEnrichmentTab result={result} />}
+        {activeTab === "serpapi" && <SerpApiSignalsTab result={result} onResultUpdate={onResultUpdate} />}
         {activeTab === "routing" && <RoutingPreviewTab result={result} onResultUpdate={onResultUpdate} />}
         {activeTab === "brief" && <InternalBriefTab result={result} />}
         {activeTab === "audit" && <AuditTab result={result} status={status} />}

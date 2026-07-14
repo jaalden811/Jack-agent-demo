@@ -128,7 +128,15 @@ function splitSentences(text: string): string[] {
 
 type DialogueLine = { timestamp: string | null; speaker: string; text: string };
 
-function parseDialogueLine(line: string): DialogueLine | null {
+/** Detects the two timestamp-anchored speaker-header formats — these are
+ * unambiguous (a line can only match if it literally begins with a
+ * MM:SS/HH:MM:SS timestamp), so their presence tells us the transcript
+ * uses an explicit per-turn header format. */
+function hasTimestampedHeader(line: string): boolean {
+  return BRACKETED_TIMESTAMP_SPEAKER_RE.test(line) || DASH_TIMESTAMP_SPEAKER_RE.test(line);
+}
+
+function parseDialogueLine(line: string, options: { allowPlainSpeaker: boolean }): DialogueLine | null {
   let match = line.match(BRACKETED_TIMESTAMP_SPEAKER_RE);
   if (match && isPlausibleSpeakerName(match[2])) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
 
@@ -138,12 +146,23 @@ function parseDialogueLine(line: string): DialogueLine | null {
   match = line.match(LEGACY_BRACKET_SPEAKER_RE);
   if (match && isPlausibleSpeakerName(match[1])) return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
 
-  match = line.match(PLAIN_SPEAKER_RE);
-  if (match) {
-    const key = match[1].trim().toLowerCase();
-    if (NON_SPEAKER_KEYS.has(key)) return null;
-    if (!isPlausibleSpeakerName(match[1])) return null;
-    return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
+  // The bare, untimestamped "Name: text" pattern is only trusted as a
+  // speaker header when the transcript does NOT otherwise use an
+  // explicit timestamped/bracketed header format. Real transcripts use
+  // one consistent speaker-label format; once timestamped headers are
+  // present, an ordinary sentence that merely happens to contain a
+  // leading "Something: ..." clause (e.g. "Three answers: what is
+  // affected, ...") is a continuation of the open turn, never a new
+  // speaker — this is what prevents such a sentence from fabricating a
+  // participant, generically, on any topic.
+  if (options.allowPlainSpeaker) {
+    match = line.match(PLAIN_SPEAKER_RE);
+    if (match) {
+      const key = match[1].trim().toLowerCase();
+      if (NON_SPEAKER_KEYS.has(key)) return null;
+      if (!isPlausibleSpeakerName(match[1])) return null;
+      return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
+    }
   }
 
   return null;
@@ -303,6 +322,13 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
   // is a continuation of the open turn, or — if no turn is open yet —
   // an orphan line that is recorded for diagnostics but never
   // fabricates a participant.
+  // A transcript that uses explicit timestamped/bracketed headers for
+  // any turn is treated as using that format throughout — so the bare
+  // "Name: text" fallback is disabled, and a sentence with a leading
+  // "clause: ..." can never be mistaken for a new speaker turn.
+  const usesTimestampedHeaders = lines.some((line) => hasTimestampedHeader(line.trim()));
+  const allowPlainSpeaker = !usesTimestampedHeaders;
+
   let headersDetected = 0;
   const rejectedHeaderCandidates: string[] = [];
   const turns: Array<{ record: ParticipantRecord; timestamp: string | null; textParts: string[] }> = [];
@@ -320,7 +346,7 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
     if (!trimmed) continue; // blank lines never close or start a turn — real transcripts wrap paragraphs across blank lines
     if (ACCOUNT_LINE_RE.test(trimmed) || PARTICIPANTS_LINE_RE.test(trimmed)) continue; // already consumed in Pass 1
 
-    const dialogue = parseDialogueLine(trimmed);
+    const dialogue = parseDialogueLine(trimmed, { allowPlainSpeaker });
     if (dialogue) {
       closeOpenTurn();
       headersDetected += 1;

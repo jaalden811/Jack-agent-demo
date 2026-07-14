@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
  * test assertions are exactly where this content is supposed to live.
  */
 
-const PRODUCTION_DIRS = ["src/lib/signal-agent", "src/lib/qualification", "src/lib/webex", "src/app/api/signal-agent"];
+const PRODUCTION_DIRS = ["src/lib/signal-agent", "src/lib/qualification", "src/lib/webex", "src/app/api/signal-agent", "src/lib/account-resolution", "src/lib/opportunity-fit", "src/lib/connectors/serpapi"];
 
 const FIXTURE_FILENAME = "splunk_platform_rationalization";
 

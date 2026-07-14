@@ -136,7 +136,7 @@ describe("Customer-call fixture — qualification layer (Section 15 regression)"
   it("resolves the account from real evidence (transcript Account: line + CRM match) — never fabricated", async () => {
     const result = await runFixture();
     expect(result.account_resolution.name).toBe("Meridian Health Systems");
-    expect(result.account_resolution.status).toBe("resolved");
+    expect(result.account_resolution.status).toBe("confirmed");
     expect(result.account_resolution.confidence).toBeGreaterThanOrEqual(0.85);
     expect(result.account_resolution.action_required).toBeNull();
   });
