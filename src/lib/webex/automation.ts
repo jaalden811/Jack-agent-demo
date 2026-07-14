@@ -219,18 +219,24 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
   const routing = buildLaneRouting(result, config, lifecycle);
   const runId = result.timestamp;
   const analysisLink = await resolveAnalysisLink(result);
+  result.analysis_link = analysisLink;
   const deterministicMessages = buildMessagesForRouting({ result, routing, runId, analysisLink });
   const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
+  const previewDelivery = previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this.");
+  // Re-persist with the now-final analysis_link/messages so the shared
+  // results page matches this preview exactly (same runId/token issued
+  // above, just richer content).
+  await finalizeRunPersistence({ result, analysisLink, messages: synthesis.messages, delivery: previewDelivery });
 
   return {
     lifecycle,
     routing,
     messages: synthesis.messages,
     emails: synthesis.emails,
-    delivery: previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this."),
+    delivery: previewDelivery,
     routing_config_version: config.metadata.version,
     auto_send_enabled: false
   };
@@ -253,6 +259,7 @@ export async function deliverPeachtreePipeline(
   const transcriptId = computeTranscriptId(transcriptText, webexSource);
   const runId = result.timestamp;
   const analysisLink = await resolveAnalysisLink(result);
+  result.analysis_link = analysisLink;
   const deterministicMessages = buildMessagesForRouting({ result, routing, runId, analysisLink });
   const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
