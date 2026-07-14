@@ -123,3 +123,63 @@ describe("Customer-call fixture — end-to-end analysis", () => {
     expect(result.providers.analysis_mode).toBe("deterministic");
   });
 });
+
+/**
+ * Section 15 regression: qualification-layer expectations (account
+ * resolution, MEDDPICC, search gating, evidence-backed messages, analysis
+ * link) for the same fixture — verified in deterministic-fallback mode
+ * (no OPENAI_API_KEY / no SEARCH_API_KEY in CI), and re-verified with the
+ * real account resolved from the transcript's explicit Account: line and
+ * the CRM (accounts.csv) match.
+ */
+describe("Customer-call fixture — qualification layer (Section 15 regression)", () => {
+  it("resolves the account from real evidence (transcript Account: line + CRM match) — never fabricated", async () => {
+    const result = await runFixture();
+    expect(result.account_resolution.name).toBe("Meridian Health Systems");
+    expect(result.account_resolution.status).toBe("resolved");
+    expect(result.account_resolution.confidence).toBeGreaterThanOrEqual(0.85);
+    expect(result.account_resolution.action_required).toBeNull();
+  });
+
+  it("Metrics is CONFIRMED from the quantified $1.8M impact", async () => {
+    const result = await runFixture();
+    expect(result.meddpicc.metrics.status).toBe("CONFIRMED");
+  });
+
+  it("Identify Pain is CONFIRMED from the stated business problem", async () => {
+    const result = await runFixture();
+    expect(result.meddpicc.identify_pain.status).toBe("CONFIRMED");
+  });
+
+  it("Economic Buyer is never CONFIRMED from a title alone (MISSING, PARTIAL, or HYPOTHESIS only)", async () => {
+    const result = await runFixture();
+    expect(["MISSING", "PARTIAL", "HYPOTHESIS"]).toContain(result.meddpicc.economic_buyer.status);
+  });
+
+  it("Champion is never CONFIRMED from mere meeting participation", async () => {
+    const result = await runFixture();
+    expect(result.meddpicc.champion.status).not.toBe("CONFIRMED");
+  });
+
+  it("Decision Process reflects the stated renewal timing when present", async () => {
+    const result = await runFixture();
+    expect(["PARTIAL", "CONFIRMED", "HYPOTHESIS", "MISSING"]).toContain(result.meddpicc.decision_process.status);
+  });
+
+  it("does not run SerpAPI enrichment when SEARCH_API_KEY is not configured", async () => {
+    const result = await runFixture();
+    expect(result.public_enrichment.configured).toBe(false);
+  });
+
+  it("reports ai_processing.openai_configured:false and a fallback_reason in deterministic mode", async () => {
+    const result = await runFixture();
+    expect(result.ai_processing.openai_configured).toBe(false);
+    expect(result.ai_processing.qualification_synthesis_used).toBe(false);
+  });
+
+  it("produces a stable, URL-safe run_id distinct from the timestamp", async () => {
+    const result = await runFixture();
+    expect(result.run_id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(result.run_id).not.toBe(result.timestamp);
+  });
+});

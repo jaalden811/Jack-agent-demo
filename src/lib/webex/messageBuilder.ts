@@ -94,7 +94,8 @@ export function buildSalesMessage(params: {
     recipient_email: decision.recipient_email,
     subject: `Sales action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
     markdown,
-    character_count: markdown.length
+    character_count: markdown.length,
+    synthesized_by_ai: false
   };
 }
 
@@ -140,7 +141,8 @@ export function buildTechnicalMessage(params: {
     recipient_email: decision.recipient_email,
     subject: `Technical action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
     markdown,
-    character_count: markdown.length
+    character_count: markdown.length,
+    synthesized_by_ai: false
   };
 }
 
@@ -204,7 +206,8 @@ export function buildSalesEmail(params: {
     recipient_email: decision.recipient_email,
     subject: `[${summary.verdict}] Sales action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
     html: `<p>Peachtree Select pilot — Sales action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
-    text: `Peachtree Select pilot — Sales action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`
+    text: `Peachtree Select pilot — Sales action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
+    synthesized_by_ai: false
   };
 }
 
@@ -244,7 +247,8 @@ export function buildTechnicalEmail(params: {
     recipient_email: decision.recipient_email,
     subject: `[${summary.verdict}] Technical action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
     html: `<p>Peachtree Select pilot — Technical action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
-    text: `Peachtree Select pilot — Technical action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`
+    text: `Peachtree Select pilot — Technical action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
+    synthesized_by_ai: false
   };
 }
 

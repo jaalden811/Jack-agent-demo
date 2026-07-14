@@ -111,6 +111,11 @@ export type WebexMessagePreview = {
   subject: string;
   markdown: string;
   character_count: number;
+  /** True when OpenAI Stage D produced this content from the structured
+   * qualification object; false when the deterministic template
+   * (@/lib/webex/messageBuilder) was used instead — e.g. OpenAI
+   * disabled/unconfigured/failed. Always safe to send either way. */
+  synthesized_by_ai: boolean;
 };
 
 export type EmailMessagePreview = {
@@ -120,6 +125,7 @@ export type EmailMessagePreview = {
   subject: string;
   html: string;
   text: string;
+  synthesized_by_ai: boolean;
 };
 
 /** One delivery attempt/result for a single (lane, channel) pair. The
