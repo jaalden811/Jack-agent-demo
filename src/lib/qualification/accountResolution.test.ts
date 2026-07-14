@@ -31,8 +31,8 @@ describe("resolveAccountIdentity — Section 2/7 priority order and generic-name
 
   it("resolves with high confidence when the transcript account line matches a real CRM account", () => {
     const result = resolveAccountIdentity(baseInput({ transcriptAccountLine: "Meridian Health Systems", transcriptAccountMatchedInCrm: true }));
-    expect(result.status).toBe("resolved");
-    expect(result.source).toBe("transcript_account_line");
+    expect(result.status).toBe("confirmed");
+    expect(result.source).toBe("crm");
     expect(result.confidence).toBeGreaterThanOrEqual(0.85);
   });
 
@@ -60,8 +60,8 @@ describe("resolveAccountIdentity — Section 2/7 priority order and generic-name
     expect(result.alternatives.some((a) => a.name === "Meridian Health Partners")).toBe(true);
   });
 
-  it("never claims resolved status for a low-confidence dialogue mention alone", () => {
+  it("never claims confirmed status for a low-confidence dialogue mention alone", () => {
     const result = resolveAccountIdentity(baseInput({ dialogueMentionedCompany: "Acme Widgets" }));
-    expect(result.status).not.toBe("resolved");
+    expect(result.status).not.toBe("confirmed");
   });
 });

@@ -66,7 +66,7 @@ export function SourcesEnrichmentTab({ result }: { result: SecureNetworkingTriag
         <div>
           <span className="muted">Status</span>
           <p>
-            <strong>{account.status}</strong> ({Math.round(account.confidence * 100)}% confidence, via {account.source.replace(/_/g, " ")})
+            <strong>{account.status}</strong> ({Math.round(account.confidence * 100)}% confidence, via {(account.source ?? "unknown").replace(/_/g, " ")})
           </p>
         </div>
         <div>

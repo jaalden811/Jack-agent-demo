@@ -101,7 +101,7 @@ function buildResult(): SecureNetworkingTriageResult {
     transcript_meta: { title: "Test meeting", account: "Acme Retail", participant_count: 5, sentence_count: 20, raw_text: "" },
     timestamp: new Date().toISOString(),
     run_id: "test-run-id",
-    account_resolution: { ...buildDefaultAccountResolution(), name: "Acme Retail", status: "resolved", confidence: 0.95, action_required: null },
+    account_resolution: { ...buildDefaultAccountResolution(), name: "Acme Retail", status: "confirmed", confidence: 0.95, action_required: null },
     meddpicc: buildDefaultMeddpicc(),
     public_enrichment: buildDefaultPublicEnrichment(),
     ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),

@@ -159,17 +159,11 @@ export type Meddpicc = {
 
 // ─── Account resolution ─────────────────────────────────────────────────────
 
-export type AccountResolutionStatus = "resolved" | "probable" | "unresolved";
-export type AccountResolutionSource =
-  | "transcript_account_line"
-  | "user_entered"
-  | "webex_meeting_title"
-  | "outlook_calendar_subject"
-  | "attendee_email_domain"
-  | "account_context"
-  | "dialogue_mention"
-  | "openai_candidate"
-  | "none";
+export type AccountResolutionStatus = "confirmed" | "probable" | "ambiguous" | "unresolved" | "conflicting";
+/** Canonical source list — matches @/lib/account-resolution/types's
+ * AccountEvidenceSource exactly, since that module is the single
+ * authoritative account-identity resolver (Section 1). */
+export type AccountResolutionSource = "user_input" | "transcript" | "webex" | "outlook" | "crm" | "email_domain" | "serpapi" | "combined" | null;
 
 export type AccountResolution = {
   name: string | null;

@@ -1,14 +1,14 @@
-import { isGenericAccountName } from "@/lib/connectors/serpapi/queryPlanner";
-import { buildDefaultAccountResolution } from "@/lib/qualification/defaults";
+import { resolveAccount } from "@/lib/account-resolution/accountResolver";
+import type { AccountResolutionInputs as NewAccountResolutionInputs } from "@/lib/account-resolution/types";
 import type { AccountCandidate, AccountResolution, AccountResolutionSource } from "@/lib/qualification/types";
 
 /**
- * Resolves account identity in the priority order from Section 2/7:
- * (1) explicit transcript Account: line, (2) user-entered/CRM-override
- * account, (3) Webex meeting title, (4) Outlook calendar subject,
- * (5) attendee email domains, (6) uploaded account context,
- * (7) a company name mentioned in dialogue, (8) an OpenAI-extracted
- * probable candidate. Never claims "resolved" for a generic/demo name.
+ * Thin adapter over the canonical account-identity resolver
+ * (@/lib/account-resolution/accountResolver — Section 1's exact
+ * 11-source priority order, generic placeholder/application-name
+ * rejection) so the existing qualification pipeline's call sites and
+ * result shape stay stable while all resolution logic itself lives in
+ * one place. Never duplicates the resolution heuristics here.
  */
 
 export type AccountResolutionInput = {
@@ -23,69 +23,56 @@ export type AccountResolutionInput = {
   openAiAccountCandidates: AccountCandidate[];
 };
 
-function tryCandidate(name: string | null, source: AccountResolutionSource, confidence: number, domain: string | null = null): AccountResolution | null {
-  if (!name || isGenericAccountName(name)) return null;
-  const status = confidence >= 0.85 ? "resolved" : confidence >= 0.65 ? "probable" : "unresolved";
-  return {
-    name,
-    domain,
-    status,
-    confidence,
-    source,
-    alternatives: [],
-    action_required:
-      status === "resolved"
-        ? null
-        : status === "probable"
-          ? `Account identity is probable (${Math.round(confidence * 100)}% confidence, via ${source.replace(/_/g, " ")}) — confirm before CRM writeback.`
-          : `Account not identified in the available evidence. Associate this meeting with the correct account before CRM writeback.`
-  };
+function actionRequiredFor(status: AccountResolution["status"], confidence: number, source: AccountResolutionSource): string | null {
+  switch (status) {
+    case "confirmed":
+      return null;
+    case "probable":
+      return `Account identity is probable (${Math.round(confidence * 100)}% confidence, via ${(source ?? "unknown").replace(/_/g, " ")}) — confirm before CRM writeback.`;
+    case "ambiguous":
+      return "Multiple plausible accounts were found with similar confidence. Select or enter the correct account before CRM writeback.";
+    case "conflicting":
+      return "Reliable sources disagree on the account identity. Confirm the correct account before CRM writeback.";
+    default:
+      return "Account not identified in the available evidence. Associate this meeting with the correct account before CRM writeback.";
+  }
 }
 
 export function resolveAccountIdentity(input: AccountResolutionInput): AccountResolution {
-  const attempts: Array<AccountResolution | null> = [
-    tryCandidate(input.transcriptAccountLine, "transcript_account_line", input.transcriptAccountMatchedInCrm ? 0.97 : 0.8),
-    tryCandidate(input.userEnteredAccount, "user_entered", 0.95),
-    tryCandidate(extractCompanyFromTitle(input.webexMeetingTitle), "webex_meeting_title", 0.7),
-    tryCandidate(extractCompanyFromTitle(input.outlookCalendarSubject), "outlook_calendar_subject", 0.68),
-    tryCandidate(domainToCompanyGuess(input.attendeeEmailDomains), "attendee_email_domain", 0.62, input.attendeeEmailDomains[0] ?? null),
-    tryCandidate(input.uploadedAccountContextName, "account_context", 0.75),
-    tryCandidate(input.dialogueMentionedCompany, "dialogue_mention", 0.55)
-  ];
+  const inputs: NewAccountResolutionInputs = {
+    transcriptAccountField: input.transcriptAccountLine,
+    userEnteredAccount: input.userEnteredAccount,
+    uploadedAccountRecord: input.uploadedAccountContextName ? { name: input.uploadedAccountContextName, domain: null } : null,
+    crmMatch: input.transcriptAccountMatchedInCrm && input.transcriptAccountLine ? { name: input.transcriptAccountLine, domain: null, confidence: 0.97 } : null,
+    webexMeetingTitle: input.webexMeetingTitle,
+    outlookEventSubject: input.outlookCalendarSubject,
+    customerParticipantEmailDomains: input.attendeeEmailDomains,
+    // Raw dialogue text for the generic company-introduction-pattern
+    // scanner (@/lib/account-resolution/candidateExtractor) — separate
+    // from `dialogueMentionedCompany`, which is already a pre-extracted
+    // candidate name (e.g. from OpenAI Stage A) and is passed through
+    // via openAiAccountCandidates below instead of being re-scanned.
+    transcriptDialogueText: [],
+    openAiAccountCandidates: [
+      ...input.openAiAccountCandidates.map((c) => ({ name: c.name, domain: c.domain, confidence: c.confidence, evidence_ids: c.evidence_ids })),
+      ...(input.dialogueMentionedCompany ? [{ name: input.dialogueMentionedCompany, domain: null, confidence: 0.55, evidence_ids: ["dialogue_mention"] }] : [])
+    ]
+  };
 
-  const best = attempts.filter((a): a is AccountResolution => a !== null).sort((a, b) => b.confidence - a.confidence)[0];
-  if (best) {
-    const alternatives = input.openAiAccountCandidates.filter((c) => c.name.toLowerCase() !== best.name?.toLowerCase());
-    return { ...best, alternatives };
-  }
+  // The transcript account line is already checked against the CRM
+  // separately above; avoid resolving it twice through both the
+  // "transcript" and "crm" source paths when it matched.
+  if (input.transcriptAccountMatchedInCrm) inputs.transcriptAccountField = null;
 
-  const openAiCandidate = input.openAiAccountCandidates.find((c) => !isGenericAccountName(c.name));
-  if (openAiCandidate) {
-    const resolved = tryCandidate(openAiCandidate.name, "openai_candidate", Math.min(0.6, openAiCandidate.confidence), openAiCandidate.domain);
-    if (resolved) return { ...resolved, alternatives: input.openAiAccountCandidates.filter((c) => c.name !== openAiCandidate.name) };
-  }
+  const resolved = resolveAccount(inputs);
 
-  return { ...buildDefaultAccountResolution(), alternatives: input.openAiAccountCandidates };
-}
-
-function extractCompanyFromTitle(title: string | null): string | null {
-  if (!title) return null;
-  // Heuristic only: "Acme Corp <> Cisco" / "Cisco - Acme Corp Discovery" /
-  // "Acme Corp Discovery Call" — strip common connective/meeting words,
-  // never fabricates a name that isn't literally present in the title.
-  const cleaned = title
-    .replace(/\bcisco\b/gi, "")
-    .replace(/\bsplunk\b/gi, "")
-    .replace(/\b(discovery|call|meeting|sync|check-?in|kickoff|review|demo|intro)\b/gi, "")
-    .replace(/[<>|/-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return cleaned.length >= 3 ? cleaned : null;
-}
-
-function domainToCompanyGuess(domains: string[]): string | null {
-  const external = domains.find((d) => !["gmail.com", "outlook.com", "cisco.com", "splunk.com", "yahoo.com", "hotmail.com"].includes(d.toLowerCase()));
-  if (!external) return null;
-  const base = external.split(".")[0];
-  return base.charAt(0).toUpperCase() + base.slice(1);
+  return {
+    name: resolved.name,
+    domain: resolved.domain,
+    status: resolved.status,
+    confidence: resolved.confidence,
+    source: resolved.source,
+    alternatives: resolved.alternatives,
+    action_required: actionRequiredFor(resolved.status, resolved.confidence, resolved.source)
+  };
 }

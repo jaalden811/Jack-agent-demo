@@ -1,0 +1,84 @@
+import type { EvidenceClass, PublicSignalCategory, SupportsDimension } from "@/lib/opportunity-fit/types";
+
+/**
+ * Generic public-evidence quality scoring and classification (Section
+ * 6) plus the hard rule about what a public signal may and may not
+ * confirm (Sections 4D/4E/14) — never a lookup for a specific company
+ * or product; every input is a 0..1 sub-score already computed
+ * generically elsewhere.
+ */
+
+export function computePublicSignalQuality(params: { entityMatch: number; sourceAuthority: number; transcriptRelevance: number; recency: number; specificity: number }): number {
+  return 0.3 * params.entityMatch + 0.25 * params.sourceAuthority + 0.2 * params.transcriptRelevance + 0.15 * params.recency + 0.1 * params.specificity;
+}
+
+export function classifyEvidenceStrength(qualityScore: number): EvidenceClass {
+  if (qualityScore >= 0.8) return "confirmed_public_fact";
+  if (qualityScore >= 0.65) return "probable_public_signal";
+  if (qualityScore >= 0.5) return "weak_signal";
+  return "rejected";
+}
+
+/** What each public-signal category may ever be used to `support` —
+ * technology_alignment, for example, may support solution_fit but
+ * explicitly can never support buying_capacity or account_fit claims
+ * about private facts (install base, contract status, budget). */
+export function allowedSupportsForCategory(category: PublicSignalCategory): SupportsDimension[] {
+  switch (category) {
+    case "strategic_objective":
+      return ["strategic_alignment", "solution_fit"];
+    case "executive_priority":
+      return ["strategic_alignment", "account_fit"];
+    case "trigger_event":
+      return ["timing", "strategic_alignment"];
+    case "technology_alignment":
+      return ["solution_fit", "competitive_context"];
+    case "buying_capacity":
+      return ["buying_capacity", "account_fit"];
+    case "competition":
+      return ["competitive_context"];
+    case "timing":
+      return ["timing"];
+    case "negative_signal":
+      return ["account_fit"];
+    default:
+      return [];
+  }
+}
+
+/** A technology mention is supporting evidence only — it never proves
+ * install base, an active contract, private architecture, opportunity
+ * stage, or a renewal date. Returned as machine-readable limitations
+ * attached to every technology_alignment signal. */
+export function technologyAlignmentLimitations(): string[] {
+  return [
+    "Does not prove current install base.",
+    "Does not prove an active contract.",
+    "Does not prove private architecture.",
+    "Does not prove opportunity stage.",
+    "Does not prove a renewal date."
+  ];
+}
+
+/** Buying-capacity indicators (size/revenue/headcount/hiring/capital
+ * investment) are fit indicators only — never proof of budget for this
+ * specific opportunity. */
+export function buyingCapacityLimitations(): string[] {
+  return ["Indicates general buying capacity, not confirmed budget for this specific opportunity."];
+}
+
+/** MEDDPICC/private-fact fields a public signal may never confirm,
+ * regardless of source authority — enforced in code (see
+ * meddpiccMerge.ts), restated here so the opportunity-fit and
+ * qualification pipelines share one canonical list. */
+export const PUBLIC_EVIDENCE_FORBIDDEN_CLAIMS = [
+  "internal_budget",
+  "opportunity_amount",
+  "salesforce_stage",
+  "private_renewal_date",
+  "procurement_status",
+  "private_install_base",
+  "economic_buyer_status",
+  "champion_status",
+  "internal_decision_process"
+] as const;

@@ -109,7 +109,7 @@ function buildResult(overrides: {
     transcript_meta: { title: null, account: "Test Account", participant_count: 1, sentence_count: 1, raw_text: "" },
     timestamp: new Date().toISOString(),
     run_id: "test-run-id",
-    account_resolution: { ...buildDefaultAccountResolution(), name: "Test Account", status: "resolved", confidence: 0.9, action_required: null },
+    account_resolution: { ...buildDefaultAccountResolution(), name: "Test Account", status: "confirmed", confidence: 0.9, action_required: null },
     meddpicc: buildDefaultMeddpicc(),
     public_enrichment: buildDefaultPublicEnrichment(),
     ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),

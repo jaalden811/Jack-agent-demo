@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "version": "opportunity-fit-v1",
+    "description": "Data-driven weights and gates for the opportunity-fit and pursuit-recommendation scoring engine. All arithmetic in src/lib/opportunity-fit reads exclusively from this file — no weight, threshold, or gate is hard-coded in production code or UI components."
+  },
+  "public_signal_quality": {
+    "weights": {
+      "entity_match": 0.3,
+      "source_authority": 0.25,
+      "transcript_relevance": 0.2,
+      "recency": 0.15,
+      "specificity": 0.1
+    },
+    "thresholds": {
+      "strong": 0.8,
+      "supporting": 0.65,
+      "weak": 0.5
+    }
+  },
+  "external_fit_score": {
+    "weights": {
+      "strategic_alignment": 0.25,
+      "trigger_strength": 0.2,
+      "executive_priority_alignment": 0.15,
+      "technology_alignment": 0.15,
+      "buying_capacity": 0.1,
+      "timing_alignment": 0.1,
+      "competitive_opening": 0.05
+    }
+  },
+  "pursuit_score": {
+    "weights_with_external_fit": {
+      "transcript_opportunity_score": 0.5,
+      "qualification_quality_score": 0.2,
+      "external_fit_score": 0.25,
+      "account_resolution_confidence": 0.05
+    },
+    "weights_without_external_fit": {
+      "transcript_opportunity_score": 0.7,
+      "qualification_quality_score": 0.25,
+      "account_resolution_confidence": 0.05
+    },
+    "decision_bands": [
+      { "decision": "PURSUE", "min": 80, "max": 100 },
+      { "decision": "PURSUE_WITH_DISCOVERY", "min": 65, "max": 79 },
+      { "decision": "NURTURE", "min": 45, "max": 64 },
+      { "decision": "HOLD", "min": 25, "max": 44 },
+      { "decision": "DO_NOT_PURSUE", "min": 0, "max": 24 }
+    ]
+  },
+  "hard_gates": [
+    {
+      "gate": "transcript_verdict_noise",
+      "description": "Transcript verdict is NOISE",
+      "condition": "verdict_equals_noise",
+      "effect": "do_not_pursue"
+    },
+    {
+      "gate": "explicit_not_pursuing_statement",
+      "description": "Customer explicitly stated they are not pursuing this",
+      "condition": "explicit_not_pursuing",
+      "effect": "hold"
+    },
+    {
+      "gate": "product_category_out_of_scope",
+      "description": "The selected product/category was explicitly declared out of scope by the customer",
+      "condition": "category_out_of_scope",
+      "effect": "cap_score",
+      "cap_value": 44
+    },
+    {
+      "gate": "no_customer_pain",
+      "description": "No customer pain evidence was found in the transcript",
+      "condition": "no_pain_evidence",
+      "effect": "cap_score",
+      "cap_value": 44
+    },
+    {
+      "gate": "no_credible_account",
+      "description": "Account remains unresolved with no credible candidate",
+      "condition": "account_unresolved",
+      "effect": "require_review"
+    },
+    {
+      "gate": "duplicate_closed_lost_opportunity",
+      "description": "A matching CRM opportunity is already closed/lost (only applies when CRM context is supplied)",
+      "condition": "crm_closed_lost_duplicate",
+      "effect": "hold"
+    }
+  ],
+  "negative_signal_requirements": {
+    "min_high_authority_sources_for_negative_signal": 1,
+    "do_not_pursue_requires_one_of": ["strong_negative_transcript_evidence", "explicit_customer_disqualification", "confirmed_no_fit_taxonomy_condition", "strong_crm_disqualification", "multiple_high_authority_negative_signals_with_weak_transcript_intent"]
+  }
+}

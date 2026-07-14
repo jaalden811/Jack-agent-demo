@@ -27,7 +27,7 @@ export function buildDefaultAccountResolution(): AccountResolution {
     domain: null,
     status: "unresolved",
     confidence: 0,
-    source: "none",
+    source: null,
     alternatives: [],
     action_required: "Account not identified in the available evidence. Associate this meeting with the correct account before CRM writeback."
   };
