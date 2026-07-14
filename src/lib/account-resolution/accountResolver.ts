@@ -103,8 +103,14 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
   const hasMultipleClose = distinctNamesNearTop.size > 1;
 
   const status = statusForConfidence(best.confidence, hasMultipleClose, hasConflict);
-  const alternatives = sorted
-    .filter((c) => c.name.toLowerCase() !== best.name.toLowerCase())
+  // "unresolved" means no credible match — the underlying weak
+  // candidate is still surfaced as an alternative (for the UI's
+  // account-correction control) but is never presented as the
+  // resolved name itself. Same for "ambiguous"/"conflicting", where by
+  // definition no single candidate may be trusted as *the* answer.
+  const nameIsNulled = status === "ambiguous" || status === "conflicting" || status === "unresolved";
+  const alternativeSource = nameIsNulled ? sorted : sorted.filter((c) => c.name.toLowerCase() !== best.name.toLowerCase());
+  const alternatives = alternativeSource
     .reduce<AccountCandidate[]>((unique, candidate) => {
       if (!unique.some((u) => u.name.toLowerCase() === candidate.name.toLowerCase())) unique.push(candidate);
       return unique;
@@ -113,11 +119,11 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
 
   return {
     status,
-    name: status === "ambiguous" || status === "conflicting" ? null : best.name,
-    domain: best.domain,
-    confidence: best.confidence,
-    source: best.source,
-    evidence_ids: best.evidence_ids,
+    name: nameIsNulled ? null : best.name,
+    domain: nameIsNulled ? null : best.domain,
+    confidence: nameIsNulled ? 0 : best.confidence,
+    source: nameIsNulled ? null : best.source,
+    evidence_ids: nameIsNulled ? [] : best.evidence_ids,
     alternatives,
     issues
   };

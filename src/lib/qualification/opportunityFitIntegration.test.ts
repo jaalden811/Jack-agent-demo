@@ -94,6 +94,24 @@ describe("Test 32: no company or industry is hard-coded in production opportunit
   });
 });
 
+describe("Test 18/19 (hard gate variant): explicit customer disqualification is required for DO_NOT_PURSUE", () => {
+  it("an explicit 'not pursuing' customer statement is a qualifying condition for DO_NOT_PURSUE, never public evidence alone", async () => {
+    const text = ["Account: Fenwick Distribution Partners", "00:00 — Casey: To be clear, we are not pursuing any new logging or SIEM platform this year — that is fully off the table.", "00:05 — Robin: Our focus today is strictly network operations."].join(
+      "\n"
+    );
+    const result = await runSignalAgent({ customTranscript: text, options: OFF });
+    const gate = result.opportunity_scoring.gates.find((g) => g.gate === "explicit_not_pursuing_statement");
+    expect(gate?.triggered).toBe(true);
+  });
+
+  it("does not trigger the explicit-not-pursuing gate for an ordinary evaluative transcript", async () => {
+    const text = readFileSync("signal-agent-poc/data/transcripts/splunk_platform_rationalization.txt", "utf8");
+    const result = await runSignalAgent({ customTranscript: text, options: OFF });
+    const gate = result.opportunity_scoring.gates.find((g) => g.gate === "explicit_not_pursuing_statement");
+    expect(gate?.triggered).toBe(false);
+  });
+});
+
 describe("Missing information and next action are always populated", () => {
   it("recommended_next_action is never empty, even for a thin transcript", async () => {
     const text = "We have too many network consoles and need a unified view.";

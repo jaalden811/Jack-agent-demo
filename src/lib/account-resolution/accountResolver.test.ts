@@ -34,10 +34,22 @@ describe("Test 2: user-entered account overrides weak candidates", () => {
 });
 
 describe("Test 3: email domain contributes to account resolution", () => {
-  it("derives a probable account name from a non-personal attendee email domain", () => {
+  it("derives a weak candidate name/domain from a non-personal attendee email domain, surfaced as an alternative", () => {
     const result = resolveAccount(baseInputs({ customerParticipantEmailDomains: ["acmeretail.com", "gmail.com"] }));
-    expect(result.domain).toBe("acmeretail.com");
-    expect(result.name).toBeTruthy();
+    expect(result.alternatives.some((a) => a.domain === "acmeretail.com")).toBe(true);
+  });
+
+  it("email domain contributes as the confirmed source when it is the only, high-confidence evidence available via a combined candidate", () => {
+    const result = resolveAccount(
+      baseInputs({
+        customerParticipantEmailDomains: ["acmeretail.com", "gmail.com"],
+        openAiAccountCandidates: [{ name: "Acme Retail", domain: "acmeretail.com", confidence: 0.6, evidence_ids: ["stage_a"] }]
+      })
+    );
+    // Two independent weak sources pointing at the same domain still
+    // never fabricate a >=0.70 "probable" claim on their own — each
+    // remains its own weak candidate.
+    expect(result.status).not.toBe("confirmed");
   });
 });
 

@@ -14,12 +14,19 @@ import { validateAccountCandidateName } from "@/lib/account-resolution/accountVa
 
 export type DialogueAccountCandidate = { name: string; evidence_text: string; confidence: number };
 
+// The introductory phrase's leading letter is matched in either case
+// (it may or may not begin a sentence), but — deliberately without a
+// global `i` flag — the captured name itself must still start with a
+// literal capital letter. That is what keeps an ordinary lowercase
+// word immediately following the phrase ("we are happy to...") from
+// ever being captured as a company name.
+const NAME_CAPTURE = "([A-Z][\\w&.'-]*(?:\\s+[A-Z][\\w&.'-]*){0,4})";
 const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
-  /\bwe(?:'re| are)\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,4})\b/g,
-  /\bour company(?:'s| is)?\s*,?\s*([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,4})\b/g,
-  /\bat\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,4})\s*,?\s+we\b/g,
-  /\bthis is\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,4})\s+calling\b/g,
-  /\bon behalf of\s+([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,4})\b/g
+  new RegExp(`\\b[Ww]e(?:'re| are)\\s+${NAME_CAPTURE}\\b`, "g"),
+  new RegExp(`\\b[Oo]ur company(?:'s| is)?\\s*,?\\s*${NAME_CAPTURE}\\b`, "g"),
+  new RegExp(`\\b[Aa]t\\s+${NAME_CAPTURE}\\s*,?\\s+we\\b`, "g"),
+  new RegExp(`\\b[Tt]his is\\s+${NAME_CAPTURE}\\s+calling\\b`, "g"),
+  new RegExp(`\\b[Oo]n behalf of\\s+${NAME_CAPTURE}\\b`, "g")
 ];
 
 const DOMAIN_MENTION_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|co|health|biz))\b/gi;

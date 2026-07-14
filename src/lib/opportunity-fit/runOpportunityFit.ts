@@ -163,6 +163,23 @@ export function buildTranscriptOpportunitySignals(params: {
   };
 }
 
+// Generic phrasing for an explicit customer disqualification — never
+// tied to one product/company; matched against the full transcript's
+// customer-attributed dialogue only.
+const NOT_PURSUING_PATTERNS = [
+  /\bnot pursuing\b/i,
+  /\bnot moving forward with\b/i,
+  /\bno longer (?:interested|considering)\b/i,
+  /\boff the table\b/i,
+  /\bwe(?:'re| are) not going to (?:move forward|proceed|pursue)\b/i,
+  /\bdecided not to\b/i,
+  /\bwe(?:'re| are) putting (?:this|that) on hold indefinitely\b/i
+];
+
+export function detectExplicitNotPursuingStatement(customerDialogueText: string[]): boolean {
+  return customerDialogueText.some((sentence) => NOT_PURSUING_PATTERNS.some((pattern) => pattern.test(sentence)));
+}
+
 export function buildGateInputs(params: {
   verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
   explicitNotPursuing: boolean;

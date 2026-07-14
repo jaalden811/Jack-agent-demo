@@ -21,6 +21,12 @@ export type AccountResolutionInput = {
   uploadedAccountContextName: string | null;
   dialogueMentionedCompany: string | null;
   openAiAccountCandidates: AccountCandidate[];
+  /** Raw customer-attributed transcript sentences — scanned by the
+   * generic company-introduction-pattern extractor
+   * (@/lib/account-resolution/candidateExtractor) so a company
+   * explicitly introduced in dialogue ("we are Acme Retail...") can be
+   * resolved even without an OpenAI-extracted candidate. */
+  transcriptDialogueText?: string[];
 };
 
 function actionRequiredFor(status: AccountResolution["status"], confidence: number, source: AccountResolutionSource): string | null {
@@ -52,7 +58,7 @@ export function resolveAccountIdentity(input: AccountResolutionInput): AccountRe
     // from `dialogueMentionedCompany`, which is already a pre-extracted
     // candidate name (e.g. from OpenAI Stage A) and is passed through
     // via openAiAccountCandidates below instead of being re-scanned.
-    transcriptDialogueText: [],
+    transcriptDialogueText: input.transcriptDialogueText ?? [],
     openAiAccountCandidates: [
       ...input.openAiAccountCandidates.map((c) => ({ name: c.name, domain: c.domain, confidence: c.confidence, evidence_ids: c.evidence_ids })),
       ...(input.dialogueMentionedCompany ? [{ name: input.dialogueMentionedCompany, domain: null, confidence: 0.55, evidence_ids: ["dialogue_mention"] }] : [])

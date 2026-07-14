@@ -6,7 +6,7 @@ import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
 import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
 import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
 import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/serpapi/runEnrichment";
-import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs } from "@/lib/opportunity-fit/runOpportunityFit";
+import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs, detectExplicitNotPursuingStatement } from "@/lib/opportunity-fit/runOpportunityFit";
 import { computeTranscriptOpportunityScore, computeQualificationCompletenessScore, computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
 import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
@@ -86,7 +86,8 @@ export async function runQualificationPipeline(params: {
     attendeeEmailDomains: [],
     uploadedAccountContextName: null,
     dialogueMentionedCompany: dialogueMention,
-    openAiAccountCandidates: extraction.result?.account_candidates ?? []
+    openAiAccountCandidates: extraction.result?.account_candidates ?? [],
+    transcriptDialogueText: params.transcript.sentences.filter((s) => s.isCustomer).map((s) => s.text)
   });
 
   // Search-enrichment decision logic (Section 2/6).
@@ -227,10 +228,11 @@ export async function runQualificationPipeline(params: {
     failureReason: serpapiSignals.reason
   });
 
+  const customerDialogueText = params.transcript.sentences.filter((s) => s.isCustomer).map((s) => s.text);
   const gates = evaluateHardGates(
     buildGateInputs({
       verdict: params.verdict,
-      explicitNotPursuing: false,
+      explicitNotPursuing: detectExplicitNotPursuingStatement(customerDialogueText),
       categoryOutOfScope: false,
       businessProblem: params.businessProblem,
       accountResolution
@@ -268,8 +270,8 @@ export async function runQualificationPipeline(params: {
           : "Proceed with the recommended next steps from the qualification brief.",
     gates,
     doNotPursueGuardInputs: {
-      strongNegativeTranscriptEvidence: false,
-      explicitCustomerDisqualification: false,
+      strongNegativeTranscriptEvidence: gates.some((g) => g.gate === "explicit_not_pursuing_statement" && g.triggered),
+      explicitCustomerDisqualification: gates.some((g) => g.gate === "explicit_not_pursuing_statement" && g.triggered),
       confirmedNoFitTaxonomyCondition: false,
       strongCrmDisqualification: false,
       multipleHighAuthorityNegativeSignalsWithWeakTranscriptIntent: false
