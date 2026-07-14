@@ -9,7 +9,15 @@ const trimmedString = z
 
 const envSchema = z.object({
   OPENAI_API_KEY: trimmedString,
+  // Embeddings (semantic transcript matching, via the OpenAI embeddings
+  // endpoint) and synthesis (executive-brief generation, via the
+  // Responses API) are separate capabilities with separate models — an
+  // embedding-only model such as text-embedding-3-small can never
+  // perform synthesis. OPENAI_MODEL is kept only as a backward-compatible
+  // alias when it unambiguously means "synthesis model" (see below).
   OPENAI_EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-small"),
+  OPENAI_SYNTHESIS_MODEL: trimmedString,
+  OPENAI_MODEL: trimmedString,
   SEARCH_API_KEY: trimmedString,
   SEARCH_PROVIDER: z.enum(["tavily", "brave", "exa", "serpapi"]).optional().default("tavily"),
   FIRECRAWL_API_KEY: trimmedString,
@@ -61,7 +69,17 @@ const envSchema = z.object({
   MICROSOFT_SCOPES: z.string().optional().default("openid profile offline_access User.Read Mail.Send")
 });
 
-const DEFAULT_WEBEX_SCOPES = "meeting:transcripts_read meeting:schedules_read spark:people_read spark:rooms_read spark:messages_write";
+// Required core scopes (identity, outbound messaging, meeting schedule
+// access) plus the one optional capability (transcript read). "Connect
+// Webex" only ever requests the core subset; "Enable transcript access"
+// separately requests this full set — see @/lib/webex/scopePolicy.
+const DEFAULT_WEBEX_SCOPES = "spark:people_read spark:messages_write meeting:schedules_read meeting:transcripts_read";
+
+// Documented default synthesis model — a small, fast chat-completion
+// model appropriate for grounded, structured JSON synthesis. Only used
+// when neither OPENAI_SYNTHESIS_MODEL nor the legacy OPENAI_MODEL alias
+// is configured.
+const DEFAULT_SYNTHESIS_MODEL = "gpt-4o-mini";
 
 export function getConfig() {
   const parsed = envSchema.safeParse(process.env);
@@ -72,6 +90,10 @@ export function getConfig() {
   return {
     ...parsed.data,
     WEBEX_SCOPES: parsed.data.WEBEX_SCOPES ?? DEFAULT_WEBEX_SCOPES,
+    // OPENAI_MODEL is accepted as a backward-compatible alias only for
+    // synthesis — its historical meaning in this codebase was always
+    // "the chat/completions model", never the embedding model.
+    OPENAI_SYNTHESIS_MODEL: parsed.data.OPENAI_SYNTHESIS_MODEL ?? parsed.data.OPENAI_MODEL ?? DEFAULT_SYNTHESIS_MODEL,
     hasSearch: Boolean(parsed.data.SEARCH_API_KEY),
     hasEmbeddings: Boolean(parsed.data.OPENAI_API_KEY),
     hasFirecrawl: Boolean(parsed.data.FIRECRAWL_API_KEY),

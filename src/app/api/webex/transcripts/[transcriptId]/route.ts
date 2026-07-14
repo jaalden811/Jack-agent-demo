@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
 import { listMeetingTranscripts, listTranscriptSnippets, downloadTranscriptText } from "@/lib/webex/client";
 import { normalizeWebexRawTextToTranscriptText, normalizeWebexSnippetsToTranscriptText, buildWebexSourceMetadata } from "@/lib/webex/transcriptNormalizer";
+import { readTokenRecord } from "@/lib/webex/store";
+import { TRANSCRIPT_SCOPE } from "@/lib/webex/scopePolicy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,6 +13,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ tran
   const { accessToken } = await getValidAccessToken();
   if (!accessToken) {
     return NextResponse.json({ error: "Webex is not connected." }, { status: 401 });
+  }
+
+  const tokenRecord = await readTokenRecord();
+  const grantedScopes = tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [];
+  if (!grantedScopes.includes(TRANSCRIPT_SCOPE)) {
+    return NextResponse.json(
+      {
+        error: "Transcript access is not granted for the connected Webex account.",
+        error_code: "transcript_scope_missing",
+        detail: "Click \"Enable transcript access\" in Setup → Webex, then reconnect, before importing a transcript."
+      },
+      { status: 403 }
+    );
   }
 
   try {

@@ -21,6 +21,19 @@ export type WebexStatus = {
     sender_identity: string | null;
     message_scope_granted: boolean;
   };
+  /** Capability-based status — never a single binary connected/not-
+   * connected flag. Transcript access is a separately-granted, optional
+   * capability; core OAuth (identity/messaging/meeting schedules) can be
+   * fully connected and usable even when transcript access is not. */
+  capabilities: {
+    core_oauth: boolean;
+    identity: boolean;
+    messaging: boolean;
+    meeting_schedules: boolean;
+    meeting_transcripts: boolean;
+    manual_transcript_import_available: boolean;
+    outbound_delivery_available: boolean;
+  };
   bot_configured: boolean;
   webhook_registered: boolean;
   webhook_target: string | null;
@@ -53,6 +66,11 @@ export type WebexDiagnostics = {
   redirect_uri: string;
   requested_scopes_raw: string;
   requested_scopes: string[];
+  /** The scopes "Connect Webex" actually requests (excludes the optional
+   * transcript scope) — see @/lib/webex/scopePolicy. */
+  core_scopes: string[];
+  transcript_scope: string;
+  transcript_scope_granted: boolean;
   authorization_url_origin: string;
   client_id_configured: boolean;
   client_secret_configured: boolean;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getMyIdentity } from "@/lib/webex/client";
 import { exchangeAndBuildRecord } from "@/lib/webex/tokenManager";
-import { normalizeScopes } from "@/lib/webex/scopes";
+import { getCoreScopes, getTranscriptEnabledScopes } from "@/lib/webex/scopePolicy";
 import { classifyAuthorizeRedirectError, classifyWebexOAuthError } from "@/lib/webex/oauthDiagnostics";
 import {
   consumeOAuthState,
@@ -11,7 +11,8 @@ import {
   writeScopeTestResult,
   writeTokenRecord,
   type PendingOAuthDiagnostic,
-  type WebexOAuthErrorRecord
+  type WebexOAuthErrorRecord,
+  type WebexOAuthPurpose
 } from "@/lib/webex/store";
 
 export const dynamic = "force-dynamic";
@@ -102,20 +103,23 @@ export async function GET(request: Request) {
   // away from the main connection's state, even when it fails.
   let diagnostic: PendingOAuthDiagnostic | null = null;
   let stateWasValid = false;
+  let purpose: WebexOAuthPurpose = "connect";
   if (state) {
     const consumed = await consumeOAuthState(state);
     stateWasValid = consumed.valid;
     diagnostic = consumed.diagnostic;
+    purpose = consumed.purpose;
   }
 
   if (diagnostic) {
     return handleDiagnosticCallback(request, diagnostic, { code, errorParam, errorDescription });
   }
 
-  const requestedScopes = normalizeScopes(getConfig().WEBEX_SCOPES);
+  const config = getConfig();
+  const requestedScopes = purpose === "enable_transcripts" ? getTranscriptEnabledScopes(config.WEBEX_SCOPES) : getCoreScopes(config.WEBEX_SCOPES);
 
   if (errorParam) {
-    const classified = classifyAuthorizeRedirectError(errorParam, errorDescription);
+    const classified = classifyAuthorizeRedirectError(errorParam, errorDescription, purpose);
     return failWith(request, { ...classified, scopes: requestedScopes });
   }
 
@@ -144,10 +148,10 @@ export async function GET(request: Request) {
     try {
       await writeTokenRecord(tokenRecord);
     } catch (error) {
-      return failWith(request, { ...classifyWebexOAuthError(error, "token_store"), scopes: requestedScopes });
+      return failWith(request, { ...classifyWebexOAuthError(error, "token_store", purpose), scopes: requestedScopes });
     }
   } catch (error) {
-    return failWith(request, { ...classifyWebexOAuthError(error, "token_exchange"), scopes: requestedScopes });
+    return failWith(request, { ...classifyWebexOAuthError(error, "token_exchange", purpose), scopes: requestedScopes });
   }
 
   try {
@@ -159,9 +163,9 @@ export async function GET(request: Request) {
       cachedAt: new Date().toISOString()
     });
   } catch (error) {
-    return failWith(request, { ...classifyWebexOAuthError(error, "identity_lookup"), scopes: requestedScopes });
+    return failWith(request, { ...classifyWebexOAuthError(error, "identity_lookup", purpose), scopes: requestedScopes });
   }
 
   await writeLastOAuthError(null);
-  return redirectWithParam(request, { webex: "connected" });
+  return redirectWithParam(request, { webex: purpose === "enable_transcripts" ? "transcripts_enabled" : "connected" });
 }

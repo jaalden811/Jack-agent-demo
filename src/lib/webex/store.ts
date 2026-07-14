@@ -95,17 +95,35 @@ export async function clearIdentityRecord(): Promise<void> {
 
 export type PendingOAuthDiagnostic = { testId: string; scopes: string[] };
 
-type OAuthStateRecord = { state: string; createdAt: string; diagnostic: PendingOAuthDiagnostic | null };
+/** "connect" = default core-scope connection; "enable_transcripts" = the
+ * separate flow that (re)authorizes with the transcript scope added, so
+ * a scope rejection there can be classified precisely (see
+ * classifyWebexOAuthError's `purpose` argument) instead of as a generic
+ * connection failure. */
+export type WebexOAuthPurpose = "connect" | "enable_transcripts";
 
-export async function saveOAuthState(state: string, diagnostic: PendingOAuthDiagnostic | null = null): Promise<void> {
-  await writeJsonFile("oauth-state.json", { state, createdAt: new Date().toISOString(), diagnostic } satisfies OAuthStateRecord);
+type OAuthStateRecord = {
+  state: string;
+  createdAt: string;
+  diagnostic: PendingOAuthDiagnostic | null;
+  purpose: WebexOAuthPurpose;
+};
+
+export async function saveOAuthState(
+  state: string,
+  diagnostic: PendingOAuthDiagnostic | null = null,
+  purpose: WebexOAuthPurpose = "connect"
+): Promise<void> {
+  await writeJsonFile("oauth-state.json", { state, createdAt: new Date().toISOString(), diagnostic, purpose } satisfies OAuthStateRecord);
 }
 
-export async function consumeOAuthState(candidate: string): Promise<{ valid: boolean; diagnostic: PendingOAuthDiagnostic | null }> {
+export async function consumeOAuthState(
+  candidate: string
+): Promise<{ valid: boolean; diagnostic: PendingOAuthDiagnostic | null; purpose: WebexOAuthPurpose }> {
   const record = await readJsonFile<OAuthStateRecord | null>("oauth-state.json", null);
-  if (!record || record.state !== candidate) return { valid: false, diagnostic: null };
+  if (!record || record.state !== candidate) return { valid: false, diagnostic: null, purpose: "connect" };
   await writeJsonFile("oauth-state.json", null);
-  return { valid: true, diagnostic: record.diagnostic ?? null };
+  return { valid: true, diagnostic: record.diagnostic ?? null, purpose: record.purpose ?? "connect" };
 }
 
 /** Clears a stuck/pending OAuth state (and the last recorded error) so
@@ -122,6 +140,10 @@ export type WebexOAuthErrorCode =
   | "invalid_client"
   | "invalid_client_secret"
   | "invalid_scope"
+  /** Specifically: core OAuth is fine, but the separate "Enable transcript
+   * access" grant was rejected — almost always because meeting:transcripts_read
+   * has not been selected/saved on the Webex Integration itself. */
+  | "transcript_scope_rejected"
   | "user_denied"
   | "state_mismatch"
   | "token_exchange_failed"

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getConfig } from "@/lib/config";
 import { getValidAccessToken } from "@/lib/webex/tokenManager";
 import { createWebhook, deleteWebhook, listWebhooks } from "@/lib/webex/client";
-import { readWebhookRecord, writeWebhookRecord } from "@/lib/webex/store";
+import { readTokenRecord, readWebhookRecord, writeWebhookRecord } from "@/lib/webex/store";
+import { TRANSCRIPT_SCOPE } from "@/lib/webex/scopePolicy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +21,15 @@ export async function POST() {
   const { accessToken } = await getValidAccessToken();
   if (!accessToken) {
     return NextResponse.json({ error: "Webex is not connected." }, { status: 401 });
+  }
+
+  const tokenRecord = await readTokenRecord();
+  const grantedScopes = tokenRecord?.scope ? tokenRecord.scope.split(/\s+/).filter(Boolean) : [];
+  if (!grantedScopes.includes(TRANSCRIPT_SCOPE)) {
+    return NextResponse.json(
+      { error: "Enable transcript access (meeting:transcripts_read) before registering the transcript webhook." },
+      { status: 400 }
+    );
   }
 
   const targetUrl = `${config.WEBEX_PUBLIC_BASE_URL!.replace(/\/$/, "")}/api/webex/webhooks/transcripts`;
