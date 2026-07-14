@@ -1,3 +1,4 @@
+import { loadOpportunityFitScoringConfig } from "@/lib/opportunity-fit/opportunityFit";
 import type { EvidenceClass, PublicSignalCategory, SupportsDimension } from "@/lib/opportunity-fit/types";
 
 /**
@@ -5,17 +6,27 @@ import type { EvidenceClass, PublicSignalCategory, SupportsDimension } from "@/l
  * 6) plus the hard rule about what a public signal may and may not
  * confirm (Sections 4D/4E/14) — never a lookup for a specific company
  * or product; every input is a 0..1 sub-score already computed
- * generically elsewhere.
+ * generically elsewhere. Weights and thresholds are read from
+ * signal-agent-poc/config/opportunity_fit_scoring.json's
+ * public_signal_quality section — never hard-coded here.
  */
 
 export function computePublicSignalQuality(params: { entityMatch: number; sourceAuthority: number; transcriptRelevance: number; recency: number; specificity: number }): number {
-  return 0.3 * params.entityMatch + 0.25 * params.sourceAuthority + 0.2 * params.transcriptRelevance + 0.15 * params.recency + 0.1 * params.specificity;
+  const weights = loadOpportunityFitScoringConfig().public_signal_quality.weights;
+  return (
+    (weights.entity_match ?? 0) * params.entityMatch +
+    (weights.source_authority ?? 0) * params.sourceAuthority +
+    (weights.transcript_relevance ?? 0) * params.transcriptRelevance +
+    (weights.recency ?? 0) * params.recency +
+    (weights.specificity ?? 0) * params.specificity
+  );
 }
 
 export function classifyEvidenceStrength(qualityScore: number): EvidenceClass {
-  if (qualityScore >= 0.8) return "confirmed_public_fact";
-  if (qualityScore >= 0.65) return "probable_public_signal";
-  if (qualityScore >= 0.5) return "weak_signal";
+  const thresholds = loadOpportunityFitScoringConfig().public_signal_quality.thresholds;
+  if (qualityScore >= thresholds.strong) return "confirmed_public_fact";
+  if (qualityScore >= thresholds.supporting) return "probable_public_signal";
+  if (qualityScore >= thresholds.weak) return "weak_signal";
   return "rejected";
 }
 

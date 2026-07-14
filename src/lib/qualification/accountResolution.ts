@@ -1,4 +1,4 @@
-import { resolveAccount } from "@/lib/account-resolution/accountResolver";
+import { resolveAccountWithDisambiguation } from "@/lib/account-resolution/accountResolver";
 import type { AccountResolutionInputs as NewAccountResolutionInputs } from "@/lib/account-resolution/types";
 import type { AccountCandidate, AccountResolution, AccountResolutionSource } from "@/lib/qualification/types";
 
@@ -44,7 +44,7 @@ function actionRequiredFor(status: AccountResolution["status"], confidence: numb
   }
 }
 
-export function resolveAccountIdentity(input: AccountResolutionInput): AccountResolution {
+export async function resolveAccountIdentity(input: AccountResolutionInput): Promise<AccountResolution> {
   const inputs: NewAccountResolutionInputs = {
     transcriptAccountField: input.transcriptAccountLine,
     userEnteredAccount: input.userEnteredAccount,
@@ -70,7 +70,7 @@ export function resolveAccountIdentity(input: AccountResolutionInput): AccountRe
   // "transcript" and "crm" source paths when it matched.
   if (input.transcriptAccountMatchedInCrm) inputs.transcriptAccountField = null;
 
-  const resolved = resolveAccount(inputs);
+  const resolved = await resolveAccountWithDisambiguation(inputs);
 
   return {
     name: resolved.name,

@@ -1,5 +1,6 @@
 import { validateAccountCandidateName } from "@/lib/account-resolution/accountValidation";
 import { extractDialogueAccountCandidates, extractDomainMentions } from "@/lib/account-resolution/candidateExtractor";
+import { disambiguateAccount } from "@/lib/account-resolution/accountDisambiguation";
 import { resolveDomainFromEmails } from "@/lib/account-resolution/domainResolver";
 import type { AccountCandidate, AccountResolutionInputs, AccountResolutionResult, AccountResolutionStatus } from "@/lib/account-resolution/types";
 
@@ -127,4 +128,51 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
     alternatives,
     issues
   };
+}
+
+/**
+ * The full resolution flow (Section 1 + 2 combined): computes the base
+ * result via `resolveAccount`, then — only for a "probable" result
+ * (name present, 0.70-0.89 confidence) — runs limited SerpAPI
+ * disambiguation and upgrades to "confirmed" only when a single
+ * high-authority source (official site, investor relations, gov/
+ * regulatory, business directory, major news) confirms the same
+ * candidate. Never runs disambiguation for "confirmed"/"unresolved",
+ * and for "ambiguous" only records that disambiguation was attempted
+ * without resolving it — the UI still requires user selection.
+ */
+export async function resolveAccountWithDisambiguation(
+  inputs: AccountResolutionInputs,
+  context: { knownGeography?: string | null; knownProductOrService?: string | null } = {}
+): Promise<AccountResolutionResult> {
+  const base = resolveAccount(inputs);
+  if (base.status !== "probable" && base.status !== "ambiguous") return base;
+
+  const candidateName = base.name ?? base.alternatives[0]?.name ?? null;
+  if (!candidateName) return base;
+
+  const disambiguation = await disambiguateAccount({
+    candidateName,
+    candidateDomain: base.domain,
+    knownGeography: context.knownGeography ?? null,
+    knownProductOrService: context.knownProductOrService ?? null,
+    status: base.status
+  });
+
+  if (!disambiguation.ran) {
+    return disambiguation.reason ? { ...base, issues: [...base.issues, `Account disambiguation not run: ${disambiguation.reason}`] } : base;
+  }
+
+  if (base.status === "probable" && disambiguation.confirmed_domain && !disambiguation.remains_ambiguous) {
+    return {
+      ...base,
+      status: "confirmed",
+      confidence: Math.max(base.confidence, 0.9),
+      domain: base.domain ?? disambiguation.confirmed_domain,
+      source: "combined",
+      issues: [...base.issues, `Confirmed via SerpAPI disambiguation (${disambiguation.evidence.length} high-authority source(s)).`]
+    };
+  }
+
+  return { ...base, issues: [...base.issues, "SerpAPI disambiguation did not confirm a single high-authority match — user selection required."] };
 }

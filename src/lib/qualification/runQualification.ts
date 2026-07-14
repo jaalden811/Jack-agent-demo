@@ -77,7 +77,7 @@ export async function runQualificationPipeline(params: {
 
   // Account resolution — Section 2/7 priority order.
   const dialogueMention = extraction.result?.account_candidates.find((c) => c.confidence >= 0.5)?.name ?? null;
-  const accountResolution = resolveAccountIdentity({
+  const accountResolution = await resolveAccountIdentity({
     transcriptAccountLine: params.transcript.account,
     transcriptAccountMatchedInCrm: params.accountMatchedInCrm,
     userEnteredAccount: params.userEnteredAccount ?? null,
