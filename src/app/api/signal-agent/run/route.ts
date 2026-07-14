@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runRequestSchema } from "@/lib/signal-agent/types";
+import { runRequestSchema, TranscriptParseIncompleteError } from "@/lib/signal-agent/types";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { computePeachtreePreview, deliverPeachtreePipeline } from "@/lib/webex/automation";
 import { getAutomationReadiness } from "@/lib/webex/automationSettings";
@@ -56,6 +56,18 @@ export async function POST(request: Request) {
     const response: WebexAutomationRunResult = { ...result, peachtree, webex_source: webexSource ?? null };
     return NextResponse.json(response);
   } catch (error) {
+    if (error instanceof TranscriptParseIncompleteError) {
+      // Never silently continue as a normal run, and never auto-send —
+      // this is a parser-failure signal, not a low-intent result.
+      return NextResponse.json(
+        {
+          error: error.code,
+          detail: error.message,
+          transcript_diagnostics: error.diagnostics
+        },
+        { status: 422 }
+      );
+    }
     return NextResponse.json(
       {
         error: "Signal agent run failed",

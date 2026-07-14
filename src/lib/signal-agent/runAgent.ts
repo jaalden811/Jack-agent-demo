@@ -24,6 +24,7 @@ import type {
   RunRequest,
   SecureNetworkingTriageResult
 } from "@/lib/signal-agent/types";
+import { TranscriptParseIncompleteError } from "@/lib/signal-agent/types";
 
 /**
  * Orchestrates the full "secure_networking_deal_signal_triage" spine:
@@ -110,9 +111,19 @@ function buildBusinessNarrative(evaluations: EntryEvaluation[]) {
   return { businessProblem, businessImpact, urgency };
 }
 
+const PARSE_INCOMPLETE_MIN_CHARS = 5000;
+const PARSE_INCOMPLETE_MIN_SENTENCES = 20;
+
 export async function runSignalAgent(request: RunRequest): Promise<SecureNetworkingTriageResult> {
   const transcriptText = resolveTranscriptText(request);
   const transcript = ingestTranscript(transcriptText);
+  // Guard against a parser regression producing a confident wrong
+  // result: a substantial transcript that yields implausibly few
+  // sentences is refused outright rather than silently scored and
+  // (potentially) auto-sent.
+  if (transcript.diagnostics.raw_characters > PARSE_INCOMPLETE_MIN_CHARS && transcript.diagnostics.sentences_parsed < PARSE_INCOMPLETE_MIN_SENTENCES) {
+    throw new TranscriptParseIncompleteError(transcript.diagnostics);
+  }
   const catalog = getCatalog();
 
   const baseAccount = findAccount(transcript.account);
@@ -346,7 +357,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     ai_processing: qualification.ai_processing,
     // Built (and persisted) once messages exist — see
     // @/lib/webex/automation.ts#resolveAnalysisLink. Not yet known here.
-    analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null }
+    analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null },
+    transcript_diagnostics: transcript.diagnostics
   };
 
   const auditOutcome = await appendAuditRecord(result);

@@ -24,6 +24,21 @@ export function normalize(text: string): string {
   return text.toLowerCase().replace(/-/g, " ");
 }
 
+/** Word-boundary-aware phrase containment — a naive `haystack.includes`
+ * check lets a short/generic keyword (e.g. "rum") false-positive-match
+ * inside an unrelated longer word (e.g. "instRUMenting"), silently
+ * inflating that category's score with a keyword that was never
+ * actually said. `\b` anchors on both sides so a genuine plural/suffix
+ * match like "console" inside "consoles" is unaffected (the taxonomy
+ * already lists plural/inflected forms as their own keyword phrases
+ * where that distinction matters), while a pure substring collision
+ * inside a completely different word is rejected. */
+export function containsWholeWordPhrase(haystack: string, needle: string): boolean {
+  if (!needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`).test(haystack);
+}
+
 export function customerHaystack(transcript: IngestedTranscript) {
   const pool = selectRelevantChunks(transcript);
   return {
@@ -48,12 +63,12 @@ export function scoreKeywords(entry: CatalogEntry, transcript: IngestedTranscrip
 
   for (const phrase of entry.keywords) {
     const needle = normalize(phrase);
-    if (!needle || !haystack.includes(needle)) continue;
+    if (!needle || !containsWholeWordPhrase(haystack, needle)) continue;
     matchedKeywords.push(phrase);
     weightSum += phraseWeight(phrase);
 
     for (const chunk of chunks) {
-      if (normalize(chunk.text).includes(needle)) {
+      if (containsWholeWordPhrase(normalize(chunk.text), needle)) {
         matchedText.add(chunk.text);
       }
     }
