@@ -1,0 +1,41 @@
+---
+description: Circuit is the only active AI provider; contract, secrecy, and determinism rules
+globs: src/lib/circuit/**,src/lib/ai-provider/**,src/lib/services.ts,src/lib/qualification/**,src/app/api/circuit/**
+alwaysApply: false
+---
+
+# Circuit AI Provider
+
+Circuit is the ONLY active generative-AI provider. OpenAI is retired and must
+not reappear as an active runtime provider path.
+
+## Contract
+- The attached Circuit notebook / sanitized cURL is the authoritative source of
+  truth for the token request and the inference request/response shapes.
+- The exact wire mapping lives in ONE file: `src/lib/circuit/contract.ts`.
+  Confirm/adjust field names and response paths there against the notebook —
+  never scatter Circuit HTTP shapes across the codebase.
+- Token flow is OAuth2 client-credentials (client id + secret → short-lived
+  access token). The access token is in-memory runtime state only.
+
+## Never
+- Do not hard-code a Circuit endpoint or model name in TypeScript. Read
+  `CIRCUIT_TOKEN_URL`, `CIRCUIT_INFERENCE_URL`, and `CIRCUIT_MODEL` from config.
+- Do not require or send an App Key (`CIRCUIT_APP_KEY`) unless the CURRENT
+  notebook cURL includes a required App Key field/header. Do not infer one from
+  an old screenshot.
+- Do not persist, log, hash, or partially display the client secret or access
+  token; never return them in API JSON.
+- Do not let Circuit override deterministic arithmetic, routing, evidence
+  identity, account truth, delivery-target safety, deduplication, or audit.
+
+## Always
+- Every Circuit-generated material claim must cite supplied evidence IDs; reject
+  evidence IDs, URLs, or people not present in the input bundle.
+- Validate Circuit JSON with Zod; attempt one repair; then fall back to the
+  deterministic path. A provider failure must never destroy the deterministic
+  result.
+- Resolve the active provider through `@/lib/ai-provider/registry`
+  (`getActiveAiProvider`), not by reading env in components.
+- Both application flows (Market + Buyer Intelligence and Signal-to-Action)
+  share one token manager and one client.
