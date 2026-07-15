@@ -37,6 +37,14 @@ export type NormalizedPublicSignal = {
   signal_strength: number;
   confidence: number;
   evidence_class: EvidenceClass;
+  /** Three independent eligibility levels (Section 2). A credible,
+   * correctly-matched source is account_context_eligible even with zero
+   * opportunity relevance; only scoring_eligible signals affect external
+   * fit. */
+  account_context_eligible: boolean;
+  narrative_eligible: boolean;
+  scoring_eligible: boolean;
+  rejection_reasons: string[];
   supports: SupportsDimension[];
   limitations: string[];
   /** Other source URLs reporting the same underlying event — corroborating,

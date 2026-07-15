@@ -15,6 +15,11 @@
       "strong": 0.8,
       "supporting": 0.65,
       "weak": 0.5
+    },
+    "eligibility": {
+      "account_context_entity_match_min": 0.6,
+      "account_context_authority_min": 0.5,
+      "narrative_transcript_relevance_min": 0.35
     }
   },
   "external_fit_score": {
@@ -101,6 +106,11 @@
         "requires_pain_or_impact": true,
         "requires_any_momentum": ["next_step", "timing", "funding", "evaluation"]
       },
+      "minimum_recommendation": "PURSUE_WITH_DISCOVERY"
+    },
+    "discovery_momentum": {
+      "description": "Meaningful customer pain plus an accepted next step (working session / pilot / PoV / workshop) with no hard disqualification is an active, early-stage opportunity — the minimum recommendation is pursue-with-discovery, never renewal-led NURTURE, even when signal strength is only moderate and budget/timeline are not yet on the table.",
+      "when": { "hard_negative_gate": false, "requires_pain_or_impact": true, "requires_accepted_next_step": true },
       "minimum_recommendation": "PURSUE_WITH_DISCOVERY"
     },
     "nurture": {

@@ -104,9 +104,11 @@ function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
  * commercial score"). */
 function technicalStrategyContextMarkdown(result: SecureNetworkingTriageResult): string {
   const relevantSignals = result.serpapi_signals.signals
-    // Only strong/supporting, transcript-aligned public signals belong in
-    // an outbound message (Phase 9) — never weak/relevance-zero snippets.
-    .filter((s) => s.evidence_class === "confirmed_public_fact" || s.evidence_class === "probable_public_signal")
+    // Only narrative-eligible public signals belong in an outbound message
+    // (Section 2/13): account-context + real transcript alignment +
+    // credible source — never weak/relevance-zero/account-context-only
+    // snippets.
+    .filter((s) => s.narrative_eligible)
     .filter((s) => s.category === "technology_alignment" || s.category === "trigger_event" || s.category === "strategic_objective")
     .slice(0, 3);
   if (relevantSignals.length === 0) return "";

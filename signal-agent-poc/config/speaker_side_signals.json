@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "purpose": "Deterministic speaker-side inference for transcripts whose speakers carry no explicit customer/vendor role tag. Generic behavioral cues only — never a speaker name, company, or product.",
+    "version": "1.0.0"
+  },
+  "seller_indicators": [
+    { "pattern": "\\bwe can (show|demonstrate|walk you through|help you|prove|bring)\\b", "weight": 2.5 },
+    { "pattern": "\\blet me (show|walk|share|bring|take you through)\\b", "weight": 2.5 },
+    { "pattern": "\\bour (platform|product|solution|technology|portfolio|team) (can|would|will|does|supports)\\b", "weight": 2.5 },
+    { "pattern": "\\bwe(?:'| a)?ll (send|prepare|follow up|share|put together|bring|schedule|come back)\\b", "weight": 2 },
+    { "pattern": "\\b(map|mapping|align) (our )?capabilities to your\\b", "weight": 2.5 },
+    { "pattern": "\\bbased on what (we|i)(?:'ve| have)? (heard|been hearing)\\b", "weight": 2 },
+    { "pattern": "\\b(in|for|at) the next (session|workshop|meeting) we(?:'| wi)?ll\\b", "weight": 1.5 },
+    { "pattern": "\\bwe(?:'d| would) (recommend|suggest|propose|position)\\b", "weight": 2 },
+    { "pattern": "\\b(happy|glad) to (share|walk through|put together|bring)\\b", "weight": 1.5 },
+    { "pattern": "\\b(where does|how does) [\\w\\s]+ fit\\b", "weight": 1 }
+  ],
+  "customer_indicators": [
+    { "pattern": "\\bour (environment|team|org|organization|company|infrastructure|stack|estate|business|systems?)\\b", "weight": 2 },
+    { "pattern": "\\b(we|i) (own|run|manage|operate|maintain|support|deployed?)\\b", "weight": 1.5 },
+    { "pattern": "\\bour (budget|funding|procurement|contract|renewal|licen[cs]e|spend|cost)\\b", "weight": 2 },
+    { "pattern": "\\b(internally|in[- ]house|on our side)\\b", "weight": 1.5 },
+    { "pattern": "\\b(i|we) (need|want|require|expect|have to|struggle|spent|cannot|can't)\\b", "weight": 1 },
+    { "pattern": "\\b(my|our) (team|group|department|function|analysts?|engineers?|developers?)\\b", "weight": 1.5 },
+    { "pattern": "\\bwe (evaluated|looked at|tried|use|are using|purchased|bought)\\b", "weight": 1.5 }
+  ],
+  "rules": {
+    "question_seller_weight": 0.35,
+    "min_turns": 2,
+    "min_seller_lexical_score": 2.0,
+    "vendor_margin": 2.0
+  }
+}

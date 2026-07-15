@@ -1,5 +1,6 @@
 import type { IngestedTranscript } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
+import { isInterrogative } from "@/lib/signal-agent/speechAct";
 
 /**
  * Generic, domain-agnostic commercial/technical/ownership/next-step
@@ -22,6 +23,7 @@ export type GenericSignalCategory =
   | "budget_ownership"
   | "procurement_criteria"
   | "workshop"
+  | "working_session"
   | "pilot"
   | "proof_of_value"
   | "success_metric"
@@ -65,8 +67,12 @@ const RULES: Rule[] = [
   // Procurement criteria — evaluation/decision-process language.
   { category: "procurement_criteria", bucket: "commercial", pattern: /\b(procurement|rfp|request for proposal|vendor selection|evaluation criteria|decision criteria|selection window|shortlist)\b/gi },
 
-  // Workshops, pilots, and proofs of value — evaluation-scope language.
+  // Workshops, working/scenario sessions, pilots, and proofs of value —
+  // generic evaluation-scope language (a scenario-based working session is
+  // a real next step, not only a formally-named "workshop").
   { category: "workshop", bucket: "next_steps", pattern: /\b\w*\s?workshop\b/gi },
+  { category: "working_session", bucket: "next_steps", pattern: /\b(working|scenario|design|planning|discovery|architecture)\s+sessions?\b/gi },
+  { category: "working_session", bucket: "next_steps", pattern: /\bsessions?\s+(around|on|for|covering)\s+[\w\s]{0,40}?\bscenarios?\b/gi },
   { category: "pilot", bucket: "next_steps", pattern: /\bpilot(s|ing)?\b/gi },
   { category: "proof_of_value", bucket: "next_steps", pattern: /\b(proof[-\s]of[-\s]value|proof[-\s]of[-\s]concept|\bpov\b|\bpoc\b)\b/gi },
 
@@ -101,7 +107,13 @@ export function extractGenericSignals(transcript: IngestedTranscript): GenericSi
   const seen = new Set<string>();
 
   for (const chunk of chunks) {
+    // Speech-act guard (Section 9): a commercial-bucket claim inside a
+    // question ("...or platform renewal?", "is there budget?") is a seller
+    // discovery question, not a confirmed customer commercial fact, and
+    // must not seed renewal/budget/procurement MEDDPICC evidence.
+    const commercialInterrogative = isInterrogative(chunk.text);
     for (const rule of RULES) {
+      if (rule.bucket === "commercial" && commercialInterrogative) continue;
       const matches = chunk.text.matchAll(rule.pattern);
       for (const match of matches) {
         const dedupeKey = `${rule.category}::${chunk.index}`;

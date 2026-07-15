@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { authorityScore, entityMatchScore, recencyScore } from "@/lib/connectors/serpapi/sourceScoring";
 import { canonicalizeUrl, extractDomain } from "@/lib/connectors/serpapi/canonicalUrl";
-import { computePublicSignalQuality, classifyEvidenceStrength, allowedSupportsForCategory } from "@/lib/opportunity-fit/evidenceRules";
+import { computePublicSignalQuality, classifyEvidenceStrength, allowedSupportsForCategory, computeEvidenceEligibility } from "@/lib/opportunity-fit/evidenceRules";
 import type { NormalizedPublicSignal, PublicSignalCategory } from "@/lib/opportunity-fit/types";
 
 /**
@@ -73,6 +73,12 @@ export function buildNormalizedSignal(params: {
     evidenceClass = "weak_signal";
   }
 
+  // Split the single accept/reject decision into three independent
+  // eligibility levels (Section 2) so a credible official source can be
+  // accepted for account context even when its opportunity relevance is
+  // zero, while only scoring-eligible signals influence external fit.
+  const eligibility = computeEvidenceEligibility({ entityMatch, authority, transcriptRelevance, evidenceClass });
+
   return {
     signal_id: signalIdFor(canonical, params.category, params.subcategory),
     account_name: params.accountName,
@@ -91,6 +97,10 @@ export function buildNormalizedSignal(params: {
     signal_strength: Math.round(qualityScore * 1000) / 1000,
     confidence: Math.round(qualityScore * 1000) / 1000,
     evidence_class: evidenceClass,
+    account_context_eligible: eligibility.account_context_eligible,
+    narrative_eligible: eligibility.narrative_eligible,
+    scoring_eligible: eligibility.scoring_eligible,
+    rejection_reasons: eligibility.rejection_reasons,
     supports: allowedSupportsForCategory(params.category),
     limitations: [],
     corroborating_urls: []
@@ -125,6 +135,22 @@ export function deduplicateSignals(signals: NormalizedPublicSignal[]): Normalize
   });
 }
 
+/** A signal is "accepted" (retained for the pipeline) when it is useful
+ * at ANY of the three eligibility levels — a credible account-context
+ * source is kept even when its opportunity relevance is zero (Section 2),
+ * so official identity sources are surfaced instead of silently dropped.
+ * External-fit scoring still consumes only scoring-eligible signals. */
 export function acceptedSignals(signals: NormalizedPublicSignal[]): NormalizedPublicSignal[] {
-  return signals.filter((s) => s.evidence_class !== "rejected");
+  return signals.filter((s) => s.account_context_eligible || s.narrative_eligible || s.evidence_class !== "rejected");
+}
+
+/** Signals eligible to appear in narrative surfaces (executive summary,
+ * Public Signal Brief, messages). */
+export function narrativeSignals(signals: NormalizedPublicSignal[]): NormalizedPublicSignal[] {
+  return signals.filter((s) => s.narrative_eligible);
+}
+
+/** Signals eligible to affect external account fit. */
+export function scoringSignals(signals: NormalizedPublicSignal[]): NormalizedPublicSignal[] {
+  return signals.filter((s) => s.scoring_eligible);
 }

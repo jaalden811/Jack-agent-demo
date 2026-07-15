@@ -39,6 +39,9 @@ import type { NegationConfig } from "@/lib/signal-agent/types";
  * category-specific one. */
 const TRANSCRIPT_ONLY_STRONG_INTENT_EVIDENCE = 0.55;
 const TRANSCRIPT_ONLY_MIN_EVIDENCE_TYPES = 4;
+// A genuine discovery (quantified pain + accepted next step) needs far
+// less than the 4-type commercial threshold to stay out of NOISE.
+const DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE = 0.15;
 
 export async function evaluateEntry(params: {
   entry: CatalogEntry;
@@ -106,6 +109,18 @@ export async function evaluateEntry(params: {
   const strongIntentOverride =
     transcriptOnlyMode && evidenceTypeCount >= TRANSCRIPT_ONLY_MIN_EVIDENCE_TYPES && intentEvidenceScore >= TRANSCRIPT_ONLY_STRONG_INTENT_EVIDENCE;
 
+  // Discovery-momentum exception (Section 10/12): a genuine early-stage
+  // opportunity — quantified operational pain/impact PLUS an accepted next
+  // step (working/scenario session, pilot, PoV, or workshop) — is a real
+  // signal that must not collapse to NOISE simply because it lacks four
+  // distinct commercial evidence types (budget/timeline/renewal are not
+  // yet on the table in discovery). Pure "general interest" noise lacks
+  // both an accepted next step and quantified impact, so it is unaffected.
+  const hasNextStepEvidence = intentEvidence.some((item) => item.type === "next_step");
+  const hasImpactEvidence = intentEvidence.some((item) => item.type === "impact");
+  const discoveryMomentumOverride =
+    transcriptOnlyMode && hasNextStepEvidence && hasImpactEvidence && intentEvidenceScore >= DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE;
+
   const intentLabel = classifyIntent({
     confidence,
     semanticScore: semanticResult.score,
@@ -114,6 +129,7 @@ export async function evaluateEntry(params: {
     keywordOnlyEvidence,
     transcriptOnlyMode,
     strongIntentOverride,
+    discoveryMomentumOverride,
     config
   });
 
@@ -149,9 +165,10 @@ function classifyIntent(params: {
   keywordOnlyEvidence: boolean;
   transcriptOnlyMode: boolean;
   strongIntentOverride: boolean;
+  discoveryMomentumOverride: boolean;
   config: ParsedMatchingConfig;
 }): "HIGH_INTENT" | "REVIEW" | "NOISE" {
-  const { confidence, semanticScore, corroborationScore, hasUnresolvedNegation, keywordOnlyEvidence, transcriptOnlyMode, strongIntentOverride, config } =
+  const { confidence, semanticScore, corroborationScore, hasUnresolvedNegation, keywordOnlyEvidence, transcriptOnlyMode, strongIntentOverride, discoveryMomentumOverride, config } =
     params;
 
   // Explicit unresolved negation and keyword-only evidence always
@@ -170,9 +187,10 @@ function classifyIntent(params: {
 
   // Transcript-only exception: even below the REVIEW floor on raw
   // confidence, sufficiently strong explicit timing/ownership/impact/
-  // buying-intent evidence keeps the result at REVIEW rather than letting
-  // it collapse to NOISE purely because no CRM row exists.
-  if (transcriptOnlyMode && strongIntentOverride) return "REVIEW";
+  // buying-intent evidence — or genuine discovery momentum (quantified
+  // pain + an accepted next step) — keeps the result at REVIEW rather than
+  // letting it collapse to NOISE purely because no CRM row exists.
+  if (transcriptOnlyMode && (strongIntentOverride || discoveryMomentumOverride)) return "REVIEW";
 
   return "NOISE";
 }

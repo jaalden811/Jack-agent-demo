@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNormalizedSignal, deduplicateSignals, computeSpecificity } from "@/lib/opportunity-fit/signalScoring";
+import { buildNormalizedSignal, deduplicateSignals, computeSpecificity, acceptedSignals, scoringSignals } from "@/lib/opportunity-fit/signalScoring";
 import { computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 
 describe("Test 16: duplicate news articles become one signal", () => {
@@ -93,6 +93,42 @@ describe("Phase 4/25: transcript-alignment gates strength and external-fit contr
     });
     expect(signal.transcript_relevance).toBe(0);
     expect(signal.evidence_class).toBe("rejected");
+  });
+
+  it("Section 2: an official, entity-matched source with ZERO opportunity relevance is account-context eligible but NOT narrative/scoring eligible", () => {
+    const signal = buildNormalizedSignal({
+      accountName: "Acme Retail Group",
+      accountDomain: "acmeretail.com",
+      category: "executive_priority",
+      subcategory: "official_website",
+      title: "Acme Retail Group — Official Website",
+      url: "https://www.acmeretail.com/",
+      // Snippet establishes identity but aligns with no transcript theme.
+      snippet: "Acme Retail Group is a national retailer. Company overview and store locator.",
+      publishedAt: null,
+      transcriptSignals: ["cross-domain observability", "incident correlation", "cost governance"]
+    });
+    // Accepted for account context (identity), but never affects scoring.
+    expect(signal.account_context_eligible).toBe(true);
+    expect(signal.narrative_eligible).toBe(false);
+    expect(signal.scoring_eligible).toBe(false);
+    expect(signal.rejection_reasons).toContain("transcript_relevance_below_narrative_floor");
+  });
+
+  it("Section 2: an account-context-only source is retained by acceptedSignals (not silently dropped) yet excluded from scoringSignals", () => {
+    const signal = buildNormalizedSignal({
+      accountName: "Acme Retail Group",
+      accountDomain: "acmeretail.com",
+      category: "executive_priority",
+      subcategory: "official_website",
+      title: "Acme Retail Group — Official Website",
+      url: "https://www.acmeretail.com/",
+      snippet: "Acme Retail Group corporate homepage.",
+      publishedAt: null,
+      transcriptSignals: ["cross-domain observability", "incident correlation"]
+    });
+    expect(acceptedSignals([signal])).toHaveLength(1);
+    expect(scoringSignals([signal])).toHaveLength(0);
   });
 
   it("Test 2/Phase 10: relevance-zero results contribute nothing — external fit becomes neutral/unavailable, never a zero penalty", () => {
