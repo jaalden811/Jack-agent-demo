@@ -72,15 +72,38 @@ export type CircuitGenerateResult = {
 
 export type CircuitTokenState = "not_configured" | "unconfirmed" | "missing" | "acquiring" | "valid" | "refreshing" | "expired" | "rejected" | "error";
 
+/** The distinct provider states, so credential health is never conflated
+ * with an endpoint/payload/quota/TLS/target problem. */
+export type CircuitProviderState =
+  | "not_configured" // credentials not present
+  | "credentials_configured" // credentials present, not yet authenticated
+  | "authenticated" // token minted (authentication accepted)
+  | "contract_unconfirmed" // authenticated, but inference contract not confirmed (current blocker)
+  | "operational" // authenticated + inference confirmed + working
+  | "operation_failed" // an operation failed (see cause — may or may not be credential)
+  | "operation_unavailable"; // transient (network/timeout/TLS/5xx) — NOT a credential problem
+
+export type CircuitOperationStatus = "not_attempted" | "successful" | "failed" | "unavailable";
+
 /** Safe diagnostics — never includes the token, secret, or client id. */
 export type CircuitDiagnostics = {
   aiProvider: "circuit";
   configured: boolean;
+  /** Credentials (client id/secret/token URL) are present — distinct from
+   * whether authentication was accepted. */
+  credentialsConfigured: boolean;
   /** The wire contract has been confirmed against the Circuit notebook. */
   contractConfirmed: boolean;
   contractVersion: string | null;
+  /** Authentication was accepted (a token minted). null = not attempted. */
+  authenticationAccepted: boolean | null;
   authenticated: boolean;
   operational: boolean;
+  /** The five-state provider summary (never conflates cause). */
+  state: CircuitProviderState;
+  /** Last failure's root cause category — never "credential" unless a real
+   * 401 on the credential exchange occurred. */
+  lastErrorCause: string | null;
   model: string | null;
   tokenState: CircuitTokenState;
   tokenExpiresAt: string | null;

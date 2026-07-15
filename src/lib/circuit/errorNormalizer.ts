@@ -66,3 +66,53 @@ export function classifyCircuitThrown(error: unknown): CircuitNormalizedError {
 export function isRetryable(error: CircuitNormalizedError): boolean {
   return error.retryable;
 }
+
+/**
+ * The ROOT CAUSE category of a failure, so diagnostics never conflate an
+ * endpoint/payload/scope/quota/TLS/target error with an invalid
+ * credential. Only a genuine 401 on the token exchange is a "credential"
+ * cause. Everything else is attributed to its real cause.
+ */
+export type CircuitErrorCause =
+  | "none"
+  | "not_configured"
+  | "contract_unconfirmed"
+  | "credential" // authentication rejected (bad/expired client credentials)
+  | "permission" // authenticated but not permitted (scope)
+  | "endpoint" // wrong/unknown URL or model target
+  | "payload" // malformed request body
+  | "quota" // rate limit / quota
+  | "transient" // network / timeout / TLS / 5xx — provider unavailable
+  | "parse" // response could not be parsed / failed schema
+  | "refusal" // provider safety refusal
+  | "unknown";
+
+const CAUSE_BY_CODE: Record<CircuitErrorCode, CircuitErrorCause> = {
+  CIRCUIT_NOT_CONFIGURED: "not_configured",
+  CIRCUIT_CONTRACT_UNCONFIRMED: "contract_unconfirmed",
+  CIRCUIT_TOKEN_REQUEST_FAILED: "endpoint",
+  CIRCUIT_AUTHENTICATION_REJECTED: "credential",
+  CIRCUIT_PERMISSION_REJECTED: "permission",
+  CIRCUIT_MODEL_REQUIRED: "not_configured",
+  CIRCUIT_MODEL_UNAVAILABLE: "endpoint",
+  CIRCUIT_INVALID_REQUEST: "payload",
+  CIRCUIT_RATE_LIMITED: "quota",
+  CIRCUIT_QUOTA_EXCEEDED: "quota",
+  CIRCUIT_TIMEOUT: "transient",
+  CIRCUIT_NETWORK_FAILURE: "transient",
+  CIRCUIT_SERVER_ERROR: "transient",
+  CIRCUIT_RESPONSE_PARSE_FAILED: "parse",
+  CIRCUIT_SCHEMA_VALIDATION_FAILED: "parse",
+  CIRCUIT_REFUSAL: "refusal",
+  CIRCUIT_UNKNOWN_ERROR: "unknown"
+};
+
+export function circuitErrorCause(code: CircuitErrorCode): CircuitErrorCause {
+  return CAUSE_BY_CODE[code] ?? "unknown";
+}
+
+/** True only for a genuine credential problem — used so no other failure
+ * is ever reported as an invalid credential. */
+export function isCredentialCause(code: CircuitErrorCode): boolean {
+  return circuitErrorCause(code) === "credential";
+}

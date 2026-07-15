@@ -84,10 +84,56 @@ describe("Contract-confirmation gate (Phase 1 / Test 7)", () => {
   it("diagnostics report contract state safely when configured but inference-unconfirmed", () => {
     configureCircuitUnconfirmedInference();
     const d = getCircuitDiagnostics();
-    expect(d.configured).toBe(true);
+    // configured=full (needs inference URL) is false here; credentials ARE configured.
+    expect(d.credentialsConfigured).toBe(true);
     expect(d.contractConfirmed).toBe(false);
     expect(d.operational).toBe(false);
     expect(d.tokenState).toBe("missing");
+  });
+
+  it("after auth, the blocker is reported as the contract — NOT a credential problem", async () => {
+    configureCircuitUnconfirmedInference();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ access_token: ACCESS_TOKEN, expires_in: 3600 }));
+    await getCircuitAccessToken();
+    const d = getCircuitDiagnostics();
+    expect(d.authenticationAccepted).toBe(true);
+    expect(d.state).toBe("contract_unconfirmed");
+    expect(d.lastErrorCause).toBeNull(); // not a failure — auth worked
+  });
+});
+
+describe("Provider states never conflate a non-credential error with a bad credential", () => {
+  it("classifies each failure by its real cause", async () => {
+    const { circuitErrorCause } = await import("@/lib/circuit/errorNormalizer");
+    expect(circuitErrorCause("CIRCUIT_AUTHENTICATION_REJECTED")).toBe("credential");
+    // The following are explicitly NOT credential problems:
+    expect(circuitErrorCause("CIRCUIT_INVALID_REQUEST")).toBe("payload");
+    expect(circuitErrorCause("CIRCUIT_MODEL_UNAVAILABLE")).toBe("endpoint");
+    expect(circuitErrorCause("CIRCUIT_PERMISSION_REJECTED")).toBe("permission");
+    expect(circuitErrorCause("CIRCUIT_RATE_LIMITED")).toBe("quota");
+    expect(circuitErrorCause("CIRCUIT_TIMEOUT")).toBe("transient");
+    expect(circuitErrorCause("CIRCUIT_NETWORK_FAILURE")).toBe("transient");
+    expect(circuitErrorCause("CIRCUIT_SERVER_ERROR")).toBe("transient");
+    expect(circuitErrorCause("CIRCUIT_CONTRACT_UNCONFIRMED")).toBe("contract_unconfirmed");
+  });
+
+  it("a transient token failure reports operation_unavailable, not a credential failure", async () => {
+    configureCircuit();
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch failed"));
+    await getCircuitAccessToken();
+    const d = getCircuitDiagnostics();
+    expect(d.state).toBe("operation_unavailable");
+    expect(d.lastErrorCause).toBe("transient");
+    expect(d.authenticationAccepted).toBe(false);
+  });
+
+  it("a genuine 401 on the token exchange reports a credential cause", async () => {
+    configureCircuit();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ error: "invalid_client" }, 401));
+    await getCircuitAccessToken();
+    const d = getCircuitDiagnostics();
+    expect(d.lastErrorCause).toBe("credential");
+    expect(d.state).toBe("operation_failed");
   });
 });
 
