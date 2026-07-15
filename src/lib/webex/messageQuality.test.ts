@@ -35,7 +35,7 @@ const RICH_TECHNICAL = [
 ].join("\n");
 
 function ctx(overrides: Partial<MessageQualityContext> = {}): MessageQualityContext {
-  return { verdict: "HIGH_INTENT", allowedUrls: [], charCeiling: 2600, requireRichBrief: true, ...overrides };
+  return { verdict: "HIGH_INTENT", allowedUrls: [], charCeiling: 2600, byteCeiling: 7439, requireRichBrief: true, ...overrides };
 }
 
 describe("validateMessageQuality", () => {

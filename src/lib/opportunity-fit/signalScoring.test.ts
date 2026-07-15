@@ -95,7 +95,7 @@ describe("Phase 4/25: transcript-alignment gates strength and external-fit contr
     expect(signal.evidence_class).toBe("rejected");
   });
 
-  it("Test 2: relevance-zero results contribute zero to external fit", () => {
+  it("Test 2/Phase 10: relevance-zero results contribute nothing — external fit becomes neutral/unavailable, never a zero penalty", () => {
     const signals = Array.from({ length: 16 }, (_, i) =>
       buildNormalizedSignal({
         accountName: "Acme Retail Group",
@@ -110,8 +110,10 @@ describe("Phase 4/25: transcript-alignment gates strength and external-fit contr
       })
     );
     const fit = computeExternalFitScore({ signals, accountResolutionAvailable: true, searchRan: true, failureReason: null });
-    expect(fit.available).toBe(true);
-    expect(fit.score).toBe(0);
+    // No aligned signal -> neutral (unavailable), NOT a zero that would
+    // penalize the pursuit score. "No evidence is not negative evidence."
+    expect(fit.available).toBe(false);
+    expect(fit.score).toBeNull();
   });
 });
 

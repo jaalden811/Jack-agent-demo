@@ -101,9 +101,15 @@ function statusVerb(status: MeddpiccField["status"]): string {
   }
 }
 
+// Cuts only at a word boundary and never appends an ellipsis (Phase 13:
+// no truncation "…"). Limits are generous so real sentences survive; the
+// message-level byte budget is the true cap.
 function clip(text: string, max: number): string {
   const trimmed = text.replace(/\s+/g, " ").trim();
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+  if (trimmed.length <= max) return trimmed;
+  const slice = trimmed.slice(0, max);
+  const lastSpace = slice.lastIndexOf(" ");
+  return (lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice).trim();
 }
 
 function buildOpportunityThesis(result: SecureNetworkingTriageResult): string {
@@ -120,11 +126,11 @@ function buildOpportunityThesis(result: SecureNetworkingTriageResult): string {
 function buildWhyNow(result: SecureNetworkingTriageResult): string[] {
   const signals: string[] = [];
   const c = result.commercial_signals;
-  for (const impact of c.quantified_impact.slice(0, 2)) signals.push(clip(impact, 130));
-  if (c.budget) signals.push(clip(c.budget, 130));
-  for (const renewal of c.renewal_events.slice(0, 2)) signals.push(clip(renewal, 130));
-  if (c.timeline) signals.push(clip(c.timeline, 130));
-  for (const purchase of c.purchase_language.slice(0, 1)) signals.push(clip(purchase, 130));
+  for (const impact of c.quantified_impact.slice(0, 2)) signals.push(clip(impact, 280));
+  if (c.budget) signals.push(clip(c.budget, 280));
+  for (const renewal of c.renewal_events.slice(0, 2)) signals.push(clip(renewal, 280));
+  if (c.timeline) signals.push(clip(c.timeline, 280));
+  for (const purchase of c.purchase_language.slice(0, 1)) signals.push(clip(purchase, 280));
   // De-duplicate while preserving order; cap at 6 per the spec.
   const seen = new Set<string>();
   return signals.filter((s) => s && !seen.has(s) && (seen.add(s), true)).slice(0, 6);
@@ -134,7 +140,7 @@ function buildMeddpiccLines(meddpicc: Meddpicc): string[] {
   return MEDDPICC_ORDER.map((key) => {
     const field = meddpicc[key];
     const rawSummary = field.summary && field.summary !== "Not yet evaluated." ? field.summary : field.status === "MISSING" && field.next_question ? `ask: ${field.next_question}` : "";
-    const summary = rawSummary ? clip(rawSummary, 80) : field.status === "MISSING" ? "not yet established." : "";
+    const summary = rawSummary ? clip(rawSummary, 220) : field.status === "MISSING" ? "not yet established." : "";
     return `${MEDDPICC_LETTER[key]} — ${statusVerb(field.status)}${summary ? `: ${summary}` : ""}`;
   });
 }

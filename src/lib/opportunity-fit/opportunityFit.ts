@@ -147,6 +147,15 @@ export function computeExternalFitScore(params: { signals: NormalizedPublicSigna
   // alignment-zero result) contribute nothing, so many low-relevance
   // hits can never manufacture a non-zero external-fit score.
   const eligibleSignals = params.signals.filter((s) => s.evidence_class === "confirmed_public_fact" || s.evidence_class === "probable_public_signal");
+
+  // Phase 10: "no evidence is not negative evidence." When a search ran
+  // but produced no scoring-eligible public signal, external fit is
+  // NEUTRAL/unavailable (score null) — never a zero that would penalize
+  // the pursuit score. The pursuit model then renormalizes the remaining
+  // components instead of substituting zero.
+  if (eligibleSignals.length === 0) {
+    return { available: false, score: null, reason: "No public signal was sufficiently aligned to the opportunity (neutral, not negative).", factors: [] };
+  }
   const factors: ExternalFitFactor[] = (Object.keys(FACTOR_TO_CATEGORY) as ExternalFitFactor["factor"][]).map((factor) => {
     const category = FACTOR_TO_CATEGORY[factor];
     const categorySignals = eligibleSignals.filter((s) => s.category === category);
