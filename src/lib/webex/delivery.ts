@@ -1,5 +1,5 @@
-import { sendDirectMessage, WebexApiError } from "@/lib/webex/client";
-import type { ChannelDeliveryResult, WebexMessagePreview, WebexSenderMode } from "@/lib/webex/types";
+import { sendWebexMessage, WebexApiError } from "@/lib/webex/client";
+import type { ChannelDeliveryResult, WebexLane, WebexMessagePreview, WebexSenderMode } from "@/lib/webex/types";
 
 /**
  * Sends the built messages via the connected user's own Webex OAuth
@@ -38,11 +38,21 @@ export function classifyWebexDeliveryError(status: number | null, rawMessage: st
 
 export async function deliverMessages(
   messages: WebexMessagePreview[],
-  sender: { accessToken: string | null; mode: WebexSenderMode; senderEmail?: string | null },
+  sender: {
+    accessToken: string | null;
+    mode: WebexSenderMode;
+    senderEmail?: string | null;
+    /** Optional per-lane Webex space (room) IDs from configuration. When a
+     * lane's 1:1 recipient is the connected user, delivery falls back to
+     * the configured room instead of refusing (Phase 17). No room ID is
+     * ever hard-coded — this map is entirely config/user-driven. */
+    laneRoomIds?: Partial<Record<WebexLane, string>>;
+  },
   deliveryKeyId: string
 ): Promise<ChannelDeliveryResult[]> {
   const results: ChannelDeliveryResult[] = [];
   const senderEmail = sender.senderEmail?.trim().toLowerCase() ?? null;
+  const laneRoomIds = sender.laneRoomIds ?? {};
 
   for (const message of messages) {
     const base = {
@@ -53,6 +63,9 @@ export async function deliverMessages(
       applicable: true,
       delivery_key: buildKey(deliveryKeyId, message.lane)
     };
+
+    const configuredRoomId = laneRoomIds[message.lane]?.trim() || null;
+    const isSelfDirect = Boolean(senderEmail && message.recipient_email && message.recipient_email.trim().toLowerCase() === senderEmail && sender.mode === "connected_user");
 
     if (!sender.accessToken || sender.mode === "unavailable") {
       results.push({
@@ -69,34 +82,29 @@ export async function deliverMessages(
       continue;
     }
 
-    if (!message.recipient_email) {
-      results.push({
-        ...base,
-        attempted: false,
-        delivered: false,
-        message_id: null,
-        status_code: null,
-        error: `No recipient email configured for the ${message.lane} lane.`,
-        error_code: "delivery_target_required",
-        sent_at: null,
-        retryable: false
-      });
-      continue;
-    }
+    // Resolve the target: a configured room when the 1:1 is not possible
+    // (self-direct) or no recipient email exists; otherwise the 1:1 email.
+    const useRoom = configuredRoomId && (isSelfDirect || !message.recipient_email);
+    const target: { toPersonEmail?: string; roomId?: string } | null = useRoom
+      ? { roomId: configuredRoomId as string }
+      : message.recipient_email && !isSelfDirect
+        ? { toPersonEmail: message.recipient_email }
+        : null;
 
-    // Phase 18B: never attempt a self-direct 1:1 message. When the lane's
-    // recipient is the connected user themselves, Webex has no valid 1:1
-    // room to create — this must fall back to a selected room / Outlook,
-    // not fail opaquely.
-    if (senderEmail && message.recipient_email.trim().toLowerCase() === senderEmail && sender.mode === "connected_user") {
+    if (!target) {
+      // No valid target: either the self-direct case with no room, or no
+      // recipient at all. Never attempt a self-direct 1:1 (Phase 17).
+      const selfDirectNoRoom = isSelfDirect;
       results.push({
         ...base,
         attempted: false,
         delivered: false,
         message_id: null,
         status_code: null,
-        error: `The ${message.lane} recipient is the connected Webex user — a 1:1 message to yourself is not supported. Route this lane to a selected Webex space or Outlook.`,
-        error_code: "self_direct_message_unsupported",
+        error: selfDirectNoRoom
+          ? `The ${message.lane} recipient is the connected Webex user — a 1:1 message to yourself is not supported. Select a Webex space for this lane or use the Outlook fallback.`
+          : `No delivery target configured for the ${message.lane} lane (no recipient email and no selected Webex space).`,
+        error_code: selfDirectNoRoom ? "self_direct_message_unsupported" : "delivery_target_required",
         sent_at: null,
         retryable: false
       });
@@ -104,10 +112,7 @@ export async function deliverMessages(
     }
 
     try {
-      const sent = await sendDirectMessage(sender.accessToken, {
-        toPersonEmail: message.recipient_email,
-        markdown: message.markdown
-      });
+      const sent = await sendWebexMessage(sender.accessToken, { ...target, markdown: message.markdown });
       results.push({
         ...base,
         attempted: true,
@@ -123,6 +128,7 @@ export async function deliverMessages(
       const status = error instanceof WebexApiError ? error.status ?? null : null;
       const rawMessage = error instanceof Error ? error.message : "Unknown error";
       const { error_code, retryable } = classifyWebexDeliveryError(status, rawMessage);
+      const targetLabel = target.roomId ? `space ${target.roomId}` : message.recipient_email;
 
       results.push({
         ...base,
@@ -130,7 +136,7 @@ export async function deliverMessages(
         delivered: false,
         message_id: null,
         status_code: status,
-        error: `Could not deliver to ${message.recipient_email}: ${rawMessage}`,
+        error: `Could not deliver to ${targetLabel}: ${rawMessage}`,
         error_code,
         sent_at: null,
         retryable

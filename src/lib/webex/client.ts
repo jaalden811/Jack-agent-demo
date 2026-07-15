@@ -311,9 +311,24 @@ export async function sendDirectMessage(
   botAccessToken: string,
   params: { toPersonEmail: string; markdown: string }
 ): Promise<WebexMessage> {
+  return sendWebexMessage(botAccessToken, { toPersonEmail: params.toPersonEmail, markdown: params.markdown });
+}
+
+/** Sends a Webex message to either a person (1:1) or a room/space. Webex
+ * accepts exactly one of toPersonEmail / roomId. Room delivery is how the
+ * technical lane reaches a shared space when a 1:1 is not possible (e.g.
+ * the recipient is the connected user). */
+export async function sendWebexMessage(
+  accessToken: string,
+  params: { toPersonEmail?: string; roomId?: string; markdown: string }
+): Promise<WebexMessage> {
+  const body: Record<string, string> = { markdown: params.markdown };
+  if (params.roomId) body.roomId = params.roomId;
+  else if (params.toPersonEmail) body.toPersonEmail = params.toPersonEmail;
+  else throw new WebexApiError("No Webex delivery target (toPersonEmail or roomId) provided.", 400);
   return webexFetch<WebexMessage>(`${WEBEX_API_BASE}/messages`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${botAccessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ toPersonEmail: params.toPersonEmail, markdown: params.markdown })
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
 }

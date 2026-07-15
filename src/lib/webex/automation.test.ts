@@ -3,12 +3,12 @@ import { useIsolatedDataDir } from "@/lib/webex/testUtils";
 
 vi.mock("@/lib/webex/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/webex/client")>("@/lib/webex/client");
-  return { ...actual, sendDirectMessage: vi.fn() };
+  return { ...actual, sendWebexMessage: vi.fn() };
 });
 
 vi.mock("@/lib/outlook/send", () => ({ sendOutlookEmail: vi.fn() }));
 
-import { sendDirectMessage } from "@/lib/webex/client";
+import { sendWebexMessage } from "@/lib/webex/client";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { deliverPeachtreePipeline, computePeachtreePreview } from "@/lib/webex/automation";
 import { getProcessedTranscript, readRecentWebexAudit, writeTokenRecord as writeWebexTokenRecord } from "@/lib/webex/store";
@@ -32,7 +32,7 @@ async function connectWebex() {
 
 beforeEach(() => {
   isolate = useIsolatedDataDir();
-  vi.mocked(sendDirectMessage).mockReset();
+  vi.mocked(sendWebexMessage).mockReset();
   vi.mocked(sendOutlookEmail).mockReset();
   vi.mocked(sendOutlookEmail).mockResolvedValue({ accepted: true, status_code: 202, error: null, error_code: null, sent_at: new Date().toISOString() });
 });
@@ -53,7 +53,7 @@ const HIGH_INTENT_TRANSCRIPT = [
 describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", () => {
   it("sends Webex DMs using the connected user's own OAuth token by default (no WEBEX_BOT_ACCESS_TOKEN needed)", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockImplementation(async (token, params) => ({
+    vi.mocked(sendWebexMessage).mockImplementation(async (token, params) => ({
       id: params.toPersonEmail.includes("belrobin") ? "msg-sales-1" : "msg-technical-1",
       toPersonEmail: params.toPersonEmail
     }));
@@ -61,14 +61,14 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
-    expect(sendDirectMessage).toHaveBeenCalledWith("webex-connected-user-token", expect.anything());
+    expect(sendWebexMessage).toHaveBeenCalledWith("webex-connected-user-token", expect.anything());
     const webexDelivered = peachtree.delivery.filter((item) => item.channel === "webex" && item.delivered);
     expect(webexDelivered.length).toBeGreaterThan(0);
   });
 
   it("also sends an email to each routed lane via Outlook, independent of Webex", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "belrobin@cisco.com" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "belrobin@cisco.com" });
 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
@@ -80,7 +80,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
 
   it("loads Bella (sales) and Jack (technical) recipient emails from the routing JSON, not environment variables", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
@@ -92,7 +92,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
 
   it("a Webex delivery failure does not block the email for the same lane, or the other lane", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockRejectedValue(new Error("Webex API rejected the request"));
+    vi.mocked(sendWebexMessage).mockRejectedValue(new Error("Webex API rejected the request"));
 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
@@ -105,7 +105,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
 
   it("an email failure does not block the Webex message for the same lane, or the other lane", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
     vi.mocked(sendOutlookEmail).mockResolvedValue({ accepted: false, status_code: null, error: "Outlook is not connected", error_code: "token_exchange_failed", sent_at: null });
 
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
@@ -119,7 +119,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
 
   it("Bella (sales) failing does not block Jack (technical), and vice versa", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       if (params.toPersonEmail.includes("belrobin")) throw new Error("Could not resolve recipient");
       return { id: "msg-technical-1", toPersonEmail: params.toPersonEmail };
     });
@@ -137,7 +137,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
 describe("deliverPeachtreePipeline — per-channel idempotency and audit", () => {
   it("persists a distinct delivery_key of <id>:lane:channel for every delivery result", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
@@ -149,7 +149,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
   it("never delivers to the same lane/channel twice for the same transcript (idempotency guard)", async () => {
     await connectWebex();
     let webexCalls = 0;
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       webexCalls += 1;
       return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
     });
@@ -174,7 +174,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
   it("retrying only re-attempts previously failed lane/channel pairs, not already-succeeded ones", async () => {
     await connectWebex();
     let webexCalls = 0;
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       webexCalls += 1;
       if (params.toPersonEmail.includes("belrobin")) throw new Error("Temporary failure");
       return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
@@ -187,7 +187,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
     const webexCallsAfterFirst = webexCalls;
 
     // Fix the transient failure, then retry.
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       webexCalls += 1;
       return { id: "msg-retry", toPersonEmail: params.toPersonEmail };
     });
@@ -201,7 +201,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
 
   it("computeTranscriptId is stable for identical demo/pasted content and provides the dedupe anchor", async () => {
     await connectWebex();
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
     const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
     await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
@@ -219,7 +219,7 @@ describe("computePeachtreePreview — no delivery attempted", () => {
     const preview = await computePeachtreePreview(result);
     expect(preview.auto_send_enabled).toBe(false);
     expect(preview.delivery.every((item) => item.attempted === false)).toBe(true);
-    expect(sendDirectMessage).not.toHaveBeenCalled();
+    expect(sendWebexMessage).not.toHaveBeenCalled();
     expect(sendOutlookEmail).not.toHaveBeenCalled();
   });
 });

@@ -330,7 +330,11 @@ export async function deliverPeachtreePipeline(
   });
 
   const sender = await resolveWebexSender();
-  const webexResults = await deliverMessages(messagesToSend, { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail }, runId);
+  const webexResults = await deliverMessages(
+    messagesToSend,
+    { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail, laneRoomIds: config.webex_spaces },
+    runId
+  );
 
   const emailResults: ChannelDeliveryResult[] = [];
   for (const email of emailsToSend) {
