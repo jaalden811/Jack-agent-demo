@@ -84,7 +84,9 @@ export function buildMeetingPacket(params: {
     agenda,
     scenarios,
     questions_not_to_reask: doNotReaskTopics(questionIndex, 8),
-    remaining_questions: questionIndex.open.filter((q) => q.blocking).map((q) => q.question).slice(0, 5),
+    // All genuinely-open questions (blocking first), so the meeting packet
+    // and the top-level handoff never disagree on what remains.
+    remaining_questions: [...questionIndex.open].sort((a, b) => Number(b.blocking) - Number(a.blocking)).map((q) => q.question).slice(0, 5),
     deliverables: action.success_criteria.length > 0 ? [`Written outcome against: ${action.success_criteria.join("; ")}`] : ["Written scenario outcomes and agreed next step"],
     follow_up_actions: [action.fallback_action ?? `${action.primary_owner} circulates the outcome and proposed next step within one week.`]
   };

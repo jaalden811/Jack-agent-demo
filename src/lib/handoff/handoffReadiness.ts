@@ -63,8 +63,11 @@ function dimensionScores(packet: SpecialistHandoffPacket): Record<string, { scor
       detail: `${packet.stakeholder_map.length} stakeholders`
     },
     known_environment_coverage: {
-      score: Math.min(1, (packet.current_environment.length + packet.technical_context.length) / 3),
-      detail: `${packet.current_environment.length} environment facts`
+      // Tie to the ACTUAL current environment (retained systems / stated
+      // environment), not desired-capability themes, so readiness never
+      // overstates when the environment is unknown.
+      score: Math.min(1, packet.current_environment.length / 3),
+      detail: `${packet.current_environment.length} current-environment facts`
     },
     decision_criteria_coverage: {
       score: (packet.meddpicc_summary.decision_criteria?.status === "CONFIRMED" || packet.meddpicc_summary.decision_criteria?.status === "PARTIAL") ? 1 : packet.success_criteria.length > 0 ? 0.6 : 0,

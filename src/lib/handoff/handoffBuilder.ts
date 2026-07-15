@@ -77,9 +77,19 @@ function stakeholderMap(result: SecureNetworkingTriageResult): HandoffStakeholde
     evidence: uniq(r.behavioral_evidence, 2),
     next_question: r.next_question
   }));
-  // Prefer named individuals; add committee role inferences that aren't already named.
+  // Prefer named individuals; add committee role inferences that aren't
+  // already named. Dedupe by person name (a stakeholder should never
+  // appear twice) and by role.
   const namedRoles = new Set(named.map((n) => n.role.toLowerCase()));
-  return [...named, ...committee.filter((c) => !namedRoles.has(c.role.toLowerCase()))].slice(0, 8);
+  const seenNames = new Set<string>();
+  const deduped: HandoffStakeholder[] = [];
+  for (const s of [...named, ...committee.filter((c) => !namedRoles.has(c.role.toLowerCase()))]) {
+    const key = (s.name ?? s.role).toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+    deduped.push(s);
+  }
+  return deduped.slice(0, 8);
 }
 
 function publicContext(result: SecureNetworkingTriageResult): HandoffPublicContext[] {
@@ -120,7 +130,13 @@ export function buildSpecialistHandoff(params: {
   const env = currentEnvironment(result);
   const rejected = rejectedOptions(result);
   const constraints = genericTexts(result, "technical", ["risk"], 4);
-  const objections = uniq([...(result.matches[0]?.negative_cues ?? []).map((n) => n.context || n.phrase), ...rejected], 4);
+  // Real customer objections are voiced negations + declined statements —
+  // NOT the machine-generated product do-not-choose rules (those belong in
+  // explicitly_rejected_options).
+  const objections = uniq(
+    [...(result.matches[0]?.negative_cues ?? []).map((n) => n.context || n.phrase), ...index.declined_or_sensitive.map((d) => d.what_was_declined)],
+    4
+  );
 
   // Lane-filtered remaining questions: sales sees sales+shared; technical sees technical+shared.
   const laneQuestions = index.open.filter((q) => q.owner_lane === lane || q.owner_lane === "shared");

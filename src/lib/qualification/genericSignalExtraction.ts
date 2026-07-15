@@ -88,7 +88,7 @@ const RULES: Rule[] = [
   // Technical/integration requirements and current-environment mentions —
   // generic phrasing, never a specific product name.
   { category: "integration_requirement", bucket: "technical", pattern: /\b(integrat(e|es|ion|ing)\s+with|must\s+support|need(s)?\s+to\s+support|compatible\s+with)\b/gi },
-  { category: "current_environment", bucket: "technical", pattern: /\b(currently\s+(use|run|have)|today\s+we\s+(use|run|have)|existing\s+(tool|platform|system|environment))\b/gi },
+  { category: "current_environment", bucket: "technical", pattern: /\b(currently\s+(use|run|have)|today\s+we\s+(use|run|have)|existing\s+(tool|platform|system|environment)|we\s+(run|use|have|operate|deployed?|maintain)\s+|our\s+(environment|stack|estate|infrastructure|systems?)\b|(runs?|running|hosted|deployed)\s+(in|on)\s+)/gi },
   { category: "risk", bucket: "technical", pattern: /\b(risk|concern|blocker|gap|limitation)\b/gi }
 ];
 
