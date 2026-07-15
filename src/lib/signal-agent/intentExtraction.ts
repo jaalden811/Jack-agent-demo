@@ -108,6 +108,29 @@ const RULES: PatternRule[] = [
   }
 ];
 
+// Generic limiting/modality qualifiers that must prevent a matched
+// commercial-timing / renewal / evaluation phrase from being counted as
+// firm buying evidence (Section 7): a planning boundary is not a
+// procurement timeline; caveated renewal flexibility is not a confirmed
+// renewal; "not a procurement timeline" / "no approved ... project" /
+// "not an evaluation yet" are limiting facts, not momentum. Generic —
+// never tied to a company/product/transcript.
+const TIMING_LIMITING_RE = /\b(planning boundary|not a procurement timeline|not a (commercial|buying) timeline|practical boundary)\b/i;
+const RENEWAL_HYPOTHETICAL_RE = /\b(renewal-related flexibility|may have|might have|could have|not confirmed|possible|possibly|potential(ly)?|some flexibility|would not build a plan)\b/i;
+const EVALUATION_LIMITING_RE = /\b(not (an|a) (evaluation|formal evaluation|competition|selection)|no approved (replacement )?(project|program)|not running a (siem )?competition|no formal (evaluation|competition))\b/i;
+
+/** Applies generic modality/limiting-qualifier filtering to raw intent
+ * evidence so caveated or explicitly-limited statements are not counted
+ * as firm timing / renewal / evaluation momentum (Section 7). */
+function refineIntentEvidence(evidence: BuyingIntentEvidence[]): BuyingIntentEvidence[] {
+  return evidence.filter((item) => {
+    if (item.type === "timeline" && TIMING_LIMITING_RE.test(item.text)) return false;
+    if (item.type === "renewal" && RENEWAL_HYPOTHETICAL_RE.test(item.text)) return false;
+    if (item.type === "evaluation" && EVALUATION_LIMITING_RE.test(item.text)) return false;
+    return true;
+  });
+}
+
 export function extractBuyingIntentEvidence(transcript: IngestedTranscript): BuyingIntentEvidence[] {
   const sentences = selectRelevantChunks(transcript);
   const evidence: BuyingIntentEvidence[] = [];
@@ -134,7 +157,7 @@ export function extractBuyingIntentEvidence(transcript: IngestedTranscript): Buy
     }
   }
 
-  return evidence;
+  return refineIntentEvidence(evidence);
 }
 
 /** Total intent-evidence score, capped at 1.0 and de-duplicated per

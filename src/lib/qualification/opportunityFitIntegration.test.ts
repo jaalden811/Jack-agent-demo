@@ -188,6 +188,35 @@ describe("Section 5 realignment: score dimensions + high-signal decision rule", 
   });
 });
 
+describe("Negated-org discovery fixture (Section 1/7/9 regression)", () => {
+  const FIXTURE = "signal-agent-poc/data/transcripts/discovery_negated_org_scenario_signal.txt";
+
+  it("Test 1/20: extracts the explicit organization from a negated commercial claim (account no longer unresolved)", async () => {
+    const result = await runSignalAgent({ customTranscript: readFileSync(FIXTURE, "utf8"), options: OFF });
+    expect(["probable", "confirmed"]).toContain(result.account_resolution.status);
+    expect(result.account_resolution.name).toBe("CONTOSO");
+  });
+
+  it("Test 17: deal maturity is capped at SOLUTION_DISCOVERY by the limiting statements", async () => {
+    const result = await runSignalAgent({ customTranscript: readFileSync(FIXTURE, "utf8"), options: OFF });
+    expect(result.opportunity_scoring.deal_maturity).toBe("SOLUTION_DISCOVERY");
+  });
+
+  it("Test 13/14: a caveated planning boundary is not counted as commercial timing, and renewal flexibility is not a confirmed renewal", async () => {
+    const result = await runSignalAgent({ customTranscript: readFileSync(FIXTURE, "utf8"), options: OFF });
+    expect(result.commercial_signals.timeline).toBeNull();
+    expect(result.commercial_signals.renewal_events.length).toBe(0);
+  });
+
+  it("Test 6/7: no product/service name leaks into the account candidates for this fixture", async () => {
+    const result = await runSignalAgent({ customTranscript: readFileSync(FIXTURE, "utf8"), options: OFF });
+    const names = [result.account_resolution.name, ...result.account_resolution.alternatives.map((a) => a.name)].filter(Boolean).map((n) => (n as string).toLowerCase());
+    for (const banned of ["splunk", "servicenow", "cisco", "thousandeyes", "opentelemetry", "kubernetes", "aks"]) {
+      expect(names).not.toContain(banned);
+    }
+  });
+});
+
 describe("Missing information and next action are always populated", () => {
   it("recommended_next_action is never empty, even for a thin transcript", async () => {
     const text = "We have too many network consoles and need a unified view.";

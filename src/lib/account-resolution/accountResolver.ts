@@ -1,6 +1,7 @@
 import { validateAccountCandidateName } from "@/lib/account-resolution/accountValidation";
 import { extractDialogueAccountCandidates, extractDomainMentions } from "@/lib/account-resolution/candidateExtractor";
 import { disambiguateAccount } from "@/lib/account-resolution/accountDisambiguation";
+import { parseOrganizationEntities } from "@/lib/account-resolution/organizationEntityParser";
 import { resolveDomainFromEmails } from "@/lib/account-resolution/domainResolver";
 import type { AccountCandidate, AccountResolutionInputs, AccountResolutionResult, AccountResolutionStatus } from "@/lib/account-resolution/types";
 
@@ -73,6 +74,19 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
   const dialogueCandidates = extractDialogueAccountCandidates(inputs.transcriptDialogueText);
   for (const candidate of dialogueCandidates) {
     pushIfValid(candidate.name, null, candidate.confidence, "transcript", ["dialogue_mention"]);
+  }
+
+  // Generic organization-entity extraction (independent of opportunity-
+  // claim polarity): an org named inside a negated commercial claim
+  // (e.g. "saying <Org> is running a SIEM competition") still yields an
+  // account candidate. Product/vendor names, apps, services, and
+  // placeholders are rejected by the parser + validation.
+  const orgEntities = parseOrganizationEntities(inputs.transcriptDialogueText, {
+    productStoplist: inputs.productStoplist,
+    participantFirstNames: inputs.participantFirstNames
+  });
+  for (const org of orgEntities.organization_candidates) {
+    pushIfValid(org.name, null, org.confidence, "transcript", ["organization_entity"]);
   }
 
   const domainMentions = extractDomainMentions(inputs.transcriptDialogueText);

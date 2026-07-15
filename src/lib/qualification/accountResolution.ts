@@ -21,12 +21,14 @@ export type AccountResolutionInput = {
   uploadedAccountContextName: string | null;
   dialogueMentionedCompany: string | null;
   openAiAccountCandidates: AccountCandidate[];
-  /** Raw customer-attributed transcript sentences — scanned by the
-   * generic company-introduction-pattern extractor
-   * (@/lib/account-resolution/candidateExtractor) so a company
-   * explicitly introduced in dialogue ("we are Acme Retail...") can be
-   * resolved even without an OpenAI-extracted candidate. */
+  /** All transcript sentence texts — scanned by the generic
+   * company-introduction + organization-entity parsers (org named in a
+   * negated claim still resolves). */
   transcriptDialogueText?: string[];
+  /** Product/vendor names from the taxonomy, so they are never treated
+   * as an account. */
+  productStoplist?: string[];
+  participantFirstNames?: string[];
 };
 
 function actionRequiredFor(status: AccountResolution["status"], confidence: number, source: AccountResolutionSource): string | null {
@@ -62,7 +64,9 @@ export async function resolveAccountIdentity(input: AccountResolutionInput): Pro
     openAiAccountCandidates: [
       ...input.openAiAccountCandidates.map((c) => ({ name: c.name, domain: c.domain, confidence: c.confidence, evidence_ids: c.evidence_ids })),
       ...(input.dialogueMentionedCompany ? [{ name: input.dialogueMentionedCompany, domain: null, confidence: 0.55, evidence_ids: ["dialogue_mention"] }] : [])
-    ]
+    ],
+    productStoplist: input.productStoplist,
+    participantFirstNames: input.participantFirstNames
   };
 
   // The transcript account line is already checked against the CRM

@@ -9,7 +9,7 @@ import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/ser
 import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs, detectExplicitNotPursuingStatement } from "@/lib/opportunity-fit/runOpportunityFit";
 import { computeTranscriptOpportunityScore, computeQualificationCompletenessScore, computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
-import { classifyDealMaturity, signalStrengthBand } from "@/lib/opportunity-fit/dealMaturity";
+import { classifyDealMaturity, signalStrengthBand, detectMaturityLimitingEvidence } from "@/lib/opportunity-fit/dealMaturity";
 import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
@@ -98,7 +98,15 @@ export async function runQualificationPipeline(params: {
     uploadedAccountContextName: null,
     dialogueMentionedCompany: dialogueMention,
     openAiAccountCandidates: extraction.result?.account_candidates ?? [],
-    transcriptDialogueText: params.transcript.sentences.filter((s) => s.isCustomer).map((s) => s.text)
+    // Scan ALL sentences (not only customer-attributed) for the org-
+    // entity parser — an organization can be named in any turn, including
+    // inside a negated commercial claim.
+    transcriptDialogueText: params.transcript.sentences.map((s) => s.text),
+    // Data-driven product/vendor stoplist from the taxonomy matches so a
+    // product name (e.g. the recommended solutions) is never treated as
+    // the account.
+    productStoplist: Array.from(new Set(params.matches.flatMap((m) => [...m.recommended_solutions, m.pain_category]))),
+    participantFirstNames: params.transcript.participantRecords.map((p) => p.name.split(/\s+/)[0]).filter(Boolean)
   });
 
   // Search-enrichment decision logic (Section 2/6).
@@ -280,7 +288,8 @@ export async function runQualificationPipeline(params: {
   // "what should we do now".
   const hasEvaluationOrPov = (params.nextStepSignals ?? []).length > 0 || transcriptOpportunitySignals.hasEvaluationLanguage;
   const hasPurchaseOrRenewalMomentum = params.purchaseLanguage.length > 0 || params.renewalEvents.length > 0;
-  const dealMaturity = classifyDealMaturity({ meddpicc, hasEvaluationOrPov, hasPurchaseOrRenewalMomentum });
+  const hasLimitingEvidence = detectMaturityLimitingEvidence(customerDialogueText);
+  const dealMaturity = classifyDealMaturity({ meddpicc, hasEvaluationOrPov, hasPurchaseOrRenewalMomentum, hasLimitingEvidence });
   const painPresent = meddpicc.identify_pain.status === "CONFIRMED" || meddpicc.identify_pain.status === "PARTIAL";
   const hasPainOrImpact = painPresent || transcriptOpportunitySignals.hasQuantifiedImpact;
 
