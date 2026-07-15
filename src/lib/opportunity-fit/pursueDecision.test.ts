@@ -46,9 +46,35 @@ describe("applyDecisionRules — Section 5 (high signal ≠ passive nurture)", (
     expect(applyDecisionRules({ decision: "NURTURE", gates: [], inputs: weak }).decision).toBe("NURTURE");
   });
 
-  it("does not floor when the signal is below the configured threshold, even with pain + momentum", () => {
-    const midSignal: DecisionRuleInputs = { ...STRONG_SIGNAL_INPUTS, signalStrength: 60 };
+  it("the HIGH-SIGNAL floor does not fire below threshold when there is no accepted next step (timing/funding momentum only)", () => {
+    const midSignal: DecisionRuleInputs = {
+      signalStrength: 60,
+      hasPainOrImpact: true,
+      momentum: { next_step: false, timing: true, funding: true, evaluation: true },
+      nurtureEvidence: { weak_timing: false, no_next_step: true, low_commitment: false, future_interest_only: false, no_material_impact: false }
+    };
     expect(applyDecisionRules({ decision: "NURTURE", gates: [], inputs: midSignal }).decision).toBe("NURTURE");
+  });
+
+  it("Section 12: a moderate signal with pain + an ACCEPTED next step is floored to PURSUE_WITH_DISCOVERY (discovery momentum), not NURTURE", () => {
+    const midWithNextStep: DecisionRuleInputs = {
+      signalStrength: 60,
+      hasPainOrImpact: true,
+      momentum: { next_step: true, timing: false, funding: false, evaluation: false },
+      nurtureEvidence: { weak_timing: true, no_next_step: false, low_commitment: true, future_interest_only: false, no_material_impact: false }
+    };
+    expect(applyDecisionRules({ decision: "NURTURE", gates: [], inputs: midWithNextStep }).decision).toBe("PURSUE_WITH_DISCOVERY");
+  });
+
+  it("discovery-momentum floor still respects a hard negative gate (does not override do_not_pursue/hold)", () => {
+    const midWithNextStep: DecisionRuleInputs = {
+      signalStrength: 60,
+      hasPainOrImpact: true,
+      momentum: { next_step: true, timing: false, funding: false, evaluation: false },
+      nurtureEvidence: { weak_timing: true, no_next_step: false, low_commitment: true, future_interest_only: false, no_material_impact: false }
+    };
+    const holdGate = [{ gate: "explicit_not_pursuing_statement", triggered: true, evidence_ids: [], effect: "hold" as const }];
+    expect(applyDecisionRules({ decision: "HOLD", gates: holdGate, inputs: midWithNextStep }).decision).toBe("HOLD");
   });
 
   it("does not floor a strong signal that lacks any momentum (pain alone is not enough)", () => {

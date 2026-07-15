@@ -1,6 +1,7 @@
 import type { BuyingIntentEvidence, BuyingIntentEvidenceType, IngestedTranscript, Stakeholder } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { classifyOwnership } from "@/lib/signal-agent/stakeholderExtraction";
+import { isInterrogative } from "@/lib/signal-agent/speechAct";
 
 /**
  * Explicit transcript intent extraction — deterministic, generic, and
@@ -58,7 +59,7 @@ const RULES: PatternRule[] = [
   },
   {
     type: "impact",
-    pattern: /\b\d+\s?(locations|sites|stores|branches|offices|users|employees|endpoints)\b/gi,
+    pattern: /\b\d+\s?(locations|sites|stores|branches|offices|users|employees|endpoints|people|responders|analysts|engineers|staff|teams)\b/gi,
     scoreContribution: 0.08
   },
   {
@@ -68,7 +69,7 @@ const RULES: PatternRule[] = [
   },
   {
     type: "impact",
-    pattern: /\b\d+\s?minutes?\b/gi,
+    pattern: /\b\d+\s?(minutes?|hours?|days?|weeks?)\b/gi,
     scoreContribution: 0.05
   },
   {
@@ -98,6 +99,11 @@ const RULES: PatternRule[] = [
   },
   {
     type: "next_step",
+    pattern: /\b(working|scenario|design|planning|discovery|architecture)\s+sessions?\b[^.]{0,60}/gi,
+    scoreContribution: 0.08
+  },
+  {
+    type: "next_step",
     pattern: /\bwithin \d+ business days?\b/gi,
     scoreContribution: 0.07
   },
@@ -119,11 +125,21 @@ const TIMING_LIMITING_RE = /\b(planning boundary|not a procurement timeline|not 
 const RENEWAL_HYPOTHETICAL_RE = /\b(renewal-related flexibility|may have|might have|could have|not confirmed|possible|possibly|potential(ly)?|some flexibility|would not build a plan)\b/i;
 const EVALUATION_LIMITING_RE = /\b(not (an|a) (evaluation|formal evaluation|competition|selection)|no approved (replacement )?(project|program)|not running a (siem )?competition|no formal (evaluation|competition))\b/i;
 
-/** Applies generic modality/limiting-qualifier filtering to raw intent
- * evidence so caveated or explicitly-limited statements are not counted
- * as firm timing / renewal / evaluation momentum (Section 7). */
+// Intent types that require a customer *assertion* — a question about any
+// of these ("...or platform renewal?", "are you ready to buy?") is a
+// speech act seeking information, never confirmed buying momentum. Only
+// quantified `impact` facts are allowed to survive inside a question,
+// since a number is a fact regardless of sentence form.
+const ASSERTION_REQUIRED_TYPES = new Set<BuyingIntentEvidenceType>(["budget", "timeline", "renewal", "evaluation", "next_step"]);
+
+/** Applies generic modality/limiting-qualifier and speech-act filtering to
+ * raw intent evidence so caveated, explicitly-limited, or interrogative
+ * statements are not counted as firm timing / renewal / evaluation
+ * momentum (Sections 7 and 9). */
 function refineIntentEvidence(evidence: BuyingIntentEvidence[]): BuyingIntentEvidence[] {
   return evidence.filter((item) => {
+    // Speech-act guard: a question never asserts customer buying intent.
+    if (ASSERTION_REQUIRED_TYPES.has(item.type) && isInterrogative(item.text)) return false;
     if (item.type === "timeline" && TIMING_LIMITING_RE.test(item.text)) return false;
     if (item.type === "renewal" && RENEWAL_HYPOTHETICAL_RE.test(item.text)) return false;
     if (item.type === "evaluation" && EVALUATION_LIMITING_RE.test(item.text)) return false;

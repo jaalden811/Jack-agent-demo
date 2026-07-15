@@ -15,7 +15,11 @@ import type { Meddpicc, MeddpiccField } from "@/lib/qualification/types";
 
 export type OpportunityFitScoringConfig = {
   metadata: { version: string; description: string };
-  public_signal_quality: { weights: Record<string, number>; thresholds: { strong: number; supporting: number; weak: number } };
+  public_signal_quality: {
+    weights: Record<string, number>;
+    thresholds: { strong: number; supporting: number; weak: number };
+    eligibility?: { account_context_entity_match_min: number; account_context_authority_min: number; narrative_transcript_relevance_min: number };
+  };
   external_fit_score: { weights: Record<string, number> };
   pursuit_score: {
     weights_with_external_fit: Record<string, number>;
@@ -28,6 +32,11 @@ export type OpportunityFitScoringConfig = {
     high_signal_incomplete_qualification: {
       description?: string;
       when: { signal_strength_min: number; hard_negative_gate: boolean; requires_pain_or_impact: boolean; requires_any_momentum: string[] };
+      minimum_recommendation: string;
+    };
+    discovery_momentum?: {
+      description?: string;
+      when: { hard_negative_gate: boolean; requires_pain_or_impact: boolean; requires_accepted_next_step: boolean };
       minimum_recommendation: string;
     };
     nurture: { description?: string; requires_any: string[] };
@@ -142,11 +151,13 @@ export function computeExternalFitScore(params: { signals: NormalizedPublicSigna
 
   const config = loadOpportunityFitScoringConfig();
   const weights = config.external_fit_score.weights;
-  // Only strong/supporting signals contribute to external fit (Phase
-  // 4/25): weak and rejected signals (including every transcript-
-  // alignment-zero result) contribute nothing, so many low-relevance
-  // hits can never manufacture a non-zero external-fit score.
-  const eligibleSignals = params.signals.filter((s) => s.evidence_class === "confirmed_public_fact" || s.evidence_class === "probable_public_signal");
+  // Only scoring-eligible signals contribute to external fit (Section 2):
+  // this is narrative-eligible + strong/supporting + no unresolved
+  // contradiction. Account-context-only, weak, and rejected signals
+  // (including every transcript-alignment-zero result) contribute
+  // nothing, so many low-relevance hits can never manufacture a non-zero
+  // external-fit score.
+  const eligibleSignals = params.signals.filter((s) => s.scoring_eligible);
 
   // Phase 10: "no evidence is not negative evidence." When a search ran
   // but produced no scoring-eligible public signal, external fit is

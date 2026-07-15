@@ -175,7 +175,15 @@ export function inferFunctionalOwners(transcript: IngestedTranscript, namedStake
   const owners: StakeholderRecord[] = [];
   const seenFunctions = new Set<string>();
 
-  for (const chunk of transcript.chunks) {
+  // Only customer-attributed turns can establish a customer-side
+  // functional owner — a vendor/seller describing a function (or asking
+  // "who owns X?") must never seed the customer buying committee
+  // (Section 9). Falls back to all chunks only when no customer turn
+  // exists, so freeform/untagged transcripts still surface owners.
+  const customerChunks = transcript.chunks.filter((chunk) => chunk.isCustomer);
+  const ownerChunks = customerChunks.length > 0 ? customerChunks : transcript.chunks;
+
+  for (const chunk of ownerChunks) {
     for (const def of FUNCTIONAL_OWNER_PATTERNS) {
       if (seenFunctions.has(def.function_name)) continue;
       const matched = def.patterns.find((pattern) => pattern.test(chunk.text));

@@ -126,6 +126,24 @@ export function applyDecisionRules(params: { decision: PursuitDecision; gates: H
     }
   }
 
+  // Discovery-momentum floor (Section 12): meaningful customer pain + an
+  // accepted next step (working session / pilot / PoV / workshop) with no
+  // hard disqualification is an active early-stage opportunity — floored to
+  // at least PURSUE_WITH_DISCOVERY even when signal strength is only
+  // moderate, so it is never a renewal-led NURTURE.
+  if (rules.discovery_momentum) {
+    const dm = rules.discovery_momentum.when;
+    const dmPain = !dm.requires_pain_or_impact || params.inputs.hasPainOrImpact;
+    const dmNextStep = !dm.requires_accepted_next_step || params.inputs.momentum.next_step;
+    if (dmPain && dmNextStep) {
+      const minimum = rules.discovery_momentum.minimum_recommendation as PursuitDecision;
+      if (DECISION_RANK[params.decision] < DECISION_RANK[minimum]) {
+        applied.push("discovery_momentum_floor");
+        return { decision: minimum, applied };
+      }
+    }
+  }
+
   return { decision: params.decision, applied };
 }
 

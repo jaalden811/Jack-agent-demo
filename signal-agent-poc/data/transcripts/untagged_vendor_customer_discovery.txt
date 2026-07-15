@@ -1,0 +1,23 @@
+Account: Meridian Freight Systems
+Meeting: Cross-domain observability and security discovery
+Date: 2026-07-14
+
+00:00 — Rachel: Thanks everyone. Today is discovery, not a demo. Based on what we heard, we can show how the platform fits, but first help us understand the environment and what a useful next step looks like.
+00:18 — Jordan: Good. In our environment reliability sits with my team, but ownership is spread out. We run cloud services, older data-center integrations, and everything funnels into order processing.
+00:36 — Rachel: Are we looking at compliance, detection gaps, analyst workload, or platform renewal?
+00:44 — Jordan: Mostly cross-domain evidence correlation. When ordering degrades I want one place to see transactions, dependencies, infrastructure, and nearby security activity.
+01:02 — Daniel: Where does the failure usually surface? Our platform can correlate across those domains, but I need to understand your telemetry first.
+01:14 — Jordan: The last major incident pulled in about 35 people and took four days to confirm the root cause. Most of the first hour is manual investigation and arguing about which dashboard is right.
+01:34 — Maya: Security has the same problem. We own detection, and our analysts spend hours gathering evidence by exporting files between tools.
+01:50 — Eric: From a funding view, there are placeholders related to resilience and tool rationalization. I would not describe that as a dedicated product budget.
+02:06 — Maya: Security may have renewal-related flexibility, but I don't want that interpreted as confirmation of a replacement.
+02:20 — Eric: Approval is distributed. The CIO would sponsor it, infrastructure controls part of the budget, and my team controls vendor consolidation. Procurement does not need to join yet.
+02:40 — Jordan: Late next quarter is probably the practical boundary, but that is not a procurement timeline.
+02:54 — Rachel: That helps. Let me map our capabilities to your use cases rather than lead with the umbrella term.
+03:08 — Daniel: For a useful proof, we can demonstrate one operational scenario and one identity and security scenario using synthetic but credible data.
+03:24 — Jordan: Yes, let's run a working session around two or three scenarios. Use ordering for the operational one.
+03:38 — Maya: Include an identity and security scenario: compromised credentials across identity, endpoint, and application activity.
+03:52 — Jordan: We need agreed participants, evaluation criteria, and an outline within one week distributed to the reliability, security, and architecture leads.
+04:08 — Eric: The evaluation should show measurable reduction in time to establish scope and the number of people pulled into an incident.
+04:24 — Rachel: Understood. We'll prepare the outline, propose participants, and bring a rough commercial model to the working session.
+04:40 — Jordan: Good. Make it technical. Our architects lose interest if it is only an executive dashboard.

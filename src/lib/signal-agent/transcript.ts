@@ -1,4 +1,5 @@
 import type { IngestedTranscript, ParticipantClassification, ParticipantRecord, TranscriptChunk, TranscriptDiagnostics, TranscriptSentence } from "@/lib/signal-agent/types";
+import { inferSpeakerSides } from "@/lib/signal-agent/speakerSide";
 
 /**
  * Splits a transcript into speaker turns and sentences, extracts account,
@@ -411,15 +412,32 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
   }
 
   // Resolve any remaining "unknown" classifications (a name that only
-  // ever appeared as a bare dialogue speaker, with no header/legacy tag)
-  // the same way the legacy parser did: if some participants were
-  // explicitly tagged customer, an untagged one defaults to internal;
-  // if nobody was tagged, everyone defaults to customer (freeform-paste
-  // assumption — never silently drop evidence).
+  // ever appeared as a bare dialogue speaker, with no header/legacy tag).
+  // If some participants were explicitly tagged customer, an untagged one
+  // defaults to internal. If NOBODY was tagged, sellers would otherwise
+  // all default to customer and pollute customer intent / the buying
+  // committee — so first run deterministic, behavior-based speaker-side
+  // inference (Section 9) to separate vendor-side speakers from
+  // customer-side ones; anyone not confidently vendor stays customer
+  // (freeform-paste assumption — never silently drop evidence).
   const anyExplicitCustomerTag = Array.from(recordsByKey.values()).some((record) => record.classification === "customer");
-  for (const record of recordsByKey.values()) {
-    if (record.classification === "unknown") {
-      record.classification = anyExplicitCustomerTag ? "internal" : "customer";
+  if (!anyExplicitCustomerTag) {
+    const turnsByRecordName = new Map<string, string[]>();
+    sentences.forEach((sentence, index) => {
+      const record = sentenceRecords[index];
+      if (!record || record.classification !== "unknown") return;
+      const list = turnsByRecordName.get(record.name) ?? [];
+      list.push(sentence.text);
+      turnsByRecordName.set(record.name, list);
+    });
+    const sideByName = inferSpeakerSides(turnsByRecordName);
+    for (const record of recordsByKey.values()) {
+      if (record.classification !== "unknown") continue;
+      record.classification = sideByName.get(record.name)?.side === "vendor" ? "vendor" : "customer";
+    }
+  } else {
+    for (const record of recordsByKey.values()) {
+      if (record.classification === "unknown") record.classification = "internal";
     }
   }
 

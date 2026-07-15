@@ -30,6 +30,59 @@ export function classifyEvidenceStrength(qualityScore: number): EvidenceClass {
   return "rejected";
 }
 
+/** Three independent public-evidence eligibility levels (Section 2):
+ *
+ *  - account_context_eligible: a credible, correctly-matched source that
+ *    can establish company identity/domain/industry/leadership. It does
+ *    NOT need to align with the opportunity theme and, on its own, never
+ *    affects external-fit scoring. This is why an official company page
+ *    with zero opportunity relevance is still *accepted* for account
+ *    context instead of being dropped.
+ *  - narrative_eligible: account-context + real transcript alignment, so
+ *    it may appear in the executive summary / Public Signal Brief /
+ *    messages.
+ *  - scoring_eligible: narrative + strong/supporting strength with no
+ *    unresolved contradiction, so it may affect external account fit.
+ *
+ * Every level that fails records a machine-readable rejection reason.
+ */
+export function computeEvidenceEligibility(params: {
+  entityMatch: number;
+  authority: number;
+  transcriptRelevance: number;
+  evidenceClass: EvidenceClass;
+  hasContradiction?: boolean;
+}): { account_context_eligible: boolean; narrative_eligible: boolean; scoring_eligible: boolean; rejection_reasons: string[] } {
+  const cfg = loadOpportunityFitScoringConfig().public_signal_quality.eligibility ?? {
+    account_context_entity_match_min: 0.6,
+    account_context_authority_min: 0.5,
+    narrative_transcript_relevance_min: 0.35
+  };
+  const rejection_reasons: string[] = [];
+
+  const account_context_eligible = params.entityMatch >= cfg.account_context_entity_match_min && params.authority >= cfg.account_context_authority_min;
+  if (!account_context_eligible) {
+    if (params.entityMatch < cfg.account_context_entity_match_min) rejection_reasons.push("entity_match_below_account_context_floor");
+    if (params.authority < cfg.account_context_authority_min) rejection_reasons.push("source_authority_below_account_context_floor");
+  }
+
+  const meetsTranscriptFloor = params.transcriptRelevance >= cfg.narrative_transcript_relevance_min;
+  const narrative_eligible = account_context_eligible && meetsTranscriptFloor && params.evidenceClass !== "rejected";
+  if (account_context_eligible && !narrative_eligible) {
+    if (!meetsTranscriptFloor) rejection_reasons.push("transcript_relevance_below_narrative_floor");
+    if (params.evidenceClass === "rejected") rejection_reasons.push("evidence_strength_rejected");
+  }
+
+  const isStrongOrSupporting = params.evidenceClass === "confirmed_public_fact" || params.evidenceClass === "probable_public_signal";
+  const scoring_eligible = narrative_eligible && isStrongOrSupporting && !params.hasContradiction;
+  if (narrative_eligible && !scoring_eligible) {
+    if (!isStrongOrSupporting) rejection_reasons.push("not_strong_or_supporting_for_scoring");
+    if (params.hasContradiction) rejection_reasons.push("unresolved_contradiction");
+  }
+
+  return { account_context_eligible, narrative_eligible, scoring_eligible, rejection_reasons };
+}
+
 /** What each public-signal category may ever be used to `support` —
  * technology_alignment, for example, may support solution_fit but
  * explicitly can never support buying_capacity or account_fit claims
