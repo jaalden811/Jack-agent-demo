@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
+import type { NextBestAction } from "@/lib/action-intelligence/types";
+import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types";
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
@@ -651,6 +653,14 @@ export type SecureNetworkingTriageResult = {
    * from customer behavior plus a distributed-economic-authority model
    * (never a fabricated named Economic Buyer). */
   buying_committee: AuthorityGraph;
+  /** The canonical, specific Next Best Action (who/does what/why/using
+   * which evidence/by when/success criteria) — the defining output. */
+  next_best_action: NextBestAction;
+  /** Lane-specific specialist handoff packets: Bella (commercial) and Jack
+   * (technical) each arrive already synced. */
+  specialist_handoffs: { sales: SpecialistHandoffPacket; technical: SpecialistHandoffPacket };
+  /** The do-not-re-ask index: answered / open / declined / contradictory. */
+  question_index: QuestionIndex;
 };
 
 export type GenericDiagnostics = {

@@ -304,6 +304,228 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* ── Action Center (Section 15) ───────────────────────────────────────── */
+
+.action-center {
+  border: 1px solid var(--border-active);
+  box-shadow: var(--glow-blue);
+  position: relative;
+  overflow: hidden;
+}
+
+.action-center::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--brand-gradient);
+}
+
+.action-center-suppressed {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+}
+
+.action-center-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.action-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.action-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.action-title {
+  font-size: clamp(1.3rem, 2.4vw, 1.7rem);
+  margin: 10px 0 6px;
+  color: var(--text-primary);
+}
+
+.action-summary {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  max-width: 80ch;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.action-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.meta-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.meta-value {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.action-block {
+  margin-bottom: 14px;
+}
+
+.action-list,
+.handoff-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.action-list li,
+.handoff-list li {
+  margin-bottom: 6px;
+}
+
+.action-readiness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.action-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 16px;
+}
+
+.action-status-note {
+  margin: 10px 0 0;
+  color: var(--cyan);
+  font-size: 13px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.chip-success { color: var(--success); border-color: rgba(46, 214, 161, 0.4); background: var(--tint-success); }
+.chip-warning { color: var(--warning); border-color: rgba(255, 200, 87, 0.4); background: var(--tint-warning); }
+.chip-danger { color: var(--danger); border-color: rgba(255, 97, 113, 0.4); background: var(--tint-danger); }
+.chip-info { color: var(--info); border-color: rgba(70, 184, 255, 0.4); background: var(--tint-info); }
+.chip-muted { color: var(--text-muted); }
+
+/* ── Specialist Handoff (Section 8/15) ────────────────────────────────── */
+
+.handoff-lane-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.handoff-brief {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--cyan);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.handoff-brief p {
+  margin: 6px 0 0;
+  color: var(--text-primary);
+  line-height: 1.55;
+}
+
+.handoff-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.handoff-col h4,
+.handoff-block h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 12px 0 4px;
+}
+
+.handoff-answer {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.handoff-followup {
+  color: var(--warning);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.handoff-known {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.handoff-block {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.handoff-declined {
+  border-left: 3px solid var(--danger);
+}
+
+.handoff-list .chip {
+  margin-left: 6px;
+}
+
 .provider-grid,
 .summary-grid,
 .detail-grid {

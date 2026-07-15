@@ -11,6 +11,7 @@ import { UseCaseCard } from "@/components/signal-agent/UseCaseCard";
 import { TranscriptCard, type TranscriptRunPayload } from "@/components/signal-agent/TranscriptCard";
 import { ContextCard } from "@/components/signal-agent/ContextCard";
 import { SummaryCard } from "@/components/signal-agent/SummaryCard";
+import { ActionCenter } from "@/components/signal-agent/ActionCenter";
 import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
 import { SignalToActionJourney } from "@/components/signal-agent/SignalToActionJourney";
@@ -228,6 +229,7 @@ export function SignalAgentWorkspace() {
           {result && !loading ? (
             <>
               <SignalToActionJourney result={result} />
+              <ActionCenter result={result} />
               <ScoreSemanticsSummary result={result} />
               <SummaryCard result={result} />
               <DeliveryResultCard result={result} onResultUpdate={setResult} />

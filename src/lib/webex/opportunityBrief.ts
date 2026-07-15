@@ -120,7 +120,10 @@ function buildOpportunityThesis(result: SecureNetworkingTriageResult): string {
   if (commercial.renewal_events.length > 0) drivers.push("active renewal windows");
   if (commercial.quantified_impact.length > 0) drivers.push("quantified business impact");
   const driverText = drivers.length > 0 ? ` driven by ${drivers.slice(0, 3).join(", ")}` : "";
-  return clip(`A ${result.executive_summary.verdict === "HIGH_INTENT" ? "credible" : "early"} opportunity centered on ${opportunity}${driverText}.`, 320);
+  // Correct article agreement: "An early" (vowel) vs "A credible".
+  const qualifier = result.executive_summary.verdict === "HIGH_INTENT" ? "credible" : "early";
+  const article = /^[aeiou]/i.test(qualifier) ? "An" : "A";
+  return clip(`${article} ${qualifier} opportunity centered on ${opportunity}${driverText}.`, 320);
 }
 
 function buildWhyNow(result: SecureNetworkingTriageResult): string[] {

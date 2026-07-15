@@ -17,6 +17,10 @@ import { randomUUID } from "node:crypto";
 import { runQualificationPipeline } from "@/lib/qualification/runQualification";
 import { extractGenericSignals, groupGenericSignalsByBucket } from "@/lib/qualification/genericSignalExtraction";
 import { buildCategoryScores } from "@/lib/signal-agent/dominance";
+import { buildNextBestAction, type ActionOwners } from "@/lib/action-intelligence/nextBestAction";
+import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
+import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
+import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
   EntryEvaluation,
@@ -27,6 +31,24 @@ import type {
   SecureNetworkingTriageResult
 } from "@/lib/signal-agent/types";
 import { TranscriptParseIncompleteError } from "@/lib/signal-agent/types";
+
+/** Action owners come from the routing config recipients (config-driven,
+ * never hard-coded), with a safe generic fallback so the action layer
+ * always has an owner to name. */
+function resolveActionOwners(): ActionOwners {
+  try {
+    const config = loadRoutingConfig();
+    return {
+      sales: { name: config.recipients.sales.name, role: config.recipients.sales.assignment_label },
+      technical: { name: config.recipients.technical.name, role: config.recipients.technical.assignment_label }
+    };
+  } catch {
+    return {
+      sales: { name: "the commercial owner", role: "Sales / Commercial" },
+      technical: { name: "the technical specialist", role: "Technical / Specialist" }
+    };
+  }
+}
 
 /**
  * Orchestrates the full "secure_networking_deal_signal_triage" spine:
@@ -382,7 +404,25 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     },
     serpapi_signals: qualification.serpapi_signals,
     opportunity_scoring: qualification.opportunity_scoring,
-    buying_committee: qualification.buying_committee
+    buying_committee: qualification.buying_committee,
+    // Placeholders — replaced immediately below once the full result
+    // (including run_id) exists; the action/handoff layer reads from the
+    // assembled result rather than re-deriving evidence.
+    next_best_action: {} as SecureNetworkingTriageResult["next_best_action"],
+    specialist_handoffs: {} as SecureNetworkingTriageResult["specialist_handoffs"],
+    question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] }
+  };
+
+  // Action-intelligence + specialist-handoff layer (the defining output):
+  // one specific Next Best Action, a do-not-re-ask index, and lane-
+  // specific handoff packets — all derived from the assembled evidence.
+  // Owners are config-driven (routing recipients), never hard-coded.
+  const actionOwners = resolveActionOwners();
+  result.question_index = buildQuestionIndex(result);
+  result.next_best_action = buildNextBestAction(result, actionOwners);
+  result.specialist_handoffs = {
+    sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
+    technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
 
   const auditOutcome = await appendAuditRecord(result);
