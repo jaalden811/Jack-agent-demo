@@ -2,6 +2,7 @@ import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { AnalysisLink } from "@/lib/qualification/types";
 import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } from "@/lib/webex/types";
 import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
+import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 
 /**
  * Builds the concise, tailored Webex direct-message markdown and Outlook
@@ -19,14 +20,27 @@ import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
  * plain-text run-ID reference is used instead (never a dead hyperlink).
  */
 
-// Rich briefs need more room than a one-line alert. Webex supports long
-// markdown messages; the delivery validator enforces the hard ceiling
-// (WEBEX_HARD_CHAR_CEILING). We target a rich-but-scannable brief that
-// stays well under that ceiling.
-const MAX_MESSAGE_CHARS = 2300;
+// Webex accepts up to 7,439 bytes of markdown. We compose a rich brief
+// against a BYTE budget (not a character guess), reserving headroom for
+// the link/footer, and — when over budget — drop whole low-priority
+// trailing sections rather than cutting a field mid-sentence with an
+// ellipsis (Phase 13).
+const MAX_MESSAGE_BYTES = 6400;
 
-function truncate(text: string, maxChars: number): string {
-  return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** Field-level clip that cuts only at a word boundary and NEVER appends
+ * an ellipsis (Phase 13: no truncation ellipsis, no mid-word cut). Used
+ * with generous limits so real sentences survive; the byte budget is the
+ * true cap. */
+function clipAtWord(text: string, maxChars: number): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  const slice = trimmed.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(" ");
+  return (lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice).trim();
 }
 
 /** Joins pre-built brief sections into markdown, dropping empty sections
@@ -39,6 +53,31 @@ function joinSections(parts: Array<string | null | undefined>): string {
     out.push(part);
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Composes markdown from ordered sections against a byte budget. Each
+ * section is tagged droppable or core; when over budget, droppable
+ * sections are removed from lowest priority first (never mid-content),
+ * and core sections (account/signal/pursuit/primary actions/footer) are
+ * always retained. Produces no ellipsis. */
+type Section = { text: string | null | undefined; droppable?: boolean; priority?: number };
+
+function composeToByteBudget(sections: Section[], budgetBytes: number): string {
+  const active = sections.map((s, index) => ({ ...s, index }));
+  let markdown = joinSections(active.map((s) => s.text));
+  if (byteLength(markdown) <= budgetBytes) return markdown;
+
+  // Remove droppable sections, lowest priority first, then latest.
+  const droppableOrder = active
+    .filter((s) => s.droppable && s.text)
+    .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0) || b.index - a.index);
+  const removed = new Set<number>();
+  for (const section of droppableOrder) {
+    if (byteLength(markdown) <= budgetBytes) break;
+    removed.add(section.index);
+    markdown = joinSections(active.filter((s) => !removed.has(s.index)).map((s) => s.text));
+  }
+  return markdown;
 }
 
 function bulletList(lines: string[]): string {
@@ -87,7 +126,7 @@ function whyNowEvidence(result: SecureNetworkingTriageResult): string {
   const timeline = result.commercial_signals.timeline;
   const renewal = result.commercial_signals.renewal_events[0];
   const evidence = budget || timeline || renewal || result.executive_summary.business_impact || result.executive_summary.urgency;
-  return truncate(evidence || "No explicit commercial evidence quoted.", 260);
+  return clipAtWord(evidence || "No explicit commercial evidence quoted.", 400);
 }
 
 // ─── Webex direct messages ──────────────────────────────────────────────────
@@ -101,54 +140,50 @@ export function buildSalesMessage(params: {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
   const brief = buildDeterministicBrief(result);
+  const account = getCanonicalAccount(result);
   const confidencePct = Math.round(summary.confidence * 100);
 
-  // Webex-specific caps so the action-oriented sections (Bella next,
-  // risks) always survive truncation — the full-length brief is retained
-  // for the UI and email.
-  const whyNow = brief.why_now.slice(0, 4).map((s) => truncate(s, 120));
+  // Full sentences survive (no per-field ellipsis); the byte budget drops
+  // whole low-priority sections if ever needed. Core sections (account,
+  // signal, pursuit, thesis, why-now, primary actions, footer) are never
+  // dropped.
+  const whyNow = brief.why_now.slice(0, 4);
   const stakeholders = brief.stakeholder_lines.filter((s) => !s.includes("(role only)")).slice(0, 5);
   const salesActions = brief.sales_actions.slice(0, 5);
   const topRisks = brief.top_risks.slice(0, 4);
 
-  const markdown = truncate(
-    joinSections([
-      `**Sales action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**`,
-      brief.pursuit_line ? `**Pursuit:** ${brief.pursuit_line}` : null,
-      `**Account:** ${summary.account ?? "Not resolved"}${brief.account_action ? ` — ${brief.account_action}` : ""}`,
-      `**Lifecycle:** ${decision.lifecycle_stage}`,
-      "",
-      "**Opportunity thesis**",
-      brief.opportunity_thesis,
-      whyNow.length > 0 ? "" : null,
-      whyNow.length > 0 ? "**Why now**" : null,
-      whyNow.length > 0 ? bulletList(whyNow) : null,
-      "",
-      "**MEDDPICC**",
-      bulletList(brief.meddpicc_lines),
-      "",
-      "**Bella next**",
-      bulletList(salesActions),
-      topRisks.length > 0 ? "" : null,
-      topRisks.length > 0 ? "**Top risks**" : null,
-      topRisks.length > 0 ? bulletList(topRisks) : null,
-      stakeholders.length > 0 ? "" : null,
-      stakeholders.length > 0 ? "**Stakeholders**" : null,
-      stakeholders.length > 0 ? bulletList(stakeholders) : null,
-      "",
-      `**Technical counterpart:** ${technicalCounterpartText(decision)} — Jack to define architecture, integrations, and POV success criteria.`,
-      "",
-      analysisLinkMarkdown(analysisLink, runId),
-      "",
-      "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot."
-    ]),
-    MAX_MESSAGE_CHARS
+  const markdown = composeToByteBudget(
+    [
+      { text: `**Sales action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**` },
+      { text: brief.pursuit_line ? `**Pursuit:** ${brief.pursuit_line}` : null },
+      { text: `**Account:** ${account.label}${brief.account_action ? ` — ${brief.account_action}` : ""}` },
+      { text: `**Lifecycle:** ${decision.lifecycle_stage}` },
+      { text: "" },
+      { text: "**Opportunity thesis**" },
+      { text: brief.opportunity_thesis },
+      { text: whyNow.length > 0 ? "\n**Why now**" : null },
+      { text: whyNow.length > 0 ? bulletList(whyNow) : null },
+      { text: "\n**MEDDPICC**" },
+      { text: bulletList(brief.meddpicc_lines) },
+      { text: "\n**Bella next**" },
+      { text: bulletList(salesActions) },
+      { text: topRisks.length > 0 ? "\n**Top risks**" : null, droppable: true, priority: 2 },
+      { text: topRisks.length > 0 ? bulletList(topRisks) : null, droppable: true, priority: 2 },
+      { text: stakeholders.length > 0 ? "\n**Stakeholders**" : null, droppable: true, priority: 1 },
+      { text: stakeholders.length > 0 ? bulletList(stakeholders) : null, droppable: true, priority: 1 },
+      { text: `\n**Technical counterpart:** ${technicalCounterpartText(decision)} — Jack to define architecture, integrations, and POV success criteria.` },
+      { text: "" },
+      { text: analysisLinkMarkdown(analysisLink, runId) },
+      { text: "" },
+      { text: "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot." }
+    ],
+    MAX_MESSAGE_BYTES
   );
   return {
     lane: "sales",
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
-    subject: `Sales action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
+    subject: `Sales action — ${summary.verdict} — ${account.label}`,
     markdown,
     character_count: markdown.length,
     synthesized_by_ai: false
@@ -164,6 +199,7 @@ export function buildTechnicalMessage(params: {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
+  const account = getCanonicalAccount(result);
 
   const brief = buildDeterministicBrief(result);
 
@@ -173,42 +209,41 @@ export function buildTechnicalMessage(params: {
 
   const solutionMotion = primaryMatch?.recommended_solutions.length ? primaryMatch.recommended_solutions.join(", ") : "Not yet routed";
 
-  const evidenceSnippets = (primaryMatch?.matched_text ?? []).slice(0, 2).map((snippet) => truncate(snippet, 160));
+  // Full verbatim snippets (generous word-boundary clip, no ellipsis).
+  const evidenceSnippets = (primaryMatch?.matched_text ?? []).slice(0, 2).map((snippet) => clipAtWord(snippet, 400));
+  const strategyContext = technicalStrategyContextMarkdown(result);
 
   // Technical lane is deliberately distinct from sales: architecture,
   // integrations, evidence, and validation — and the commercial pursuit
   // score is intentionally omitted (Section 13).
-  const markdown = truncate(
-    joinSections([
-      `**Technical action — ${summary.verdict.replace(/_/g, " ")}**`,
-      `**Account:** ${summary.account ?? "Not resolved"}`,
-      `**Lifecycle:** ${decision.lifecycle_stage}`,
-      "",
-      "**Customer pain**",
-      truncate(summary.business_problem, 320),
-      "",
-      `**Current environment:** ${truncate(currentEnvironment, 200)}`,
-      `**Solution motion:** ${truncate(solutionMotion, 200)}`,
-      "",
-      "**Jack next — architecture & validation**",
-      bulletList(brief.technical_actions),
-      "",
-      "**Evidence**",
-      evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.",
-      "",
-      technicalStrategyContextMarkdown(result) || null,
-      "",
-      analysisLinkMarkdown(analysisLink, runId),
-      "",
-      "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot."
-    ]),
-    MAX_MESSAGE_CHARS
+  const markdown = composeToByteBudget(
+    [
+      { text: `**Technical action — ${summary.verdict.replace(/_/g, " ")}**` },
+      { text: `**Account:** ${account.label}` },
+      { text: `**Lifecycle:** ${decision.lifecycle_stage}` },
+      { text: "" },
+      { text: "**Customer pain**" },
+      { text: clipAtWord(summary.business_problem, 600) },
+      { text: "" },
+      { text: `**Current environment:** ${clipAtWord(currentEnvironment, 400)}` },
+      { text: `**Solution motion:** ${clipAtWord(solutionMotion, 400)}` },
+      { text: "\n**Jack next — architecture & validation**" },
+      { text: bulletList(brief.technical_actions) },
+      { text: "\n**Evidence**" },
+      { text: evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.", droppable: true, priority: 2 },
+      { text: strategyContext ? `\n${strategyContext}` : null, droppable: true, priority: 1 },
+      { text: "" },
+      { text: analysisLinkMarkdown(analysisLink, runId) },
+      { text: "" },
+      { text: "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot." }
+    ],
+    MAX_MESSAGE_BYTES
   );
   return {
     lane: "technical",
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
-    subject: `Technical action — ${summary.verdict} — ${summary.account ?? "Unknown account"}`,
+    subject: `Technical action — ${summary.verdict} — ${account.label}`,
     markdown,
     character_count: markdown.length,
     synthesized_by_ai: false
@@ -251,6 +286,7 @@ export function buildSalesEmail(params: {
 }): EmailMessagePreview {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
+  const account = getCanonicalAccount(result);
 
   const commercialSignalParts = [
     result.commercial_signals.budget ? `Budget: ${result.commercial_signals.budget}` : null,
@@ -259,7 +295,7 @@ export function buildSalesEmail(params: {
   ].filter(Boolean) as string[];
 
   const bullets = [
-    { label: "Account", value: summary.account ?? "Unknown" },
+    { label: "Account", value: account.label },
     { label: "Verdict and confidence", value: `${summary.verdict} (${Math.round(summary.confidence * 100)}%)` },
     { label: "Lifecycle stage", value: decision.lifecycle_stage },
     { label: "Commercial signals", value: commercialSignalParts.length > 0 ? commercialSignalParts.join("; ") : "None explicitly stated" },
@@ -273,7 +309,7 @@ export function buildSalesEmail(params: {
     lane: "sales",
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
-    subject: `[${summary.verdict}] Sales action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
+    subject: `[${summary.verdict}] Sales action — ${account.label} — ${summary.primary_opportunity ?? "Opportunity"}`,
     html: `<p>Peachtree Select pilot — Sales action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
     text: `Peachtree Select pilot — Sales action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
     synthesized_by_ai: false
@@ -289,6 +325,7 @@ export function buildTechnicalEmail(params: {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
+  const account = getCanonicalAccount(result);
 
   const currentEnvironment = primaryMatch?.solution_decision.retained_existing_platforms.length
     ? primaryMatch.solution_decision.retained_existing_platforms.join(", ")
@@ -301,7 +338,7 @@ export function buildTechnicalEmail(params: {
     .join("; ");
 
   const bullets = [
-    { label: "Account", value: summary.account ?? "Unknown" },
+    { label: "Account", value: account.label },
     { label: "Customer pain", value: summary.business_problem || "Not stated" },
     { label: "Current architecture / environment", value: currentEnvironment },
     { label: "Recommended solution motion", value: solutionMotion },
@@ -314,7 +351,7 @@ export function buildTechnicalEmail(params: {
     lane: "technical",
     recipient_name: decision.recipient_name,
     recipient_email: decision.recipient_email,
-    subject: `[${summary.verdict}] Technical action — ${summary.account ?? "Unknown account"} — ${summary.primary_opportunity ?? "Opportunity"}`,
+    subject: `[${summary.verdict}] Technical action — ${account.label} — ${summary.primary_opportunity ?? "Opportunity"}`,
     html: `<p>Peachtree Select pilot — Technical action.</p>${bulletsToHtml(bullets)}${analysisLinkHtml(analysisLink, runId)}`,
     text: `Peachtree Select pilot — Technical action.\n\n${bulletsToText(bullets)}\n\n${analysisLink.included && analysisLink.url ? `Full analysis: ${analysisLink.url}` : `Analysis reference: Run ${runId}`}`,
     synthesized_by_ai: false

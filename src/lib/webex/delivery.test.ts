@@ -3,11 +3,11 @@ import { deliverMessages } from "@/lib/webex/delivery";
 import type { WebexMessagePreview } from "@/lib/webex/types";
 
 vi.mock("@/lib/webex/client", () => ({
-  sendDirectMessage: vi.fn(),
+  sendWebexMessage: vi.fn(),
   WebexApiError: class WebexApiError extends Error {}
 }));
 
-import { sendDirectMessage } from "@/lib/webex/client";
+import { sendWebexMessage } from "@/lib/webex/client";
 
 const salesMessage: WebexMessagePreview = {
   lane: "sales",
@@ -30,21 +30,21 @@ const technicalMessage: WebexMessagePreview = {
 };
 
 beforeEach(() => {
-  vi.mocked(sendDirectMessage).mockReset();
+  vi.mocked(sendWebexMessage).mockReset();
 });
 
 describe("deliverMessages", () => {
   it("sends via toPersonEmail (no room ID) using the connected user's own access token by default", async () => {
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-123", toPersonEmail: "belrobin@cisco.com" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-123", toPersonEmail: "belrobin@cisco.com" });
 
     const results = await deliverMessages([salesMessage], { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com" }, "run-1");
 
-    expect(sendDirectMessage).toHaveBeenCalledWith("connected-user-token", {
+    expect(sendWebexMessage).toHaveBeenCalledWith("connected-user-token", {
       toPersonEmail: "belrobin@cisco.com",
       markdown: "**Sales action**"
     });
-    expect(sendDirectMessage).toHaveBeenCalledTimes(1);
-    const [, params] = vi.mocked(sendDirectMessage).mock.calls[0];
+    expect(sendWebexMessage).toHaveBeenCalledTimes(1);
+    const [, params] = vi.mocked(sendWebexMessage).mock.calls[0];
     expect(params).not.toHaveProperty("roomId");
 
     expect(results[0].delivered).toBe(true);
@@ -54,14 +54,14 @@ describe("deliverMessages", () => {
   });
 
   it("also works with an optional bot token as the sender", async () => {
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-bot-1", toPersonEmail: "belrobin@cisco.com" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-bot-1", toPersonEmail: "belrobin@cisco.com" });
     const results = await deliverMessages([salesMessage], { accessToken: "bot-token", mode: "bot" }, "run-1");
-    expect(sendDirectMessage).toHaveBeenCalledWith("bot-token", { toPersonEmail: "belrobin@cisco.com", markdown: "**Sales action**" });
+    expect(sendWebexMessage).toHaveBeenCalledWith("bot-token", { toPersonEmail: "belrobin@cisco.com", markdown: "**Sales action**" });
     expect(results[0].delivered).toBe(true);
   });
 
   it("one recipient failing does not block the other lane's delivery", async () => {
-    vi.mocked(sendDirectMessage).mockImplementation(async (_token, params) => {
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       if (params.toPersonEmail === "belrobin@cisco.com") {
         throw new Error("Could not resolve recipient");
       }
@@ -84,11 +84,11 @@ describe("deliverMessages", () => {
     expect(results[0].attempted).toBe(false);
     expect(results[0].delivered).toBe(false);
     expect(results[0].error).toContain("connect Webex");
-    expect(sendDirectMessage).not.toHaveBeenCalled();
+    expect(sendWebexMessage).not.toHaveBeenCalled();
   });
 
   it("records an error for a lane with no configured recipient email without touching the other lane", async () => {
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-technical-789", toPersonEmail: "jaalden@cisco.com" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-technical-789", toPersonEmail: "jaalden@cisco.com" });
     const salesWithoutEmail: WebexMessagePreview = { ...salesMessage, recipient_email: null };
 
     const results = await deliverMessages([salesWithoutEmail, technicalMessage], { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com" }, "run-1");
@@ -106,15 +106,52 @@ describe("deliverMessages", () => {
     expect(results[0].attempted).toBe(false);
     expect(results[0].error_code).toBe("self_direct_message_unsupported");
     expect(results[0].retryable).toBe(false);
-    expect(sendDirectMessage).not.toHaveBeenCalled();
+    expect(sendWebexMessage).not.toHaveBeenCalled();
   });
 
   it("Bella (different recipient) still delivers even when Jack is a self-direct target", async () => {
-    vi.mocked(sendDirectMessage).mockResolvedValue({ id: "msg-bella", toPersonEmail: "belrobin@cisco.com" });
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-bella", toPersonEmail: "belrobin@cisco.com" });
     const selfTechnical: WebexMessagePreview = { ...technicalMessage, recipient_email: "seller@cisco.com" };
     const results = await deliverMessages([salesMessage, selfTechnical], { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com" }, "run-1");
     expect(results.find((r) => r.lane === "sales")!.delivered).toBe(true);
     expect(results.find((r) => r.lane === "technical")!.error_code).toBe("self_direct_message_unsupported");
+  });
+
+  it("Phase 17: falls back to the configured Webex space when the recipient is the connected user (roomId, not a self-direct 1:1)", async () => {
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-room", roomId: "ROOM-CONFIGURED" });
+    const selfTechnical: WebexMessagePreview = { ...technicalMessage, recipient_email: "seller@cisco.com" };
+    const results = await deliverMessages(
+      [selfTechnical],
+      { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com", laneRoomIds: { technical: "ROOM-CONFIGURED" } },
+      "run-1"
+    );
+    expect(sendWebexMessage).toHaveBeenCalledWith("connected-user-token", { roomId: "ROOM-CONFIGURED", markdown: "**Technical action**" });
+    const [, params] = vi.mocked(sendWebexMessage).mock.calls[0];
+    expect(params).not.toHaveProperty("toPersonEmail");
+    expect(results[0].delivered).toBe(true);
+    expect(results[0].message_id).toBe("msg-room");
+  });
+
+  it("Phase 17: self-direct with NO configured room still refuses (never an invalid self-direct send)", async () => {
+    const selfTechnical: WebexMessagePreview = { ...technicalMessage, recipient_email: "seller@cisco.com" };
+    const results = await deliverMessages(
+      [selfTechnical],
+      { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com", laneRoomIds: {} },
+      "run-1"
+    );
+    expect(sendWebexMessage).not.toHaveBeenCalled();
+    expect(results[0].error_code).toBe("self_direct_message_unsupported");
+  });
+
+  it("Phase 17: a normal (non-self) recipient still uses toPersonEmail even when a room is configured for the lane", async () => {
+    vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-direct", toPersonEmail: "jaalden@cisco.com" });
+    const results = await deliverMessages(
+      [technicalMessage],
+      { accessToken: "connected-user-token", mode: "connected_user", senderEmail: "seller@cisco.com", laneRoomIds: { technical: "ROOM-CONFIGURED" } },
+      "run-1"
+    );
+    expect(sendWebexMessage).toHaveBeenCalledWith("connected-user-token", { toPersonEmail: "jaalden@cisco.com", markdown: "**Technical action**" });
+    expect(results[0].delivered).toBe(true);
   });
 });
 

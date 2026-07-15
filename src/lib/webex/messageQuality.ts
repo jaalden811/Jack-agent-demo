@@ -14,6 +14,8 @@ export type MessageQualityContext = {
    * URL in a message is treated as invented. */
   allowedUrls: string[];
   charCeiling: number;
+  /** Webex hard byte ceiling (provider limit is 7,439 bytes). */
+  byteCeiling: number;
   /** Skip the "≥3 why-now / ≥3 actions" richness checks — used only for
    * NOISE/low-intent routes that intentionally carry less. */
   requireRichBrief: boolean;
@@ -89,6 +91,12 @@ function validateOneMessage(label: string, markdown: string, context: MessageQua
     failures.push(`${label}: empty message`);
     return failures;
   }
+  // Phase 13: a mid-content truncation ellipsis means a field was cut —
+  // messages must be complete. (A literal "…" inside a real quote is
+  // extremely rare and would also read as truncation, so it is rejected.)
+  if (body.includes("…")) failures.push(`${label}: contains a truncation ellipsis (message field was cut)`);
+  const byteLen = new TextEncoder().encode(body).length;
+  if (byteLen > context.byteCeiling) failures.push(`${label}: exceeds channel byte ceiling (${byteLen} > ${context.byteCeiling})`);
   if (body.length > context.charCeiling) failures.push(`${label}: exceeds channel ceiling (${body.length} > ${context.charCeiling})`);
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(body)) failures.push(`${label}: contains a localhost/loopback link`);
   for (const secretRe of SECRET_RES) {

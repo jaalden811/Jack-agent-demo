@@ -37,11 +37,15 @@ export function TopBar({
   const aiOk = aiReady(agentStatus);
   return (
     <header className="topbar">
-      <div>
-        <h1>Turn every important customer conversation into coordinated action.</h1>
-        <p className="muted">
-          Detect meaningful buying signals, gather account context, identify the correct internal owner, recommend the next step, deliver the action, and preserve the evidence — the Signal-to-Action spine for the Peachtree Select pilot.
-        </p>
+      <div className="topbar-brand">
+        <span className="brand-mark" aria-hidden="true" />
+        <div>
+          <span className="brand-eyebrow">Signal-to-Action</span>
+          <h1>Turn every important customer conversation into coordinated action.</h1>
+          <p className="muted">
+            Detect meaningful buying signals, gather account context, identify the correct internal owner, recommend the next step, deliver the action, and preserve the evidence — the Signal-to-Action spine for the Peachtree Select pilot.
+          </p>
+        </div>
       </div>
       <div className="topbar-status">
         <StatusPill label={loading ? "Running…" : "Idle"} ok={loading ? null : true} />

@@ -13,6 +13,11 @@ import type { LaneRoutingDecision, LifecycleClassification, LifecycleStage, Webe
 export type RoutingConfig = {
   metadata: { team: string; version: string; purpose: string };
   recipients: Record<WebexLane, { name: string; email: string; assignment_label: string }>;
+  /** Optional per-lane Webex space (room) IDs. Used as the delivery target
+   * when a lane's 1:1 recipient is the connected user (self-direct is not
+   * possible). Entirely optional and config/user-driven — absent by
+   * default, so behavior is unchanged unless a space is configured. */
+  webex_spaces?: Partial<Record<WebexLane, string>>;
   lanes: Record<WebexLane, { role_patterns: string[]; signal_types: string[]; action_types: string[] }>;
   signal_routes: Record<string, WebexLane[]>;
   delivery_policy: {

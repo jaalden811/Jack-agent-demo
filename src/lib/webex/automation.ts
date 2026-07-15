@@ -10,6 +10,7 @@ import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
 import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
+import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
@@ -44,7 +45,7 @@ async function resolveAnalysisLink(result: SecureNetworkingTriageResult): Promis
   return buildAnalysisLink({
     run_id: result.run_id,
     created_at: result.timestamp,
-    account: result.executive_summary.account,
+    account: getCanonicalAccount(result).name ?? result.executive_summary.account,
     verdict: result.executive_summary.verdict,
     confidence: result.executive_summary.confidence,
     qualification_json: result as unknown as Record<string, unknown>,
@@ -74,7 +75,7 @@ async function finalizeRunPersistence(params: {
     run_id: params.result.run_id,
     created_at: params.result.timestamp,
     expires_at: params.analysisLink.expires_at ?? new Date().toISOString(),
-    account: params.result.executive_summary.account,
+    account: getCanonicalAccount(params.result).name ?? params.result.executive_summary.account,
     verdict: params.result.executive_summary.verdict,
     confidence: params.result.executive_summary.confidence,
     qualification_json: params.result as unknown as Record<string, unknown>,
@@ -91,11 +92,12 @@ function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
   return `${lane}:${channel}`;
 }
 
-// The rich deterministic brief targets ~2300 chars; the ceiling gives
-// AI synthesis a little headroom above that while staying well within
-// Webex's markdown limit.
-const WEBEX_HARD_CHAR_CEILING = 2600;
-const SYNTHESIS_CHAR_LIMIT = 2300;
+// Webex accepts up to 7,439 bytes of markdown. The deterministic brief
+// composes against a ~6,400-byte budget; these ceilings give AI synthesis
+// headroom while staying within the provider limit (Phase 13).
+const WEBEX_HARD_CHAR_CEILING = 7000;
+const WEBEX_HARD_BYTE_CEILING = 7439;
+const SYNTHESIS_CHAR_LIMIT = 6400;
 
 function stripHtml(html: string): string {
   return html
@@ -143,6 +145,7 @@ async function applyAiMessageSynthesis(params: {
     verdict: params.result.executive_summary.verdict,
     allowedUrls,
     charCeiling: WEBEX_HARD_CHAR_CEILING,
+    byteCeiling: WEBEX_HARD_BYTE_CEILING,
     requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
   };
 
@@ -327,7 +330,11 @@ export async function deliverPeachtreePipeline(
   });
 
   const sender = await resolveWebexSender();
-  const webexResults = await deliverMessages(messagesToSend, { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail }, runId);
+  const webexResults = await deliverMessages(
+    messagesToSend,
+    { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail, laneRoomIds: config.webex_spaces },
+    runId
+  );
 
   const emailResults: ChannelDeliveryResult[] = [];
   for (const email of emailsToSend) {

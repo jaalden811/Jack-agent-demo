@@ -222,6 +222,29 @@ describe("Webex message templates", () => {
     expect(salesMessage.markdown).toContain("78/100");
   });
 
+  it("Phase 3: uses the canonical resolved account name (never 'Unknown'/'Not resolved') when resolution is probable/confirmed", () => {
+    const result = buildResult();
+    // Resolved via extraction (probable), with NO transcript/CRM account label.
+    result.account_resolution = { ...result.account_resolution, name: "Northgate Materials", status: "probable", confidence: 0.82, action_required: null };
+    result.executive_summary.account = null;
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    expect(sales.markdown).toContain("Northgate Materials");
+    expect(sales.markdown).not.toContain("Not resolved");
+    expect(sales.subject).not.toContain("Unknown account");
+    expect(technical.markdown).toContain("Northgate Materials");
+  });
+
+  it("Phase 13: messages contain no truncation ellipsis and stay within the Webex byte budget", () => {
+    const result = buildResult();
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    for (const m of [sales, technical]) {
+      expect(m.markdown).not.toContain("…");
+      expect(new TextEncoder().encode(m.markdown).length).toBeLessThanOrEqual(7439);
+    }
+  });
+
   it("never overloads Jack's technical message with the commercial pursuit score", () => {
     const result = buildResult();
     result.opportunity_scoring = {

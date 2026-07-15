@@ -124,6 +124,32 @@ describe("Anti-hardcoding: the Splunk regression fixture must never leak into pr
     expect(offenders, JSON.stringify(offenders)).toEqual([]);
   });
 
+  it("never hard-codes a Webex room/space ID string literal in production (delivery targets must be config/user-driven, Phase 17)", () => {
+    const offenders: Array<{ file: string; match: string }> = [];
+    const roomLiteral = /\b(roomId|room_id)\s*[:=]\s*["'][^"']+["']/;
+    for (const filePath of allProductionFiles()) {
+      const source = readFileSync(filePath, "utf8");
+      const match = source.match(roomLiteral);
+      if (match) offenders.push({ file: filePath, match: match[0] });
+    }
+    expect(offenders, JSON.stringify(offenders)).toEqual([]);
+  });
+
+  it("never references a regression-fixture company/account name in production (accounts must be resolved from evidence, never hard-coded)", () => {
+    // Company names that appear only in supplied regression transcripts /
+    // screenshots must never be baked into production conditionals, query
+    // templates, UI defaults, or message templates.
+    const regressionAccountNames = ["AECOM", "Contoso", "CONTOSO"];
+    const offenders: Array<{ file: string; name: string }> = [];
+    for (const filePath of allProductionFiles()) {
+      const source = readFileSync(filePath, "utf8");
+      for (const name of regressionAccountNames) {
+        if (new RegExp(`\\b${name}\\b`).test(source)) offenders.push({ file: filePath, name });
+      }
+    }
+    expect(offenders, JSON.stringify(offenders)).toEqual([]);
+  });
+
   it("never hard-codes a hyphenated word from the fixture's parser stress-test phrases as a special case", () => {
     const offenders: Array<{ file: string; phrase: string }> = [];
     const stressWords = ["cross-environment", "customer-service overtime", "business-service reliability", "sensitive-field masking"];
