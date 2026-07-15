@@ -66,22 +66,29 @@ The exact request/response field mapping lives ONLY in
 token contract is confirmed, `POST /api/circuit/test-auth` mints a real token
 whenever the client id/secret/token URL are configured.
 
-**Inference — NOT yet confirmed.** No inference cURL (endpoint +
-request/response shape for the Gemini gateway) has been provided, so the
-inference builder/parser remain PROVISIONAL and are **gated**: until
-`CIRCUIT_CONTRACT_CONFIRMED=true`, `circuitGenerate` / `test-inference` return
-**`CIRCUIT_CONTRACT_UNCONFIRMED` and make no network request** — the assumed
-shape can never run silently.
+**Inference — CONFIRMED + live-verified** against the Cisco Circuit cURL:
+`POST {CIRCUIT_INFERENCE_URL}` — OpenAI/Azure-compatible chat/completions where
+the model is a **deployment in the URL path**
+(`.../openai/deployments/{model}/chat/completions`; `{model}` is substituted
+with `CIRCUIT_MODEL`). Auth is the **`api-key: <access-token>`** header (the
+minted token — not `Authorization: Bearer`). Body:
+`{ messages:[{role,content}], user: "{\"appkey\":\"<APP_KEY>\"}", stop:["<|im_end|>"] }`
+(the model is **not** a body field). Response is standard OpenAI/Azure
+`choices[0].message.content`. Live smoke test returned
+`{ok:true, model:"google/gemini-3.1-flash-lite"}`.
 
-To enable inference:
-1. Confirm the inference request/response fields in `contract.ts` against the
-   Circuit inference cURL (adjust that file only).
-2. Set `CIRCUIT_INFERENCE_URL`, `CIRCUIT_CONTRACT_VERSION`, and
-   `CIRCUIT_CONTRACT_CONFIRMED=true` in `.env.local`.
-3. Run `POST /api/circuit/test-inference`.
+**App Key IS required** by the inference contract and is passed as a JSON string
+in the body `user` field (`CIRCUIT_APP_KEY`, secret, `.env.local` only). It is
+**never** sent on the token request. (This supersedes the earlier "no App Key"
+default — the current inference cURL is the source of truth and contains one.)
 
-`GET /api/circuit/status` reports `configured`, `contractConfirmed`,
-`contractVersion`, `authenticated`, and `tokenState` (never secrets/token).
+The inference client stays gated by `CIRCUIT_CONTRACT_CONFIRMED` (set to `true`
+now that the contract is confirmed); when false it returns
+`CIRCUIT_CONTRACT_UNCONFIRMED` with no network call.
+
+`GET /api/circuit/status` reports `configured`, `credentialsConfigured`,
+`contractConfirmed`, `contractVersion`, `authenticationAccepted`, `state`,
+`lastErrorCause`, and `tokenState` (never secrets/token).
 
 ## 7. Error model
 `src/lib/circuit/errorNormalizer.ts` maps every failure to a stable

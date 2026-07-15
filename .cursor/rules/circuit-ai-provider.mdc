@@ -26,9 +26,13 @@ not reappear as an active runtime provider path.
 ## Never
 - Do not hard-code a Circuit endpoint or model name in TypeScript. Read
   `CIRCUIT_TOKEN_URL`, `CIRCUIT_INFERENCE_URL`, and `CIRCUIT_MODEL` from config.
-- Do not require or send an App Key (`CIRCUIT_APP_KEY`) unless the CURRENT
-  notebook cURL includes a required App Key field/header. Do not infer one from
-  an old screenshot.
+- The App Key IS required by the confirmed inference contract: it is read from
+  `CIRCUIT_APP_KEY` and sent as a JSON string in the inference body `user`
+  field. It must NEVER be sent on the token request, hard-coded, committed, or
+  shown in the UI. (The confirmed inference cURL is the source of truth.)
+- Inference auth is the `api-key: <access-token>` header, NOT
+  `Authorization: Bearer`. The model is a deployment in the URL path
+  (`{model}` substituted from `CIRCUIT_MODEL`), not a body field.
 - Do not persist, log, hash, or partially display the client secret or access
   token; never return them in API JSON.
 - Do not let Circuit override deterministic arithmetic, routing, evidence

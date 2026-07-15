@@ -15,6 +15,7 @@ import { getCircuitDiagnostics } from "@/lib/circuit/diagnostics";
 const CLIENT_SECRET = "test-secret-value-do-not-leak";
 const ACCESS_TOKEN = "test-access-token-do-not-leak";
 
+const APP_KEY = "test-app-key-value";
 const ENV_KEYS = ["AI_PROVIDER", "CIRCUIT_CLIENT_ID", "CIRCUIT_CLIENT_SECRET", "CIRCUIT_TOKEN_URL", "CIRCUIT_INFERENCE_URL", "CIRCUIT_MODEL", "CIRCUIT_SCOPE", "CIRCUIT_AUDIENCE", "CIRCUIT_APP_KEY", "CIRCUIT_CONTRACT_CONFIRMED", "CIRCUIT_CONTRACT_VERSION"] as const;
 const saved: Record<string, string | undefined> = {};
 
@@ -26,8 +27,9 @@ function configureCircuit(extra: Record<string, string> = {}) {
   process.env.CIRCUIT_CLIENT_ID = "test-client-id";
   process.env.CIRCUIT_CLIENT_SECRET = CLIENT_SECRET;
   process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
-  process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
+  process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/openai/deployments/{model}/chat/completions";
   process.env.CIRCUIT_MODEL = "test-model";
+  process.env.CIRCUIT_APP_KEY = APP_KEY;
   process.env.CIRCUIT_CONTRACT_CONFIRMED = "true";
   for (const [k, v] of Object.entries(extra)) process.env[k] = v;
 }
@@ -53,14 +55,15 @@ afterEach(() => {
 });
 
 function configureCircuitUnconfirmedInference() {
-  // Token contract is confirmed in code (Basic-auth); only the INFERENCE
-  // contract is unconfirmed here (no CIRCUIT_CONTRACT_CONFIRMED).
+  // Fully configured (incl. App Key) but the INFERENCE contract is not
+  // confirmed (no CIRCUIT_CONTRACT_CONFIRMED) — inference stays gated.
   process.env.AI_PROVIDER = "circuit";
   process.env.CIRCUIT_CLIENT_ID = "test-client-id";
   process.env.CIRCUIT_CLIENT_SECRET = CLIENT_SECRET;
   process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
-  process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
+  process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/openai/deployments/{model}/chat/completions";
   process.env.CIRCUIT_MODEL = "test-model";
+  process.env.CIRCUIT_APP_KEY = APP_KEY;
 }
 
 describe("Contract-confirmation gate (Phase 1 / Test 7)", () => {
@@ -148,11 +151,12 @@ describe("Circuit config (Tests 6/10/11)", () => {
     expect(getCircuitConfig().model).toBe("some-configured-model");
   });
 
-  it("Test 9: no App Key is read or required", () => {
-    configureCircuit({ CIRCUIT_APP_KEY: "should-be-ignored" });
-    const config = getCircuitConfig();
-    expect(isCircuitConfigured(config)).toBe(true);
-    expect(JSON.stringify(config)).not.toContain("should-be-ignored");
+  it("Test 9: the App Key is required for inference (confirmed contract) — full config needs it", () => {
+    configureCircuit();
+    expect(isCircuitConfigured(getCircuitConfig())).toBe(true);
+    // Remove the App Key -> no longer fully configured for inference.
+    delete process.env.CIRCUIT_APP_KEY;
+    expect(isCircuitConfigured(getCircuitConfig())).toBe(false);
   });
 });
 
@@ -179,19 +183,33 @@ describe("Circuit wire contract (Tests 9/12/20/21)", () => {
     expect(parseTokenResponse({ nothing: true })).toBeNull();
   });
 
-  it("Test 20/21: inference request uses Bearer token + configured model; response text path is parsed", () => {
+  it("Test 20/21: inference request uses the api-key header, appkey in the user body field, stop token, and model in the URL path (no Bearer, no model in body)", () => {
     configureCircuit();
     const spec = buildInferenceRequest({ config: getCircuitConfig(), accessToken: ACCESS_TOKEN, model: "test-model", prompt: "hello", system: "sys" });
-    expect(spec.headers.Authorization).toBe(`Bearer ${ACCESS_TOKEN}`);
+    // Confirmed contract: api-key header (the token), NOT Authorization: Bearer.
+    expect(spec.headers["api-key"]).toBe(ACCESS_TOKEN);
+    expect(spec.headers.Authorization).toBeUndefined();
+    // Model is the deployment in the URL path, not a body field.
+    expect(spec.url).toContain("/deployments/test-model/chat/completions");
     const body = JSON.parse(spec.body);
-    expect(body.model).toBe("test-model");
+    expect(body.model).toBeUndefined();
     expect(body.messages).toEqual([{ role: "system", content: "sys" }, { role: "user", content: "hello" }]);
+    // App Key is passed as a JSON string in the `user` field.
+    expect(body.user).toBe(JSON.stringify({ appkey: APP_KEY }));
+    expect(body.stop).toEqual(["<|im_end|>"]);
 
-    const parsed = parseInferenceResponse({ model: "test-model", choices: [{ message: { content: "the answer" }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 2 } });
+    const parsed = parseInferenceResponse({ model: "google/test-model", choices: [{ message: { content: "the answer" }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 2 } });
     expect(parsed.text).toBe("the answer");
-    expect(parsed.model).toBe("test-model");
+    expect(parsed.model).toBe("google/test-model");
     expect(parsed.finish_reason).toBe("stop");
     expect(parsed.usage).toEqual({ input_tokens: 5, output_tokens: 2 });
+  });
+
+  it("the App Key is required for inference but NEVER sent on the token request", () => {
+    configureCircuit();
+    const tokenSpec = buildTokenRequest(getCircuitConfig());
+    expect(tokenSpec.body.toLowerCase()).not.toContain("appkey");
+    expect(JSON.stringify(tokenSpec.headers).toLowerCase()).not.toContain("appkey");
   });
 });
 

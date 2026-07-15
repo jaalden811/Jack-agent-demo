@@ -15,6 +15,9 @@ export type CircuitConfig = {
   tokenUrl: string | null;
   inferenceUrl: string | null;
   model: string | null;
+  /** App Key required by the inference contract (sent in the body `user`
+   * field). Secret — read from env, never hard-coded/committed. */
+  appKey: string | null;
   scope: string | null;
   audience: string | null;
   timeoutMs: number;
@@ -55,6 +58,7 @@ export function getCircuitConfig(): CircuitConfig {
     tokenUrl: str(env.CIRCUIT_TOKEN_URL),
     inferenceUrl: str(env.CIRCUIT_INFERENCE_URL),
     model: str(env.CIRCUIT_MODEL),
+    appKey: str(env.CIRCUIT_APP_KEY),
     scope: str(env.CIRCUIT_SCOPE),
     audience: str(env.CIRCUIT_AUDIENCE),
     timeoutMs: num(env.CIRCUIT_TIMEOUT_MS, 45_000),
@@ -81,10 +85,11 @@ export function isCircuitTokenConfigured(config: CircuitConfig = getCircuitConfi
   return config.provider === "circuit" && Boolean(config.clientId) && Boolean(config.clientSecret) && Boolean(config.tokenUrl);
 }
 
-/** Circuit is fully "configured" when token config AND the inference
- * endpoint are present. The active provider must also be Circuit. Model is
- * validated separately (CIRCUIT_MODEL_REQUIRED) so a missing model
+/** Circuit is fully "configured" for inference when token config, the
+ * inference endpoint, AND the App Key (required by the confirmed inference
+ * contract) are present. The active provider must also be Circuit. Model
+ * is validated separately (CIRCUIT_MODEL_REQUIRED) so a missing model
  * surfaces a precise error rather than "not configured". */
 export function isCircuitConfigured(config: CircuitConfig = getCircuitConfig()): boolean {
-  return isCircuitTokenConfigured(config) && Boolean(config.inferenceUrl);
+  return isCircuitTokenConfigured(config) && Boolean(config.inferenceUrl) && Boolean(config.appKey);
 }

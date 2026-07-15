@@ -15,16 +15,24 @@ import type { CircuitConfig } from "@/lib/circuit/config";
  *   OAuth2 JSON { access_token, token_type, expires_in, scope }; the
  *   access_token is a JWT with exp.
  *
- * INFERENCE — NOT YET CONFIRMED. No inference cURL has been supplied
- * (endpoint URL + request/response shape for the Gemini gateway). The
- * inference builder/parser below remain PROVISIONAL and are gated off by
- * CIRCUIT_CONTRACT_CONFIRMED: until that is true, the inference client
- * returns CIRCUIT_CONTRACT_UNCONFIRMED and makes NO network request, so
- * the assumed inference shape can never run silently. Confirm the
- * inference fields here, then set CIRCUIT_CONTRACT_CONFIRMED=true.
+ * INFERENCE — CONFIRMED against the Cisco Circuit inference cURL:
+ *   POST {CIRCUIT_INFERENCE_URL}  (OpenAI/Azure-compatible; the model is a
+ *     deployment in the path — a "{model}" placeholder is substituted with
+ *     CIRCUIT_MODEL, or the URL is used as-is when it has no placeholder).
+ *   Header: api-key: <access-token>   (NOT Authorization: Bearer)
+ *   Content-Type / Accept: application/json
+ *   Body: { messages: [{role,content}...], user: "{\"appkey\":\"<APP_KEY>\"}",
+ *           stop: ["<|im_end|>"] }
+ *   Response: OpenAI/Azure chat completion — choices[0].message.content.
  *
- * No App Key is used or sent (the current contract does not use one).
+ * The App Key IS required by this contract and is passed as a JSON string
+ * in the body `user` field (read from CIRCUIT_APP_KEY — never hard-coded).
+ * The access token (minted via the confirmed token contract) is the
+ * `api-key` header value.
  */
+
+/** The confirmed stop sequence for this gateway/model. */
+const CIRCUIT_STOP_SEQUENCES = ["<|im_end|>"];
 
 export type HttpRequestSpec = {
   url: string;
@@ -78,6 +86,13 @@ export function parseTokenResponse(body: unknown): ParsedToken {
 
 // ─── Inference request/response ────────────────────────────────────────
 
+/** Resolves the deployment URL: substitutes a "{model}" (or "{deployment}")
+ * placeholder with the configured model, else returns the URL unchanged. */
+export function resolveInferenceUrl(inferenceUrl: string, model: string | null): string {
+  if (!model) return inferenceUrl;
+  return inferenceUrl.replace(/\{model\}/g, model).replace(/\{deployment\}/g, model);
+}
+
 export function buildInferenceRequest(params: {
   config: CircuitConfig;
   accessToken: string;
@@ -89,16 +104,24 @@ export function buildInferenceRequest(params: {
 }): HttpRequestSpec {
   const { config, accessToken, model, prompt, system, temperature, maxOutputTokens } = params;
   if (!config.inferenceUrl) throw new Error("Circuit inference request requires inferenceUrl.");
+  if (!config.appKey) throw new Error("Circuit inference request requires the App Key (CIRCUIT_APP_KEY).");
   const messages: Array<{ role: string; content: string }> = [];
   if (system) messages.push({ role: "system", content: system });
   messages.push({ role: "user", content: prompt });
-  const body: Record<string, unknown> = { model, messages };
+  // Confirmed body shape: messages + user(appkey JSON string) + stop.
+  // model is NOT in the body (it is the deployment in the URL path).
+  const body: Record<string, unknown> = {
+    messages,
+    user: JSON.stringify({ appkey: config.appKey }),
+    stop: CIRCUIT_STOP_SEQUENCES
+  };
   if (typeof temperature === "number") body.temperature = temperature;
   if (typeof maxOutputTokens === "number") body.max_tokens = maxOutputTokens;
   return {
-    url: config.inferenceUrl,
+    url: resolveInferenceUrl(config.inferenceUrl, model),
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
+    // Confirmed contract: the access token is the `api-key` header value.
+    headers: { "api-key": accessToken, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body)
   };
 }
@@ -110,10 +133,9 @@ export type ParsedInference = {
   usage: { input_tokens: number | null; output_tokens: number | null } | null;
 };
 
-/** Parses an inference response. Supports the OpenAI-compatible shape
- * (choices[0].message.content) and tolerates a couple of common aliases
- * (output_text, candidates[].content). Adjust here to match the notebook
- * if Circuit differs. */
+/** Parses the CONFIRMED OpenAI/Azure chat-completion response:
+ * choices[0].message.content (+ finish_reason), model, and usage
+ * (prompt/completion tokens). No heuristic probing of unrelated shapes. */
 export function parseInferenceResponse(body: unknown): ParsedInference {
   const empty: ParsedInference = { text: null, model: null, finish_reason: null, usage: null };
   if (!body || typeof body !== "object") return empty;
@@ -126,24 +148,15 @@ export function parseInferenceResponse(body: unknown): ParsedInference {
     const first = choices[0] as Record<string, unknown>;
     const message = first.message as Record<string, unknown> | undefined;
     if (message && typeof message.content === "string") text = message.content;
-    else if (typeof first.text === "string") text = first.text;
     if (typeof first.finish_reason === "string") finish = first.finish_reason;
-  }
-  if (text === null && typeof b.output_text === "string") text = b.output_text;
-  if (text === null && Array.isArray(b.candidates) && b.candidates.length > 0) {
-    const content = (b.candidates[0] as Record<string, unknown>).content as Record<string, unknown> | undefined;
-    const parts = content?.parts;
-    if (Array.isArray(parts) && parts.length > 0 && typeof (parts[0] as Record<string, unknown>).text === "string") {
-      text = (parts[0] as Record<string, unknown>).text as string;
-    }
   }
 
   const model = typeof b.model === "string" ? b.model : null;
   const usageRaw = b.usage as Record<string, unknown> | undefined;
   const usage = usageRaw
     ? {
-        input_tokens: typeof usageRaw.prompt_tokens === "number" ? usageRaw.prompt_tokens : typeof usageRaw.input_tokens === "number" ? usageRaw.input_tokens : null,
-        output_tokens: typeof usageRaw.completion_tokens === "number" ? usageRaw.completion_tokens : typeof usageRaw.output_tokens === "number" ? usageRaw.output_tokens : null
+        input_tokens: typeof usageRaw.prompt_tokens === "number" ? usageRaw.prompt_tokens : null,
+        output_tokens: typeof usageRaw.completion_tokens === "number" ? usageRaw.completion_tokens : null
       }
     : null;
 
