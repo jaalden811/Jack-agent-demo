@@ -412,7 +412,7 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     next_best_action: {} as SecureNetworkingTriageResult["next_best_action"],
     specialist_handoffs: {} as SecureNetworkingTriageResult["specialist_handoffs"],
     question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] },
-    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_c: null }
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null }
   };
 
   // Action-intelligence + specialist-handoff layer (the defining output):

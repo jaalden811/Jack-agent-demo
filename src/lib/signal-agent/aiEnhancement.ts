@@ -1,6 +1,8 @@
 import { isCircuitConfigured, isCircuitContractConfirmed } from "@/lib/circuit/config";
 import { buildStageAInput } from "@/lib/circuit/stages/stageAAdapter";
 import { runStageA } from "@/lib/circuit/stages/stageA";
+import { buildStageBInput } from "@/lib/circuit/stages/stageBAdapter";
+import { runStageB } from "@/lib/circuit/stages/stageB";
 import { buildStageCInput } from "@/lib/circuit/stages/stageCAdapter";
 import { runStageC } from "@/lib/circuit/stages/stageC";
 import type { StageTrace } from "@/lib/circuit/stages/types";
@@ -20,7 +22,7 @@ import type { AiTrace, CircuitStageTraceSummary, SecureNetworkingTriageResult } 
  *    no-op and the deterministic result stands (never throws).
  */
 
-const NONE: AiTrace = { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_c: null };
+const NONE: AiTrace = { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null };
 
 function summary(trace: StageTrace): CircuitStageTraceSummary {
   return {
@@ -42,12 +44,20 @@ export async function enhanceWithCircuit(result: SecureNetworkingTriageResult): 
 
   try {
     const stageA = await runStageA(buildStageAInput(result));
-    const stageC = await runStageC(buildStageCInput(result, stageA.output));
+
+    // Stage B only runs when there are normalized public sources to
+    // classify — otherwise there is nothing for Circuit to do (SerpAPI
+    // did not run / returned nothing).
+    const hasPublicSources = (result.serpapi_signals?.signals ?? []).length > 0;
+    const stageB = hasPublicSources ? await runStageB(buildStageBInput(result)) : null;
+
+    const stageC = await runStageC(buildStageCInput(result, stageA.output, stageB?.output));
     return {
       provider: "circuit",
-      enhanced: stageA.trace.succeeded || stageC.trace.succeeded,
-      stages: [summary(stageA.trace), summary(stageC.trace)],
+      enhanced: stageA.trace.succeeded || (stageB?.trace.succeeded ?? false) || stageC.trace.succeeded,
+      stages: [summary(stageA.trace), ...(stageB ? [summary(stageB.trace)] : []), summary(stageC.trace)],
       stage_a: stageA.output,
+      stage_b: stageB?.output ?? null,
       stage_c: stageC.output
     };
   } catch {

@@ -5,6 +5,7 @@ import type { AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGra
 import type { NextBestAction } from "@/lib/action-intelligence/types";
 import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types";
 import type { StageAOutput } from "@/lib/circuit/stages/stageA";
+import type { StageBOutput } from "@/lib/circuit/stages/stageB";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
@@ -29,6 +30,7 @@ export type AiTrace = {
   /** Circuit's evidence-backed interpretation (additive — deterministic
    * fields remain authoritative; scores are never changed). */
   stage_a: StageAOutput | null;
+  stage_b: StageBOutput | null;
   stage_c: StageCOutput | null;
 };
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
