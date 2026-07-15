@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildNormalizedSignal, deduplicateSignals, computeSpecificity } from "@/lib/opportunity-fit/signalScoring";
+import { computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 
 describe("Test 16: duplicate news articles become one signal", () => {
   it("collapses five articles about the same announcement into one signal with corroborating URLs", () => {
@@ -74,6 +75,43 @@ describe("Test 9: official company source outranks an aggregator", () => {
       transcriptSignals: []
     });
     expect(official.source_authority).toBeGreaterThan(aggregator.source_authority);
+  });
+});
+
+describe("Phase 4/25: transcript-alignment gates strength and external-fit contribution", () => {
+  it("Test 1: a transcript-relevance-zero result cannot be strong or supporting (rejected)", () => {
+    const signal = buildNormalizedSignal({
+      accountName: "Acme Retail Group",
+      accountDomain: "acmeretail.com",
+      category: "executive_priority",
+      subcategory: "earnings_call",
+      title: "Acme Retail Group reports quarterly results",
+      url: "https://www.sec.gov/acme-earnings",
+      snippet: "Acme Retail Group reported quarterly financial results for the period.",
+      publishedAt: new Date().toISOString(),
+      transcriptSignals: ["cross-domain observability", "incident correlation", "operational resilience"]
+    });
+    expect(signal.transcript_relevance).toBe(0);
+    expect(signal.evidence_class).toBe("rejected");
+  });
+
+  it("Test 2: relevance-zero results contribute zero to external fit", () => {
+    const signals = Array.from({ length: 16 }, (_, i) =>
+      buildNormalizedSignal({
+        accountName: "Acme Retail Group",
+        accountDomain: "acmeretail.com",
+        category: "executive_priority",
+        subcategory: "earnings_call",
+        title: `Acme Retail Group quarterly report ${i}`,
+        url: `https://www.sec.gov/acme-${i}`,
+        snippet: "Acme Retail Group reported quarterly financial results.",
+        publishedAt: new Date().toISOString(),
+        transcriptSignals: ["cross-domain observability", "incident correlation"]
+      })
+    );
+    const fit = computeExternalFitScore({ signals, accountResolutionAvailable: true, searchRan: true, failureReason: null });
+    expect(fit.available).toBe(true);
+    expect(fit.score).toBe(0);
   });
 });
 

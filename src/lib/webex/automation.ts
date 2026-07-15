@@ -327,7 +327,7 @@ export async function deliverPeachtreePipeline(
   });
 
   const sender = await resolveWebexSender();
-  const webexResults = await deliverMessages(messagesToSend, { accessToken: sender.accessToken, mode: sender.mode }, runId);
+  const webexResults = await deliverMessages(messagesToSend, { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail }, runId);
 
   const emailResults: ChannelDeliveryResult[] = [];
   for (const email of emailsToSend) {

@@ -110,7 +110,8 @@ function buildResult(): SecureNetworkingTriageResult {
     transcript_diagnostics: { raw_characters: 0, raw_lines: 0, speaker_headers_detected: 0, turns_parsed: 0, sentences_parsed: 0, participants: [], rejected_header_candidates: [] },
     generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] },
     serpapi_signals: buildDefaultSerpApiSignals(),
-    opportunity_scoring: buildDefaultOpportunityScoring()
+    opportunity_scoring: buildDefaultOpportunityScoring(),
+    buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } }
   };
 }
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AccountResolution, AiProcessingStatus, AnalysisLink, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
+import type { AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
@@ -646,6 +647,10 @@ export type SecureNetworkingTriageResult = {
    * gates, and evidence-linked factors — every weight read from
    * signal-agent-poc/config/opportunity_fit_scoring.json. */
   opportunity_scoring: OpportunityScoringResult;
+  /** Evidence-backed buying-committee / authority graph: role inferences
+   * from customer behavior plus a distributed-economic-authority model
+   * (never a fabricated named Economic Buyer). */
+  buying_committee: AuthorityGraph;
 };
 
 export type GenericDiagnostics = {

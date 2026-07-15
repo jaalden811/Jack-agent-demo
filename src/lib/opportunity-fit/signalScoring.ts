@@ -13,6 +13,12 @@ import type { NormalizedPublicSignal, PublicSignalCategory } from "@/lib/opportu
  * independent signals.
  */
 
+// A signal below this transcript-alignment floor can never be
+// strong/supporting; zero-alignment is rejected. Keeps a result that
+// merely mentions the company (but doesn't align with any transcript
+// theme) out of the narrative/messages/external-fit math.
+const TRANSCRIPT_ALIGNMENT_FLOOR = 0.35;
+
 /** Specificity — how concrete/detailed the claim is, based purely on
  * generic textual shape (dates, numbers, named entities), never on
  * matching one known company's wording. */
@@ -54,7 +60,18 @@ export function buildNormalizedSignal(params: {
   const specificity = computeSpecificity(params.snippet);
 
   const qualityScore = computePublicSignalQuality({ entityMatch, sourceAuthority: authority, transcriptRelevance, recency, specificity });
-  const evidenceClass = classifyEvidenceStrength(qualityScore);
+  let evidenceClass = classifyEvidenceStrength(qualityScore);
+  // Phase-4 hard requirement: a result that does not actually align with a
+  // transcript-derived theme is not a salient signal, regardless of how
+  // authoritative or entity-matched it is. Below the alignment floor it
+  // can never be strong/supporting (capped at weak); with zero alignment
+  // it is rejected outright so it cannot inflate external fit, the
+  // "why now" narrative, or the outbound messages.
+  if (transcriptRelevance <= 0) {
+    evidenceClass = "rejected";
+  } else if (transcriptRelevance < TRANSCRIPT_ALIGNMENT_FLOOR && (evidenceClass === "confirmed_public_fact" || evidenceClass === "probable_public_signal")) {
+    evidenceClass = "weak_signal";
+  }
 
   return {
     signal_id: signalIdFor(canonical, params.category, params.subcategory),

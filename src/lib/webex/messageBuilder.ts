@@ -64,7 +64,12 @@ function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
  * (Section 16: "Do not overload Jack's technical message with the
  * commercial score"). */
 function technicalStrategyContextMarkdown(result: SecureNetworkingTriageResult): string {
-  const relevantSignals = result.serpapi_signals.signals.filter((s) => s.category === "technology_alignment" || s.category === "trigger_event" || s.category === "strategic_objective").slice(0, 3);
+  const relevantSignals = result.serpapi_signals.signals
+    // Only strong/supporting, transcript-aligned public signals belong in
+    // an outbound message (Phase 9) — never weak/relevance-zero snippets.
+    .filter((s) => s.evidence_class === "confirmed_public_fact" || s.evidence_class === "probable_public_signal")
+    .filter((s) => s.category === "technology_alignment" || s.category === "trigger_event" || s.category === "strategic_objective")
+    .slice(0, 3);
   if (relevantSignals.length === 0) return "";
   const lines = ["**Account strategy context**", ...relevantSignals.map((s) => `- ${s.claim.slice(0, 100)} ([source](${s.source_url}))`)];
   return lines.join("\n");
