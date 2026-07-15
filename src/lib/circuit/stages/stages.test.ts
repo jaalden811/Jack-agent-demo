@@ -2,9 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractJsonObject } from "@/lib/circuit/stages/jsonParser";
 import { invalidEvidenceIds, invalidUrls, collectEvidenceIdReferences } from "@/lib/circuit/stages/evidenceValidator";
 import { stageASchema, runStageA, allowedStageAEvidenceIds, type StageAInput, type StageAOutput } from "@/lib/circuit/stages/stageA";
+import { stageBSchema, runStageB, allowedStageBUrls, type StageBInput, type StageBOutput } from "@/lib/circuit/stages/stageB";
 
 vi.mock("@/lib/circuit/client", () => ({ circuitGenerate: vi.fn() }));
 import { circuitGenerate } from "@/lib/circuit/client";
+
+function circuitOk(obj: unknown) {
+  return { ok: true as const, text: JSON.stringify(obj), model: "google/test-model", finish_reason: "stop", usage: null, request_id: "rid", http_status: 200, duration_ms: 5, error: null };
+}
 
 /**
  * Shared stage runner + Stage A coverage (Phases 1-2). No live Circuit —
@@ -149,5 +154,82 @@ describe("runStageA", () => {
     const ids = allowedStageAEvidenceIds(input);
     expect(ids.has("t0")).toBe(true);
     expect(ids.has("gs_1")).toBe(true);
+  });
+});
+
+const stageBDeterministic: StageBOutput = {
+  classified_sources: [{ source_id: "s1", entity_match: 0.9, source_authority: 0.9, transcript_relevance: 0.6, signal_category: "strategic_objective", public_fact: "official site", implication: "", limitation: "public only", account_context_eligible: true, narrative_eligible: true, scoring_eligible: false, supports: [], contradicts: [], evidence_ids: ["s1"] }],
+  distilled_signals: [],
+  rejected_sources: [{ source_id: "s2", reason: "irrelevant" }]
+};
+
+const stageBInput: StageBInput = {
+  run_id: "run_1",
+  account: "Meridian",
+  sources: [
+    { source_id: "s1", title: "Meridian site", url: "https://meridian.com/about", domain: "meridian.com", snippet: "official", account_candidate: "Meridian" },
+    { source_id: "s2", title: "Unrelated", url: "https://blog.example.com/x", domain: "blog.example.com", snippet: "noise" }
+  ],
+  deterministic: stageBDeterministic
+};
+
+describe("Stage B schema tolerance + integrity", () => {
+  it("accepts alias fields and coerces score/list types", () => {
+    const raw = {
+      classified_sources: [{ id: "s1", entityMatch: 90, authority: 0.8, relevance: 0.7, category: "strategic_objective", fact: "x", implication: "y", limitation: "z", accountContextEligible: true, narrativeEligible: true, scoringEligible: false, supports: "a, b", contradicts: [], evidence: ["s1"] }],
+      distilled_signals: [],
+      rejected_sources: [{ id: "s2", reason: "noise" }]
+    };
+    const parsed = stageBSchema.safeParse(raw);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.classified_sources[0].source_id).toBe("s1");
+      expect(parsed.data.classified_sources[0].entity_match).toBeLessThanOrEqual(1);
+      expect(parsed.data.classified_sources[0].supports).toEqual(["a", "b"]);
+      expect(parsed.data.rejected_sources[0].source_id).toBe("s2");
+    }
+  });
+});
+
+describe("runStageB", () => {
+  it("returns Circuit output when valid (no invented URLs / source ids)", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      classified_sources: [{ source_id: "s1", entity_match: 0.9, source_authority: 0.9, transcript_relevance: 0.6, signal_category: "strategic_objective", public_fact: "official site", implication: "", limitation: "public only", account_context_eligible: true, narrative_eligible: true, scoring_eligible: false, supports: [], contradicts: [], evidence_ids: ["s1"] }],
+      distilled_signals: [],
+      rejected_sources: [{ source_id: "s2", reason: "irrelevant" }]
+    }));
+    const { output, trace } = await runStageB(stageBInput);
+    expect(trace.succeeded).toBe(true);
+    expect(trace.fallback_used).toBe(false);
+    expect(output.classified_sources[0].source_id).toBe("s1");
+  });
+
+  it("rejects an invented URL -> repair -> deterministic fallback", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      classified_sources: [{ source_id: "s1", entity_match: 0.9, source_authority: 0.9, transcript_relevance: 0.6, signal_category: "x", public_fact: "see https://invented-source.com/page", implication: "", limitation: "", account_context_eligible: true, narrative_eligible: false, scoring_eligible: false, supports: [], contradicts: [], evidence_ids: ["s1"] }],
+      distilled_signals: [],
+      rejected_sources: []
+    }));
+    const { output, trace } = await runStageB(stageBInput);
+    expect(trace.repair_attempted).toBe(true);
+    expect(trace.fallback_used).toBe(true);
+    expect(output).toEqual(stageBDeterministic);
+  });
+
+  it("rejects a referenced source_id not in input", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      classified_sources: [{ source_id: "NOT_A_SOURCE", entity_match: 0.5, source_authority: 0.5, transcript_relevance: 0.5, signal_category: "x", public_fact: "y", implication: "", limitation: "", account_context_eligible: true, narrative_eligible: false, scoring_eligible: false, supports: [], contradicts: [], evidence_ids: [] }],
+      distilled_signals: [],
+      rejected_sources: []
+    }));
+    const { trace } = await runStageB(stageBInput);
+    expect(trace.fallback_used).toBe(true);
+  });
+
+  it("allowedStageBUrls collects the input source URLs", () => {
+    expect(allowedStageBUrls(stageBInput).has("https://meridian.com/about")).toBe(true);
   });
 });
