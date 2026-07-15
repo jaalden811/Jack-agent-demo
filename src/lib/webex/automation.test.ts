@@ -54,7 +54,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
   it("sends Webex DMs using the connected user's own OAuth token by default (no WEBEX_BOT_ACCESS_TOKEN needed)", async () => {
     await connectWebex();
     vi.mocked(sendWebexMessage).mockImplementation(async (token, params) => ({
-      id: params.toPersonEmail.includes("belrobin") ? "msg-sales-1" : "msg-technical-1",
+      id: (params.toPersonEmail ?? "").includes("belrobin") ? "msg-sales-1" : "msg-technical-1",
       toPersonEmail: params.toPersonEmail
     }));
 
@@ -120,7 +120,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
   it("Bella (sales) failing does not block Jack (technical), and vice versa", async () => {
     await connectWebex();
     vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
-      if (params.toPersonEmail.includes("belrobin")) throw new Error("Could not resolve recipient");
+      if ((params.toPersonEmail ?? "").includes("belrobin")) throw new Error("Could not resolve recipient");
       return { id: "msg-technical-1", toPersonEmail: params.toPersonEmail };
     });
 
@@ -176,7 +176,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
     let webexCalls = 0;
     vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => {
       webexCalls += 1;
-      if (params.toPersonEmail.includes("belrobin")) throw new Error("Temporary failure");
+      if ((params.toPersonEmail ?? "").includes("belrobin")) throw new Error("Temporary failure");
       return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
     });
 
