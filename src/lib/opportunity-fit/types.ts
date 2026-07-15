@@ -125,6 +125,9 @@ export type PursuitRecommendation = {
   weights: Record<string, number>;
 };
 
+export type SignalStrengthBand = "HIGH" | "MEDIUM" | "LOW";
+export type DealMaturityStage = "PROBLEM_DISCOVERY" | "SOLUTION_DISCOVERY" | "VALIDATION" | "COMMERCIAL_EVALUATION" | "PROCUREMENT" | "COMMIT";
+
 export type OpportunityScoringResult = {
   transcript_score: number;
   qualification_score: number;
@@ -137,4 +140,11 @@ export type OpportunityScoringResult = {
   weights: Record<string, number>;
   factors: ScoreFactorContribution[];
   gates: HardGateResult[];
+  /** Explicit, independently-labeled score dimensions (Section 5) so the
+   * UI never conflates "is the conversation important" (signal strength)
+   * with "what should we do now" (pursuit recommendation). */
+  signal_strength: { score: number; band: SignalStrengthBand };
+  deal_maturity: DealMaturityStage;
+  /** Alias of qualification_score, named to match the UI vocabulary. */
+  qualification_completeness: number;
 };

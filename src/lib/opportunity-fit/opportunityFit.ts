@@ -24,6 +24,16 @@ export type OpportunityFitScoringConfig = {
   };
   hard_gates: Array<{ gate: string; description: string; condition: string; effect: string; cap_value?: number }>;
   negative_signal_requirements: { min_high_authority_sources_for_negative_signal: number; do_not_pursue_requires_one_of: string[] };
+  decision_rules: {
+    high_signal_incomplete_qualification: {
+      description?: string;
+      when: { signal_strength_min: number; hard_negative_gate: boolean; requires_pain_or_impact: boolean; requires_any_momentum: string[] };
+      minimum_recommendation: string;
+    };
+    nurture: { description?: string; requires_any: string[] };
+  };
+  signal_strength_bands: { high: number; medium: number };
+  deal_maturity: { default_stage: string; stages: string[] };
 };
 
 let cachedConfig: OpportunityFitScoringConfig | null = null;

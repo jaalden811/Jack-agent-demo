@@ -16,6 +16,9 @@ export function buildDefaultOpportunityScoring(): OpportunityScoringResult {
     score_version: "opportunity-fit-v1",
     weights: {},
     factors: [],
-    gates: []
+    gates: [],
+    signal_strength: { score: 0, band: "LOW" },
+    deal_maturity: "PROBLEM_DISCOVERY",
+    qualification_completeness: 0
   };
 }

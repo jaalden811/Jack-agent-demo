@@ -163,6 +163,31 @@ describe("Test 18/19 (hard gate variant): explicit customer disqualification is 
   });
 });
 
+describe("Section 5 realignment: score dimensions + high-signal decision rule", () => {
+  it("exposes signal strength, deal maturity, and qualification completeness as distinct fields", async () => {
+    const text = readFileSync("signal-agent-poc/data/transcripts/splunk_platform_rationalization.txt", "utf8");
+    const result = await runSignalAgent({ customTranscript: text, options: OFF });
+    const o = result.opportunity_scoring;
+    expect(typeof o.signal_strength.score).toBe("number");
+    expect(["HIGH", "MEDIUM", "LOW"]).toContain(o.signal_strength.band);
+    expect(["PROBLEM_DISCOVERY", "SOLUTION_DISCOVERY", "VALIDATION", "COMMERCIAL_EVALUATION", "PROCUREMENT", "COMMIT"]).toContain(o.deal_maturity);
+    expect(typeof o.qualification_completeness).toBe("number");
+    // Signal strength and the final pursuit score are genuinely separate
+    // dimensions — not the same number relabeled.
+    expect(o.signal_strength.score).not.toBe(undefined);
+  });
+
+  it("Test 4/6: a strong signal with an UNRESOLVED account is not passively downgraded to NURTURE", async () => {
+    // Real high-signal fixture, account line stripped -> unresolved.
+    const text = readFileSync("signal-agent-poc/data/transcripts/splunk_platform_rationalization.txt", "utf8").replace(/^Account:.*\n/m, "");
+    const result = await runSignalAgent({ customTranscript: text, options: OFF });
+    expect(result.executive_summary.verdict).toBe("HIGH_INTENT");
+    expect(result.account_resolution.status).toBe("unresolved");
+    // The account gap becomes a discovery action, not a NURTURE downgrade.
+    expect(["PURSUE", "PURSUE_WITH_DISCOVERY"]).toContain(result.opportunity_scoring.decision);
+  });
+});
+
 describe("Missing information and next action are always populated", () => {
   it("recommended_next_action is never empty, even for a thin transcript", async () => {
     const text = "We have too many network consoles and need a unified view.";

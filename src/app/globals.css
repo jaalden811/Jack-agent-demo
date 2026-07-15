@@ -257,6 +257,92 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* ── Signal-to-Action journey spine ─────────────────────────────── */
+.signal-journey-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.signal-journey-spine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.journey-stage {
+  position: relative;
+  flex: 1 1 130px;
+  min-width: 120px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.journey-stage.journey-dashed {
+  border-style: dashed;
+  background: transparent;
+  opacity: 0.7;
+}
+.journey-symbol {
+  font-size: 0.85rem;
+}
+.journey-completed .journey-symbol {
+  color: #16a34a;
+}
+.journey-review .journey-symbol {
+  color: #d97706;
+}
+.journey-failed .journey-symbol {
+  color: #dc2626;
+}
+.journey-skipped .journey-symbol,
+.journey-future .journey-symbol {
+  color: #94a3b8;
+}
+.journey-label {
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.journey-detail {
+  font-size: 0.72rem;
+}
+.small {
+  font-size: 0.74rem;
+}
+.journey-legend {
+  margin-top: 10px;
+}
+
+/* ── Score-semantics summary ────────────────────────────────────── */
+.score-semantics-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.score-semantics-grid > div {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+.score-semantics-grid .score-semantics-motion {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+@media (max-width: 900px) {
+  .score-semantics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .provider-check,
 .summary-grid > div {
   background: #f8fafc;
