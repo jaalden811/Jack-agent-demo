@@ -3,6 +3,7 @@ import { extractJsonObject } from "@/lib/circuit/stages/jsonParser";
 import { invalidEvidenceIds, invalidUrls, collectEvidenceIdReferences } from "@/lib/circuit/stages/evidenceValidator";
 import { stageASchema, runStageA, allowedStageAEvidenceIds, type StageAInput, type StageAOutput } from "@/lib/circuit/stages/stageA";
 import { stageBSchema, runStageB, allowedStageBUrls, type StageBInput, type StageBOutput } from "@/lib/circuit/stages/stageB";
+import { runStageC, type StageCInput, type StageCOutput } from "@/lib/circuit/stages/stageC";
 
 vi.mock("@/lib/circuit/client", () => ({ circuitGenerate: vi.fn() }));
 import { circuitGenerate } from "@/lib/circuit/client";
@@ -231,5 +232,78 @@ describe("runStageB", () => {
 
   it("allowedStageBUrls collects the input source URLs", () => {
     expect(allowedStageBUrls(stageBInput).has("https://meridian.com/about")).toBe(true);
+  });
+});
+
+const stageCDeterministic: StageCOutput = {
+  facts: [{ statement: "det fact", evidence_ids: ["gs_1"] }],
+  inferences: [],
+  missing_information: ["what is the budget authority?"],
+  meddpicc: { identify_pain: { status: "CONFIRMED", summary: "pain", evidence_ids: ["gs_1"], next_question: "" } },
+  opportunity_thesis: "thesis",
+  deal_maturity_interpretation: "SOLUTION_DISCOVERY",
+  product_role_narrative: [],
+  risks: [],
+  next_best_action: { action_type: "architecture_workshop", title: "Run workshop", summary: "Lead a scenario workshop with the customer to validate two scenarios.", owner_role: "technical", timing_basis: "customer_commitment", success_criteria: ["criteria agreed"], evidence_ids: ["gs_1"] },
+  commercial_handoff: { summary: "commercial brief", key_points: ["impact"], remaining_questions: ["budget?"], evidence_ids: [] },
+  technical_handoff: { summary: "technical brief", key_points: ["environment"], remaining_questions: ["data sources?"], evidence_ids: [] },
+  do_not_reask: ["current environment"],
+  remaining_questions: ["what is the budget authority?"]
+};
+
+const stageCInput: StageCInput = {
+  run_id: "run_1",
+  account: "Meridian",
+  existing_scores: { signal_strength: 60, qualification: 40, external_fit: null, pursuit_decision: "PURSUE_WITH_DISCOVERY", deal_maturity: "SOLUTION_DISCOVERY" },
+  stage_a_summary: null,
+  stage_b_summary: null,
+  evidence: [{ evidence_id: "gs_1", text: "the environment is complex" }],
+  taxonomy_candidates: ["observability"],
+  deterministic: stageCDeterministic
+};
+
+describe("runStageC", () => {
+  it("returns Circuit output when valid; scores are never part of the output", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      facts: [{ statement: "circuit fact", evidence_ids: ["gs_1"] }],
+      inferences: [],
+      missing_information: ["x"],
+      meddpicc: { identify_pain: { status: "CONFIRMED", summary: "pain", evidence_ids: ["gs_1"], next_question: "" } },
+      opportunity_thesis: "circuit thesis",
+      deal_maturity_interpretation: "SOLUTION_DISCOVERY",
+      product_role_narrative: [],
+      risks: [],
+      next_best_action: { action_type: "architecture_workshop", title: "t", summary: "Lead a specific scenario workshop with named participants.", owner_role: "technical", timing_basis: "customer_commitment", success_criteria: ["c"], evidence_ids: ["gs_1"] },
+      commercial_handoff: { summary: "commercial", key_points: [], remaining_questions: [], evidence_ids: [] },
+      technical_handoff: { summary: "technical", key_points: [], remaining_questions: [], evidence_ids: [] },
+      do_not_reask: [],
+      remaining_questions: []
+    }));
+    const { output, trace } = await runStageC(stageCInput);
+    expect(trace.succeeded).toBe(true);
+    expect(output.opportunity_thesis).toBe("circuit thesis");
+    // Scores are never in the Stage C output shape (deterministic-only).
+    expect(output as unknown as Record<string, unknown>).not.toHaveProperty("existing_scores");
+    expect(output as unknown as Record<string, unknown>).not.toHaveProperty("pursuit_decision");
+  });
+
+  it("rejects invented evidence ids -> repair -> deterministic fallback", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({ ...stageCDeterministic, facts: [{ statement: "x", evidence_ids: ["INVENTED"] }] }));
+    const { output, trace } = await runStageC(stageCInput);
+    expect(trace.fallback_used).toBe(true);
+    expect(output).toEqual(stageCDeterministic);
+  });
+
+  it("rejects identical commercial and technical handoffs", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      ...stageCDeterministic,
+      commercial_handoff: { summary: "same", key_points: [], remaining_questions: [], evidence_ids: [] },
+      technical_handoff: { summary: "same", key_points: [], remaining_questions: [], evidence_ids: [] }
+    }));
+    const { trace } = await runStageC(stageCInput);
+    expect(trace.fallback_used).toBe(true);
   });
 });
