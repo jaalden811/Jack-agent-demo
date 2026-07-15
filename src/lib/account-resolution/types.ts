@@ -51,6 +51,13 @@ export type AccountResolutionInputs = {
   customerParticipantEmailDomains: string[];
   transcriptDialogueText: string[];
   openAiAccountCandidates: Array<{ name: string; domain: string | null; confidence: number; evidence_ids: string[] }>;
+  /** Product/vendor names (from the loaded taxonomy / source catalog)
+   * that must never be treated as an account — passed in so the
+   * organization-entity parser stays data-driven, not hard-coded. */
+  productStoplist?: string[];
+  /** Participant first names, so a single-token name that is a known
+   * person is not mistaken for an organization. */
+  participantFirstNames?: string[];
 };
 
 export type AccountOverride = {

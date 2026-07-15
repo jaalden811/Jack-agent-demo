@@ -1,0 +1,83 @@
+00:00 — Rachel:
+Thanks everyone for the time. Before we dig in, one ground rule from our side: please don't leave this meeting saying CONTOSO is running a SIEM competition. There is no approved replacement project, and this is explicitly not a procurement timeline. We are here to explore scenarios, not to run a formal evaluation yet.
+
+00:20 — Jordan:
+Agreed. To set context on our side, we operate a large, distributed engineering and infrastructure business. Our operational data is fragmented across a lot of tools, and correlating an incident end to end is genuinely painful today.
+
+00:40 — Daniel:
+Can you walk us through a recent incident and what made it hard?
+
+00:52 — Maya:
+Two months ago our project-delivery portal degraded intermittently. Some transactions completed, some timed out. It took our teams about three days to establish probable cause, and at peak we had roughly forty people on the bridge across cloud, network, application, and security.
+
+01:20 — Jordan:
+The core issue is that our reliability, infrastructure, application, and security teams each look at a different console. Nobody can build one reliable timeline across those domains.
+
+01:38 — Daniel:
+Where does the affected service run, and what is generating the telemetry?
+
+01:50 — Maya:
+The front end is in the cloud, several services run in Kubernetes, older integrations are in our own data centers, and validation reaches an ERP system. We use ServiceNow for workflow and ticketing, and we have Splunk only in pockets — not as a standard.
+
+02:15 — Eric:
+On the security side, our concern is that a general IT data platform becomes a place where security data loses its access controls. We need data segregation, role-based access, retention control, and reliable investigation search.
+
+02:40 — Rachel:
+Understood. To be clear, are you looking to replace your current SIEM?
+
+02:48 — Eric:
+No. There is no approved replacement project. Security may have some renewal-related flexibility later, but that is not confirmed and I would not build a plan around it.
+
+03:05 — Jordan:
+What we actually want is cross-domain service intelligence: one place to see transactions, dependencies, infrastructure health, relevant changes, and nearby security activity for a given business service.
+
+03:25 — Maya:
+And we want to keep our specialist tools where they are genuinely better. This is not a rip-and-replace conversation. Multivendor openness matters to us.
+
+03:45 — Daniel:
+That is helpful. What would make a good outcome for you technically?
+
+03:58 — Jordan:
+Start with the service, not the device. If our delivery portal degrades, I want to correlate application traces, infrastructure metrics, change events, and security signals quickly, and pivot into the underlying evidence.
+
+04:20 — Eric:
+For a connected security scenario, I want to show one investigation across identity, endpoint, application, and network activity — with the security data properly separated and access-controlled.
+
+04:45 — Maya:
+Our decision criteria are fairly clear: data quality, security and access control, integration with ServiceNow, cost predictability, governance, multivendor openness, and evidence quality during an investigation.
+
+05:10 — Rachel:
+Those are strong criteria. On cost — is there dedicated budget for this?
+
+05:18 — Jordan:
+Not a dedicated product budget today. There may be a funding placeholder in the operational-resilience program, but no single buying authority owns this yet, and procurement does not need to join at this stage.
+
+05:40 — Daniel:
+That all makes sense. Rather than four separate product demos, what if we built a scenario-led working session around two or three of your real scenarios?
+
+05:55 — Jordan:
+Yes, that is exactly what I would like. Let's do a working session around two or three scenarios — the delivery-portal reliability scenario and the cross-domain security-investigation scenario, and possibly a change-correlation one.
+
+06:18 — Maya:
+We can start from synthetic or representative data so we are not blocked on data access. The bar is: recreate the portal incident and show a responder reaching probable cause much faster than three days.
+
+06:40 — Eric:
+And for the security scenario, demonstrate the investigation with proper data separation and auditability — not just a dashboard.
+
+07:00 — Daniel:
+Understood. We can map capabilities directly to those scenarios rather than leading with an umbrella term. We'll send you a scenario outline within a week.
+
+07:15 — Jordan:
+Good. Send it to me, Maya, and Eric first so we can react before it goes wider.
+
+07:28 — Rachel:
+On timing — late next quarter is probably the practical boundary for running the working session given everyone's calendars, but I want to stress that is a planning boundary, not a procurement timeline.
+
+07:45 — Jordan:
+Correct. No commitments beyond the working session at this point. We are exploring solution approaches and criteria, nothing more advanced than that.
+
+08:00 — Daniel:
+Perfect. We'll keep it scenario-led, preserve your specialist tools where they are authoritative, and keep ServiceNow as the workflow system of record.
+
+08:15 — Maya:
+That works. Thanks everyone.

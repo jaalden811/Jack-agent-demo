@@ -114,6 +114,10 @@
   },
   "deal_maturity": {
     "default_stage": "PROBLEM_DISCOVERY",
-    "stages": ["PROBLEM_DISCOVERY", "SOLUTION_DISCOVERY", "VALIDATION", "COMMERCIAL_EVALUATION", "PROCUREMENT", "COMMIT"]
+    "stages": ["PROBLEM_DISCOVERY", "SOLUTION_DISCOVERY", "VALIDATION", "COMMERCIAL_EVALUATION", "PROCUREMENT", "COMMIT"],
+    "negative_evidence_cap": {
+      "description": "Explicit negative/limiting statements cap how advanced deal maturity may be reported, regardless of other signals. E.g. 'not an evaluation yet' / 'no approved replacement project' / 'not a procurement timeline' / 'procurement does not need to join yet' cap maturity at SOLUTION_DISCOVERY.",
+      "cap_stage": "SOLUTION_DISCOVERY"
+    }
   }
 }

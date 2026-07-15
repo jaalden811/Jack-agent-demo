@@ -33,7 +33,7 @@ export type OpportunityFitScoringConfig = {
     nurture: { description?: string; requires_any: string[] };
   };
   signal_strength_bands: { high: number; medium: number };
-  deal_maturity: { default_stage: string; stages: string[] };
+  deal_maturity: { default_stage: string; stages: string[]; negative_evidence_cap?: { description?: string; cap_stage: string } };
 };
 
 let cachedConfig: OpportunityFitScoringConfig | null = null;
