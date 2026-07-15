@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "purpose": "Deterministic handoff-readiness scoring. Measures whether a specialist can act from the packet alone — deliberately SEPARATE from MEDDPICC completeness, so an early-discovery opportunity with thin MEDDPICC can still be handoff-ready. Weights only; no company/product/transcript.",
+    "version": "1.0.0"
+  },
+  "weights": {
+    "account_resolution": 0.12,
+    "problem_clarity": 0.14,
+    "next_action_clarity": 0.16,
+    "owner_assignment": 0.08,
+    "evidence_quality": 0.1,
+    "stakeholder_coverage": 0.08,
+    "known_environment_coverage": 0.08,
+    "decision_criteria_coverage": 0.06,
+    "answered_question_coverage": 0.08,
+    "meeting_objective": 0.05,
+    "success_criteria": 0.03,
+    "delivery_target": 0.02
+  },
+  "thresholds": { "ready": 75, "ready_with_gaps": 50 },
+  "blocking_dimensions": ["next_action_clarity", "owner_assignment", "problem_clarity"]
+}

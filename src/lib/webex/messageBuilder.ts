@@ -154,19 +154,29 @@ export function buildSalesMessage(params: {
   const salesActions = brief.sales_actions.slice(0, 5);
   const topRisks = brief.top_risks.slice(0, 4);
 
+  const nba = result.next_best_action;
+  const handoff = result.specialist_handoffs?.sales;
+  const doNotReask = handoff?.questions_not_to_reask ?? [];
+  const stillNeed = (handoff?.remaining_questions ?? []).map((q) => q.question);
+
   const markdown = composeToByteBudget(
     [
-      { text: `**Sales action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**` },
+      { text: `**Commercial action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**` },
       { text: brief.pursuit_line ? `**Pursuit:** ${brief.pursuit_line}` : null },
       { text: `**Account:** ${account.label}${brief.account_action ? ` — ${brief.account_action}` : ""}` },
-      { text: `**Lifecycle:** ${decision.lifecycle_stage}` },
+      { text: `**Why you:** ${decision.reason || "Routed to the commercial lane."}` },
+      { text: nba && nba.action_type !== "hold" && nba.action_type !== "suppress" ? `**Recommended action:** ${nba.summary}` : null },
       { text: "" },
       { text: "**Opportunity thesis**" },
       { text: brief.opportunity_thesis },
       { text: whyNow.length > 0 ? "\n**Why now**" : null },
       { text: whyNow.length > 0 ? bulletList(whyNow) : null },
-      { text: "\n**MEDDPICC**" },
-      { text: bulletList(brief.meddpicc_lines) },
+      { text: doNotReask.length > 0 ? "\n**Customer already told us — do not re-ask**" : null },
+      { text: doNotReask.length > 0 ? bulletList(doNotReask.slice(0, 5)) : null },
+      { text: stillNeed.length > 0 ? "\n**Still need to learn**" : null, droppable: true, priority: 3 },
+      { text: stillNeed.length > 0 ? bulletList(stillNeed.slice(0, 3)) : null, droppable: true, priority: 3 },
+      { text: "\n**MEDDPICC**", droppable: true, priority: 2 },
+      { text: bulletList(brief.meddpicc_lines), droppable: true, priority: 2 },
       { text: "\n**Bella next**" },
       { text: bulletList(salesActions) },
       { text: topRisks.length > 0 ? "\n**Top risks**" : null, droppable: true, priority: 2 },
@@ -218,21 +228,37 @@ export function buildTechnicalMessage(params: {
   // Technical lane is deliberately distinct from sales: architecture,
   // integrations, evidence, and validation — and the commercial pursuit
   // score is intentionally omitted (Section 13).
+  const nba = result.next_best_action;
+  const handoff = result.specialist_handoffs?.technical;
+  const doNotReask = handoff?.questions_not_to_reask ?? [];
+  const remainingTech = (handoff?.remaining_questions ?? []).map((q) => q.question);
+  const meeting = handoff?.meeting_or_workshop_plan;
+  const workshopLine = meeting
+    ? `${meeting.title} (${meeting.recommended_duration_minutes} min). Scenarios: ${meeting.scenarios.map((s) => s.name).join("; ") || "to be agreed"}. Success: ${handoff?.success_criteria.join("; ") || "agree pass/fail before the session"}.`
+    : null;
+
   const markdown = composeToByteBudget(
     [
       { text: `**Technical action — ${summary.verdict.replace(/_/g, " ")}**` },
       { text: `**Account:** ${account.label}` },
-      { text: `**Lifecycle:** ${decision.lifecycle_stage}` },
+      { text: `**Why you:** ${decision.reason || "Routed to the technical lane."}` },
+      { text: nba && nba.action_type !== "hold" && nba.action_type !== "suppress" ? `**Recommended action:** ${nba.summary}` : null },
       { text: "" },
-      { text: "**Customer pain**" },
+      { text: "**Customer problem**" },
       { text: clipAtWord(summary.business_problem, 600) },
       { text: "" },
       { text: `**Current environment:** ${clipAtWord(currentEnvironment, 400)}` },
       { text: `**Solution motion:** ${clipAtWord(solutionMotion, 400)}` },
+      { text: doNotReask.length > 0 ? "\n**Already known — do not re-ask**" : null },
+      { text: doNotReask.length > 0 ? bulletList(doNotReask.slice(0, 6)) : null },
+      { text: remainingTech.length > 0 ? "\n**Remaining technical decisions**" : null },
+      { text: remainingTech.length > 0 ? bulletList(remainingTech.slice(0, 4)) : null },
+      { text: workshopLine ? "\n**Workshop / POV**" : null },
+      { text: workshopLine ? workshopLine : null },
       { text: "\n**Jack next — architecture & validation**" },
       { text: bulletList(brief.technical_actions) },
-      { text: "\n**Evidence**" },
-      { text: evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.", droppable: true, priority: 2 },
+      { text: "\n**Evidence**", droppable: true, priority: 3 },
+      { text: evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.", droppable: true, priority: 3 },
       { text: strategyContext ? `\n${strategyContext}` : null, droppable: true, priority: 1 },
       { text: "" },
       { text: analysisLinkMarkdown(analysisLink, runId) },

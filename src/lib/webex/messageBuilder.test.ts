@@ -5,6 +5,7 @@ import { buildDefaultOpportunityScoring, buildDefaultSerpApiSignals } from "@/li
 import type { AnalysisLink } from "@/lib/qualification/types";
 import type { LaneRoutingDecision } from "@/lib/webex/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import { emptyActionAndHandoffFields } from "@/lib/handoff/defaults";
 
 const noLink: AnalysisLink = { included: false, url: null, reason: "no_public_base_url", expires_at: null };
 const includedLink: AnalysisLink = { included: true, url: "https://app.example.com/signal-agent/results/run-1?token=abc.def", reason: "public_url_ready", expires_at: new Date(Date.now() + 3600_000).toISOString() };
@@ -111,7 +112,8 @@ function buildResult(): SecureNetworkingTriageResult {
     generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] },
     serpapi_signals: buildDefaultSerpApiSignals(),
     opportunity_scoring: buildDefaultOpportunityScoring(),
-    buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } }
+    buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } },
+    ...emptyActionAndHandoffFields("run-1")
   };
 }
 
@@ -144,7 +146,7 @@ describe("Webex message templates", () => {
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
-    expect(salesMessage.markdown).toContain("Sales action");
+    expect(salesMessage.markdown).toContain("Commercial action");
     expect(salesMessage.markdown).toContain("Opportunity thesis");
     expect(salesMessage.markdown).toContain("Bella next");
     expect(salesMessage.markdown).toContain("Technical counterpart");

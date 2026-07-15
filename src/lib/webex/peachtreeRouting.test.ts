@@ -3,6 +3,7 @@ import { buildLaneRouting, classifyLifecycle, detectSignalTypes, loadRoutingConf
 import { buildDefaultAccountResolution, buildDefaultAiProcessing, buildDefaultMeddpicc, buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
 import { buildDefaultOpportunityScoring, buildDefaultSerpApiSignals } from "@/lib/opportunity-fit/defaults";
 import type { SecureNetworkingTriageResult, MatchOutput } from "@/lib/signal-agent/types";
+import { emptyActionAndHandoffFields } from "@/lib/handoff/defaults";
 
 /** Minimal, type-valid fixture builder — lets each test override only the
  * fields that matter to routing/lifecycle logic, without hand-rolling the
@@ -119,7 +120,8 @@ function buildResult(overrides: {
     generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] },
     serpapi_signals: buildDefaultSerpApiSignals(),
     opportunity_scoring: buildDefaultOpportunityScoring(),
-    buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } }
+    buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } },
+    ...emptyActionAndHandoffFields("run-1")
   };
 }
 
