@@ -4,6 +4,7 @@ import { invalidEvidenceIds, invalidUrls, collectEvidenceIdReferences } from "@/
 import { stageASchema, runStageA, allowedStageAEvidenceIds, type StageAInput, type StageAOutput } from "@/lib/circuit/stages/stageA";
 import { stageBSchema, runStageB, allowedStageBUrls, type StageBInput, type StageBOutput } from "@/lib/circuit/stages/stageB";
 import { runStageC, type StageCInput, type StageCOutput } from "@/lib/circuit/stages/stageC";
+import { runStageD, type StageDInput, type StageDOutput } from "@/lib/circuit/stages/stageD";
 
 vi.mock("@/lib/circuit/client", () => ({ circuitGenerate: vi.fn() }));
 import { circuitGenerate } from "@/lib/circuit/client";
@@ -305,5 +306,57 @@ describe("runStageC", () => {
     }));
     const { trace } = await runStageC(stageCInput);
     expect(trace.fallback_used).toBe(true);
+  });
+});
+
+const stageDDeterministic: StageDOutput = {
+  sales_webex: "**Commercial action — Meridian**\n\nCommercial brief and next action.",
+  technical_webex: "**Technical action — Meridian**\n\nTechnical brief and workshop plan.",
+  sales_email: { subject: "Commercial action — Meridian", body: "commercial" },
+  technical_email: { subject: "Technical action — Meridian", body: "technical" }
+};
+
+const stageDInput: StageDInput = {
+  run_id: "run_1",
+  account: "Meridian",
+  channel_byte_budget: 6400,
+  allowed_urls: ["https://meridian.com/about"],
+  stage_c: {
+    opportunity_thesis: "thesis",
+    next_best_action: { title: "t", summary: "Lead a workshop", owner_role: "technical" },
+    commercial_handoff: { summary: "commercial brief", key_points: ["impact"], remaining_questions: ["budget?"] },
+    technical_handoff: { summary: "technical brief", key_points: ["environment"], remaining_questions: ["data sources?"] },
+    do_not_reask: ["current environment"]
+  },
+  deterministic: stageDDeterministic
+};
+
+describe("runStageD", () => {
+  it("returns distinct Circuit messages using the canonical account", async () => {
+    configure();
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      sales_webex: "**Commercial action — Meridian**\n\nWhy now and the commercial next step.",
+      technical_webex: "**Technical action — Meridian**\n\nCustomer environment and the workshop plan.",
+      sales_email: { subject: "Commercial — Meridian", body: "b" },
+      technical_email: { subject: "Technical — Meridian", body: "b" }
+    }));
+    const { output, trace } = await runStageD(stageDInput);
+    expect(trace.succeeded).toBe(true);
+    expect(output.sales_webex).not.toEqual(output.technical_webex);
+    expect(output.sales_webex).toContain("Meridian");
+  });
+
+  it("rejects identical messages / missing account / invented URL / ellipsis -> fallback", async () => {
+    configure();
+    // Identical + missing account + invented URL + ellipsis all violate.
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      sales_webex: "Same message with https://invented.com and an ellipsis…",
+      technical_webex: "Same message with https://invented.com and an ellipsis…",
+      sales_email: { subject: "s", body: "b" },
+      technical_email: { subject: "t", body: "b" }
+    }));
+    const { output, trace } = await runStageD(stageDInput);
+    expect(trace.fallback_used).toBe(true);
+    expect(output).toEqual(stageDDeterministic);
   });
 });
