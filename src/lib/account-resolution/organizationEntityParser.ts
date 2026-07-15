@@ -65,7 +65,7 @@ const LEGAL_SUFFIX = "(?:Inc|Inc\\.|LLC|L\\.L\\.C\\.|Corp|Corp\\.|Corporation|Gr
 // names ("with OpenTelemetry", "for May"). Each prefix word allows a
 // capitalized first letter (sentence start) while the pattern is
 // case-SENSITIVE, so the captured org name's words must each start
-// uppercase (prevents "saying AECOM is running" capturing the trailing
+// uppercase (prevents "saying <Org> is running" capturing the trailing
 // lowercase clause).
 const CONTEXT_PREFIX_WORDS = ["at", "saying", "client", "customer", "account", "our client", "our customer", "our account", "work at", "our work at", "on behalf of"];
 const CONTEXT_PREFIX_ALT = CONTEXT_PREFIX_WORDS.map((word) =>

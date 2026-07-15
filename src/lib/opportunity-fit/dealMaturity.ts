@@ -42,8 +42,8 @@ const MATURITY_LIMITING_PATTERNS: RegExp[] = [
   /\bno approved (replacement )?(project|program|budget)\b/i,
   /\bnot a procurement timeline\b/i,
   /\bprocurement (does not|doesn'?t|won'?t) need to (join|be involved)\b/i,
-  /\bnot (a )?dedicated (product |splunk )?budget\b/i,
-  /\bno dedicated (product |splunk )?budget\b/i,
+  /\bnot (a )?dedicated (product )?budget\b/i,
+  /\bno dedicated (product )?budget\b/i,
   /\bno formal (evaluation|competition|replacement)\b/i,
   /\bnot (replacing|an approved)\b/i
 ];

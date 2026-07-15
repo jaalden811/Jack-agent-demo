@@ -54,7 +54,7 @@ describe("detectMaturityLimitingEvidence + negative-evidence cap (Section 9)", (
     "There is no approved replacement project.",
     "This is not a procurement timeline.",
     "It's not an evaluation yet.",
-    "There is no dedicated Splunk budget.",
+    "There is no dedicated product budget.",
     "Procurement does not need to join yet."
   ])("detects the limiting statement: %s", (sentence) => {
     expect(detectMaturityLimitingEvidence([sentence])).toBe(true);
