@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "purpose": "Configuration-driven internal team roster for attendance-aware routing. Editable SEED data only — no person is hard-coded in TypeScript. Circuit recommends required role families; the deterministic router selects real people from this roster. Never route to customer participants or inactive members.",
+    "version": "1.0.0"
+  },
+  "members": [
+    {
+      "person_id": "seed-sales-001",
+      "name": "Bella Robinson",
+      "emails": ["belrobin@cisco.com"],
+      "webex_email": "belrobin@cisco.com",
+      "title": "Account Executive",
+      "role_family": "commercial",
+      "lane": "sales",
+      "specialties": ["commercial", "qualification", "negotiation"],
+      "product_domains": ["secure_networking", "observability", "security"],
+      "accounts": [],
+      "territories": [],
+      "manager_person_id": null,
+      "fallback_queue": "sales-queue",
+      "notification_channels": ["webex", "outlook"],
+      "default_webex_room_id": null,
+      "active": true
+    },
+    {
+      "person_id": "seed-tech-001",
+      "name": "Jack Alden",
+      "emails": ["jaalden@cisco.com"],
+      "webex_email": "jaalden@cisco.com",
+      "title": "Technical Solutions Specialist",
+      "role_family": "technical",
+      "lane": "technical",
+      "specialties": ["architecture", "observability", "security", "proof_of_value"],
+      "product_domains": ["secure_networking", "observability", "security"],
+      "accounts": [],
+      "territories": [],
+      "manager_person_id": null,
+      "fallback_queue": "technical-queue",
+      "notification_channels": ["webex", "outlook"],
+      "default_webex_room_id": null,
+      "active": true
+    }
+  ]
+}
