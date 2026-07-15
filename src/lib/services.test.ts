@@ -614,7 +614,7 @@ describe("runResearch", () => {
 
   it("OpenAI reranking failure does NOT produce per-card 'failed' message", async () => {
     // reRankAccounts with no API key should use deterministicRerank, not error messages
-    const cap = await productCapabilityMapper(input, []);
+    await productCapabilityMapper(input, []);
     const run = await runResearch(input, []);
     for (const account of run.accounts) {
       expect(account.priorityReason).not.toMatch(/reranking failed/i);

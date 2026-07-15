@@ -1,0 +1,53 @@
+/**
+ * Signal-to-Action design tokens (Phase 1).
+ *
+ * A dark, high-contrast operational-intelligence palette inspired by the
+ * visual language of Cloud Control references — NOT a copy. These are the
+ * canonical tokens; components reference them (directly or via the
+ * semantic aliases mapped in globals.css). No component should hard-code
+ * a raw hex value.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --bg-canvas: #05070d;
+  --bg-deep: #070d18;
+  --surface-1: #0b1423;
+  --surface-2: #101c30;
+  --surface-3: #14233a;
+
+  --border-subtle: #22324c;
+  --border-active: #2f80ff;
+
+  --text-primary: #f5f8ff;
+  --text-secondary: #a4b4ca;
+  --text-muted: #70839d;
+
+  --cyan: #00d2ff;
+  --blue: #237cff;
+  --magenta: #f43f91;
+  --orange: #ff9b3d;
+
+  --success: #2ed6a1;
+  --warning: #ffc857;
+  --danger: #ff6171;
+  --info: #46b8ff;
+
+  --brand-gradient: linear-gradient(135deg, #ff9b3d 0%, #f43f91 34%, #00d2ff 68%, #237cff 100%);
+
+  --panel-gradient: linear-gradient(145deg, rgba(20, 35, 58, 0.92), rgba(7, 13, 24, 0.96));
+
+  --glow-cyan: 0 0 28px rgba(0, 210, 255, 0.16);
+  --glow-blue: 0 0 34px rgba(35, 124, 255, 0.14);
+
+  /* Status tints for dark surfaces (used behind status pills/cards). */
+  --tint-success: rgba(46, 214, 161, 0.12);
+  --tint-warning: rgba(255, 200, 87, 0.12);
+  --tint-danger: rgba(255, 97, 113, 0.12);
+  --tint-info: rgba(70, 184, 255, 0.12);
+
+  /* Elevation shadows tuned for a near-black canvas. */
+  --shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.45);
+  --shadow-raised: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
