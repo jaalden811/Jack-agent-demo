@@ -381,7 +381,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       category_scores: buildCategoryScores(evaluations, genericSignals)
     },
     serpapi_signals: qualification.serpapi_signals,
-    opportunity_scoring: qualification.opportunity_scoring
+    opportunity_scoring: qualification.opportunity_scoring,
+    buying_committee: qualification.buying_committee
   };
 
   const auditOutcome = await appendAuditRecord(result);

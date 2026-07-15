@@ -9,6 +9,10 @@ export type ResolvedWebexSender = {
   accessToken: string | null;
   mode: WebexSenderMode;
   senderIdentity: string | null;
+  /** The connected user's own email — used to detect a self-direct
+   * (recipient == connected identity) message, which Webex cannot
+   * deliver as a 1:1 (Phase 18B). */
+  senderEmail: string | null;
   messageScopeGranted: boolean;
 };
 
@@ -32,6 +36,7 @@ export async function resolveWebexSender(): Promise<ResolvedWebexSender> {
         accessToken,
         mode: "connected_user",
         senderIdentity: identity?.displayName ?? identity?.email ?? null,
+        senderEmail: identity?.email ?? null,
         messageScopeGranted: true
       };
     }
@@ -39,8 +44,8 @@ export async function resolveWebexSender(): Promise<ResolvedWebexSender> {
 
   const botToken = getConfig().WEBEX_BOT_ACCESS_TOKEN ?? null;
   if (botToken) {
-    return { accessToken: botToken, mode: "bot", senderIdentity: "Signal Agent bot", messageScopeGranted };
+    return { accessToken: botToken, mode: "bot", senderIdentity: "Signal Agent bot", senderEmail: null, messageScopeGranted };
   }
 
-  return { accessToken: null, mode: "unavailable", senderIdentity: null, messageScopeGranted };
+  return { accessToken: null, mode: "unavailable", senderIdentity: null, senderEmail: null, messageScopeGranted };
 }

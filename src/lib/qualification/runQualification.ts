@@ -10,6 +10,7 @@ import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInp
 import { computeTranscriptOpportunityScore, computeQualificationCompletenessScore, computeExternalFitScore } from "@/lib/opportunity-fit/opportunityFit";
 import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
 import { classifyDealMaturity, signalStrengthBand, detectMaturityLimitingEvidence } from "@/lib/opportunity-fit/dealMaturity";
+import { inferAuthorityGraph, type AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
@@ -33,6 +34,7 @@ export type QualificationPipelineResult = {
   named_stakeholders_for_messaging: StakeholderRecord[];
   serpapi_signals: SerpApiSignalsResult;
   opportunity_scoring: OpportunityScoringResult;
+  buying_committee: AuthorityGraph;
 };
 
 export async function runQualificationPipeline(params: {
@@ -194,6 +196,34 @@ export async function runQualificationPipeline(params: {
           competitorMentions: extraction.result?.commercial_signals.competitor_mentions
         });
   const meddpicc = classifiedPublicResults.length > 0 ? mergePublicEvidenceIntoMeddpicc(baseMeddpicc, classifiedPublicResults) : baseMeddpicc;
+
+  // ─── Buying-committee / authority graph (Phases 10-13) ────────────────────
+  // Evidence-backed role inference from customer-side behavior, plus a
+  // distributed-economic-authority model. Overrides a MISSING/HYPOTHESIS
+  // economic_buyer with a DISTRIBUTED interpretation when the transcript
+  // shows multiple funding paths and no single approver — never fabricates
+  // a named buyer or private budget certainty.
+  const customerSentences = params.transcript.sentences.filter((s) => s.isCustomer);
+  const authorityGraph = inferAuthorityGraph({
+    stakeholderTurns: customerSentences.map((s) => ({ name: s.speaker, text: s.text })),
+    allCustomerText: customerSentences.map((s) => s.text)
+  });
+  if ((meddpicc.economic_buyer.status === "MISSING" || meddpicc.economic_buyer.status === "HYPOTHESIS") && authorityGraph.economic_authority.status !== "missing") {
+    const ea = authorityGraph.economic_authority;
+    meddpicc.economic_buyer = {
+      status: ea.status === "distributed" ? "DISTRIBUTED" : ea.status === "confirmed" ? "CONFIRMED" : "PARTIAL",
+      summary:
+        ea.status === "distributed"
+          ? `Economic authority is distributed / not yet confirmed. ${ea.known[0] ?? ""} Probable approval lanes: ${ea.approval_paths.join("; ")}.`
+          : ea.named_person
+            ? `${ea.named_person} shows explicit budget/approval-authority language.`
+            : "Partial economic-authority evidence.",
+      confidence: ea.confidence,
+      evidence_ids: [],
+      gaps: ea.gaps,
+      next_question: ea.next_question
+    };
+  }
 
   const aiProcessing: AiProcessingStatus = {
     openai_configured: openAiConfigured,
@@ -361,6 +391,7 @@ export async function runQualificationPipeline(params: {
     ai_processing: aiProcessing,
     named_stakeholders_for_messaging: params.namedStakeholders,
     serpapi_signals: serpapiSignals,
-    opportunity_scoring: opportunityScoring
+    opportunity_scoring: opportunityScoring,
+    buying_committee: authorityGraph
   };
 }

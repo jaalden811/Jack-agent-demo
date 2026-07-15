@@ -135,7 +135,7 @@ export type ClassifiedPublicResult = {
 
 // ─── Stage C: MEDDPICC ──────────────────────────────────────────────────────
 
-export type MeddpiccStatus = "CONFIRMED" | "PARTIAL" | "HYPOTHESIS" | "MISSING" | "CONFLICTING";
+export type MeddpiccStatus = "CONFIRMED" | "PARTIAL" | "HYPOTHESIS" | "MISSING" | "CONFLICTING" | "DISTRIBUTED";
 
 export type MeddpiccField = {
   status: MeddpiccStatus;

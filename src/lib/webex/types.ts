@@ -145,6 +145,11 @@ export type ChannelDeliveryResult = {
   error_code: string | null;
   sent_at: string | null;
   delivery_key: string;
+  /** Whether the failure is transient/retryable (network/429/5xx/timeout)
+   * vs permanent (invalid recipient, self-direct unsupported, forbidden,
+   * 400/404). Lets the UI show why a delivery failed and whether a retry
+   * could ever succeed. Null when not attempted or delivered. */
+  retryable?: boolean | null;
 };
 
 /** Full routing + delivery result attached to a Signal Agent run for the

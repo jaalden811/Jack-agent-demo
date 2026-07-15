@@ -75,7 +75,7 @@ const OPPORTUNITY_SIGNAL_POINTS: Record<keyof Omit<TranscriptOpportunitySignals,
   hasNamedDecisionAuthority: 12
 };
 
-const PAIN_STATUS_POINTS: Record<MeddpiccField["status"], number> = { CONFIRMED: 15, PARTIAL: 9, HYPOTHESIS: 4, CONFLICTING: 2, MISSING: 0 };
+const PAIN_STATUS_POINTS: Record<MeddpiccField["status"], number> = { CONFIRMED: 15, PARTIAL: 9, HYPOTHESIS: 4, CONFLICTING: 2, MISSING: 0, DISTRIBUTED: 9 };
 
 /** Derived only from transcript-native evidence — continues working
  * identically when SerpAPI and OpenAI are both unavailable. */
@@ -91,7 +91,10 @@ export function computeTranscriptOpportunityScore(signals: TranscriptOpportunity
 
 // ─── B. Qualification completeness score ───────────────────────────────────
 
-const MEDDPICC_STATUS_WEIGHT: Record<MeddpiccField["status"], number> = { CONFIRMED: 1, PARTIAL: 0.6, HYPOTHESIS: 0.3, CONFLICTING: 0.2, MISSING: 0 };
+// DISTRIBUTED (economic authority spread across multiple approval lanes)
+// counts as partial qualification progress — better than MISSING, short
+// of a single CONFIRMED buyer.
+const MEDDPICC_STATUS_WEIGHT: Record<MeddpiccField["status"], number> = { CONFIRMED: 1, PARTIAL: 0.6, HYPOTHESIS: 0.3, CONFLICTING: 0.2, MISSING: 0, DISTRIBUTED: 0.6 };
 
 export function computeQualificationCompletenessScore(meddpicc: Meddpicc): number {
   const fields = Object.values(meddpicc);
@@ -139,9 +142,14 @@ export function computeExternalFitScore(params: { signals: NormalizedPublicSigna
 
   const config = loadOpportunityFitScoringConfig();
   const weights = config.external_fit_score.weights;
+  // Only strong/supporting signals contribute to external fit (Phase
+  // 4/25): weak and rejected signals (including every transcript-
+  // alignment-zero result) contribute nothing, so many low-relevance
+  // hits can never manufacture a non-zero external-fit score.
+  const eligibleSignals = params.signals.filter((s) => s.evidence_class === "confirmed_public_fact" || s.evidence_class === "probable_public_signal");
   const factors: ExternalFitFactor[] = (Object.keys(FACTOR_TO_CATEGORY) as ExternalFitFactor["factor"][]).map((factor) => {
     const category = FACTOR_TO_CATEGORY[factor];
-    const categorySignals = params.signals.filter((s) => s.category === category);
+    const categorySignals = eligibleSignals.filter((s) => s.category === category);
     const { score, evidenceIds } = factorScoreFromSignals(categorySignals);
     const weight = weights[factor] ?? 0;
     return {
