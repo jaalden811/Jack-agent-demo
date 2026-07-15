@@ -20,6 +20,7 @@ import { buildCategoryScores } from "@/lib/signal-agent/dominance";
 import { buildNextBestAction, type ActionOwners } from "@/lib/action-intelligence/nextBestAction";
 import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
 import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
+import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -410,7 +411,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     // assembled result rather than re-deriving evidence.
     next_best_action: {} as SecureNetworkingTriageResult["next_best_action"],
     specialist_handoffs: {} as SecureNetworkingTriageResult["specialist_handoffs"],
-    question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] }
+    question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] },
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_c: null }
   };
 
   // Action-intelligence + specialist-handoff layer (the defining output):
@@ -424,6 +426,11 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
+
+  // Circuit AI-enhancement (additive; deterministic result is
+  // authoritative and complete without it). No-op when Circuit is
+  // unconfigured/unavailable — never throws, never changes scores.
+  result.ai_trace = await enhanceWithCircuit(result);
 
   const auditOutcome = await appendAuditRecord(result);
   result.audit = { logged: auditOutcome.logged, path: AUDIT_LOG_RELATIVE_PATH, warning: auditOutcome.warning ?? effectiveBundle.warning };

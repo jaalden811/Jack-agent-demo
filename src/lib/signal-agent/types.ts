@@ -4,6 +4,33 @@ import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/oppor
 import type { AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import type { NextBestAction } from "@/lib/action-intelligence/types";
 import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types";
+import type { StageAOutput } from "@/lib/circuit/stages/stageA";
+import type { StageCOutput } from "@/lib/circuit/stages/stageC";
+
+/** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
+export type CircuitStageTraceSummary = {
+  stage: string;
+  attempted: boolean;
+  succeeded: boolean;
+  model_returned: string | null;
+  duration_ms: number;
+  repair_attempted: boolean;
+  fallback_used: boolean;
+  safe_error_code: string | null;
+};
+
+/** The AI-enhancement trace attached to every run. When Circuit is
+ * unconfigured/unavailable this is { provider: "circuit", enhanced: false
+ * } and the deterministic result stands unchanged. */
+export type AiTrace = {
+  provider: "circuit";
+  enhanced: boolean;
+  stages: CircuitStageTraceSummary[];
+  /** Circuit's evidence-backed interpretation (additive — deterministic
+   * fields remain authoritative; scores are never changed). */
+  stage_a: StageAOutput | null;
+  stage_c: StageCOutput | null;
+};
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
@@ -661,6 +688,9 @@ export type SecureNetworkingTriageResult = {
   specialist_handoffs: { sales: SpecialistHandoffPacket; technical: SpecialistHandoffPacket };
   /** The do-not-re-ask index: answered / open / declined / contradictory. */
   question_index: QuestionIndex;
+  /** Circuit AI-enhancement trace (additive; deterministic path is
+   * authoritative and complete without it). */
+  ai_trace: AiTrace;
 };
 
 export type GenericDiagnostics = {
