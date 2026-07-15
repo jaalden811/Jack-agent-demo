@@ -17,8 +17,8 @@ export function isMeetingAction(action: NextBestAction): boolean {
 }
 
 function scenariosFrom(result: SecureNetworkingTriageResult, index: QuestionIndex): MeetingScenario[] {
-  const nextSteps = result.generic_diagnostics?.signals.next_steps ?? [];
-  const scenarioSignals = nextSteps.filter((s) => s.category === "working_session" || s.category === "workshop");
+  // Prefer concise pain-category labels as scenario names (a raw
+  // "let's run a working session..." sentence reads poorly as a name).
   const painCategories = result.matches.slice(0, 2).map((m) => m.pain_category).filter(Boolean);
 
   const dataSources = (result.generic_diagnostics?.signals.technical ?? [])
@@ -34,7 +34,7 @@ function scenariosFrom(result: SecureNetworkingTriageResult, index: QuestionInde
     .map((s) => s.text)
     .slice(0, 3);
 
-  const names = scenarioSignals.length > 0 ? scenarioSignals.map((s) => s.text) : painCategories;
+  const names = painCategories.length > 0 ? painCategories : ["Priority use case"];
   const knownContext = doNotReaskTopics(index, 4);
 
   return names.slice(0, 3).map((name, i) => ({
