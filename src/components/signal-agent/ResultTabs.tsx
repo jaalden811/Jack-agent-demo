@@ -13,8 +13,10 @@ import { InternalBriefTab } from "@/components/signal-agent/tabs/InternalBriefTa
 import { AuditTab } from "@/components/signal-agent/tabs/AuditTab";
 import { SourcesEnrichmentTab } from "@/components/signal-agent/tabs/SourcesEnrichmentTab";
 import { SerpApiSignalsTab } from "@/components/signal-agent/tabs/SerpApiSignalsTab";
+import { SpecialistHandoffTab } from "@/components/signal-agent/tabs/SpecialistHandoffTab";
 
 const TABS = [
+  { id: "handoff", label: "Specialist handoff" },
   { id: "executive", label: "Executive summary" },
   { id: "stakeholders", label: "Stakeholders" },
   { id: "signals", label: "Opportunity signals" },
@@ -38,7 +40,7 @@ export function ResultTabs({
   status: SignalAgentStatus | null;
   onResultUpdate: (result: WebexAutomationRunResult) => void;
 }) {
-  const [activeTab, setActiveTab] = useState<TabId>("executive");
+  const [activeTab, setActiveTab] = useState<TabId>("handoff");
 
   return (
     <section className="panel">
@@ -58,6 +60,7 @@ export function ResultTabs({
       </div>
 
       <div className="tab-panel">
+        {activeTab === "handoff" && <SpecialistHandoffTab result={result} />}
         {activeTab === "executive" && <ExecutiveSummaryTab result={result} />}
         {activeTab === "stakeholders" && <StakeholdersTab result={result} />}
         {activeTab === "signals" && <OpportunitySignalsTab result={result} />}
