@@ -20,6 +20,13 @@ import type { CircuitConfig } from "@/lib/circuit/config";
  * ONLY this file. No App Key is sent (the current contract does not use
  * one); do not add an App Key here unless the current notebook cURL
  * includes a required App Key field/header.
+ *
+ * ⚠ PROVISIONAL + GATED: these defaults are assumptions until confirmed
+ * against CIRCUIT_CONTRACT.txt. They are gated off by
+ * CIRCUIT_CONTRACT_CONFIRMED — until that is true, the token manager and
+ * client return CIRCUIT_CONTRACT_UNCONFIRMED and make NO network request,
+ * so nothing here can run silently. After confirming the field
+ * names/paths below, set CIRCUIT_CONTRACT_CONFIRMED=true.
  */
 
 export type HttpRequestSpec = {

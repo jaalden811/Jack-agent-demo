@@ -16,6 +16,7 @@ const RETRYABLE_CODES: ReadonlySet<CircuitErrorCode> = new Set([
 
 const SAFE_MESSAGES: Record<CircuitErrorCode, string> = {
   CIRCUIT_NOT_CONFIGURED: "Circuit is not configured. Set the Circuit client id, secret, token URL, and inference URL.",
+  CIRCUIT_CONTRACT_UNCONFIRMED: "The Circuit wire contract is not confirmed. Confirm contract.ts against the Circuit notebook and set CIRCUIT_CONTRACT_CONFIRMED=true before any live request.",
   CIRCUIT_TOKEN_REQUEST_FAILED: "Circuit token request failed.",
   CIRCUIT_AUTHENTICATION_REJECTED: "Circuit rejected the credentials (authentication failed).",
   CIRCUIT_PERMISSION_REJECTED: "Circuit rejected the request (insufficient permission or scope).",

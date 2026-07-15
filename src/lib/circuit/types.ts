@@ -9,6 +9,7 @@
 
 export type CircuitErrorCode =
   | "CIRCUIT_NOT_CONFIGURED"
+  | "CIRCUIT_CONTRACT_UNCONFIRMED"
   | "CIRCUIT_TOKEN_REQUEST_FAILED"
   | "CIRCUIT_AUTHENTICATION_REJECTED"
   | "CIRCUIT_PERMISSION_REJECTED"
@@ -69,12 +70,15 @@ export type CircuitGenerateResult = {
   error: CircuitNormalizedError | null;
 };
 
-export type CircuitTokenState = "missing" | "valid" | "refreshing" | "expired" | "error";
+export type CircuitTokenState = "not_configured" | "unconfirmed" | "missing" | "acquiring" | "valid" | "refreshing" | "expired" | "rejected" | "error";
 
 /** Safe diagnostics — never includes the token, secret, or client id. */
 export type CircuitDiagnostics = {
   aiProvider: "circuit";
   configured: boolean;
+  /** The wire contract has been confirmed against the Circuit notebook. */
+  contractConfirmed: boolean;
+  contractVersion: string | null;
   authenticated: boolean;
   operational: boolean;
   model: string | null;

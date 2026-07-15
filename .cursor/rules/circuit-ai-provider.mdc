@@ -13,8 +13,13 @@ not reappear as an active runtime provider path.
 - The attached Circuit notebook / sanitized cURL is the authoritative source of
   truth for the token request and the inference request/response shapes.
 - The exact wire mapping lives in ONE file: `src/lib/circuit/contract.ts`.
-  Confirm/adjust field names and response paths there against the notebook —
-  never scatter Circuit HTTP shapes across the codebase.
+  Confirm/adjust field names and response paths there against the notebook
+  (`CIRCUIT_CONTRACT.txt`) — never scatter Circuit HTTP shapes across the
+  codebase.
+- The current contract defaults are PROVISIONAL and gated: until
+  `CIRCUIT_CONTRACT_CONFIRMED=true`, the token manager and client return
+  `CIRCUIT_CONTRACT_UNCONFIRMED` and make NO network request. Never remove this
+  gate or let an unconfirmed/assumed payload run silently.
 - Token flow is OAuth2 client-credentials (client id + secret → short-lived
   access token). The access token is in-memory runtime state only.
 

@@ -1,4 +1,4 @@
-import { getCircuitConfig, isCircuitConfigured } from "@/lib/circuit/config";
+import { getCircuitConfig, isCircuitConfigured, isCircuitContractConfirmed } from "@/lib/circuit/config";
 import { getCircuitAccessToken, getCircuitTokenState, getLastCircuitTokenError } from "@/lib/circuit/tokenManager";
 import { circuitGenerate } from "@/lib/circuit/client";
 import type { CircuitDiagnostics } from "@/lib/circuit/types";
@@ -13,14 +13,20 @@ import type { CircuitDiagnostics } from "@/lib/circuit/types";
 export function getCircuitDiagnostics(): CircuitDiagnostics {
   const config = getCircuitConfig();
   const configured = isCircuitConfigured(config);
+  const contractConfirmed = isCircuitContractConfirmed(config);
   const { state, expiresAt } = getCircuitTokenState(config);
   const lastError = getLastCircuitTokenError();
 
   return {
     aiProvider: "circuit",
     configured,
+    contractConfirmed,
+    contractVersion: config.contractVersion,
     authenticated: state === "valid",
-    operational: configured && state !== "error",
+    // Operational requires configuration AND a confirmed contract — an
+    // unconfirmed contract is a deliberate, non-fatal "enhancement off"
+    // state (deterministic path remains authoritative).
+    operational: configured && contractConfirmed && state !== "error" && state !== "rejected",
     model: config.model,
     tokenState: state,
     tokenExpiresAt: expiresAt,
@@ -28,7 +34,7 @@ export function getCircuitDiagnostics(): CircuitDiagnostics {
     schemaVersion: config.schemaVersion,
     lastAuthenticationTest: null,
     lastInferenceTest: null,
-    safeError: lastError ? lastError.message : configured ? null : "Circuit is not configured."
+    safeError: lastError ? lastError.message : !configured ? "Circuit is not configured." : !contractConfirmed ? "Circuit wire contract is not confirmed." : null
   };
 }
 

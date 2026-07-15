@@ -15,9 +15,12 @@ import { getCircuitDiagnostics } from "@/lib/circuit/diagnostics";
 const CLIENT_SECRET = "test-secret-value-do-not-leak";
 const ACCESS_TOKEN = "test-access-token-do-not-leak";
 
-const ENV_KEYS = ["AI_PROVIDER", "CIRCUIT_CLIENT_ID", "CIRCUIT_CLIENT_SECRET", "CIRCUIT_TOKEN_URL", "CIRCUIT_INFERENCE_URL", "CIRCUIT_MODEL", "CIRCUIT_SCOPE", "CIRCUIT_AUDIENCE", "CIRCUIT_APP_KEY"] as const;
+const ENV_KEYS = ["AI_PROVIDER", "CIRCUIT_CLIENT_ID", "CIRCUIT_CLIENT_SECRET", "CIRCUIT_TOKEN_URL", "CIRCUIT_INFERENCE_URL", "CIRCUIT_MODEL", "CIRCUIT_SCOPE", "CIRCUIT_AUDIENCE", "CIRCUIT_APP_KEY", "CIRCUIT_CONTRACT_CONFIRMED", "CIRCUIT_CONTRACT_VERSION"] as const;
 const saved: Record<string, string | undefined> = {};
 
+/** Configures Circuit AND confirms the wire contract, so the wire-level
+ * tests exercise the token/inference behavior. The contract-gate tests
+ * deliberately omit the confirmation. */
 function configureCircuit(extra: Record<string, string> = {}) {
   process.env.AI_PROVIDER = "circuit";
   process.env.CIRCUIT_CLIENT_ID = "test-client-id";
@@ -25,6 +28,7 @@ function configureCircuit(extra: Record<string, string> = {}) {
   process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
   process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
   process.env.CIRCUIT_MODEL = "test-model";
+  process.env.CIRCUIT_CONTRACT_CONFIRMED = "true";
   for (const [k, v] of Object.entries(extra)) process.env[k] = v;
 }
 
@@ -46,6 +50,51 @@ afterEach(() => {
   }
   _resetCircuitTokenCache();
   vi.restoreAllMocks();
+});
+
+describe("Contract-confirmation gate (Phase 1 / Test 7)", () => {
+  it("Test 7: an unconfirmed contract fails BEFORE any network request (token)", async () => {
+    // Configured, but contract NOT confirmed.
+    process.env.AI_PROVIDER = "circuit";
+    process.env.CIRCUIT_CLIENT_ID = "test-client-id";
+    process.env.CIRCUIT_CLIENT_SECRET = CLIENT_SECRET;
+    process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
+    process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
+    process.env.CIRCUIT_MODEL = "test-model";
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const result = await getCircuitAccessToken();
+    expect(result.token).toBeNull();
+    expect(result.error?.code).toBe("CIRCUIT_CONTRACT_UNCONFIRMED");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Test 7: an unconfirmed contract fails BEFORE any network request (inference)", async () => {
+    process.env.AI_PROVIDER = "circuit";
+    process.env.CIRCUIT_CLIENT_ID = "test-client-id";
+    process.env.CIRCUIT_CLIENT_SECRET = CLIENT_SECRET;
+    process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
+    process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
+    process.env.CIRCUIT_MODEL = "test-model";
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const result = await circuitGenerate({ prompt: "hi" });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("CIRCUIT_CONTRACT_UNCONFIRMED");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("diagnostics report contract state safely when configured but unconfirmed", () => {
+    process.env.AI_PROVIDER = "circuit";
+    process.env.CIRCUIT_CLIENT_ID = "test-client-id";
+    process.env.CIRCUIT_CLIENT_SECRET = CLIENT_SECRET;
+    process.env.CIRCUIT_TOKEN_URL = "https://circuit.example/token";
+    process.env.CIRCUIT_INFERENCE_URL = "https://circuit.example/inference";
+    process.env.CIRCUIT_MODEL = "test-model";
+    const d = getCircuitDiagnostics();
+    expect(d.configured).toBe(true);
+    expect(d.contractConfirmed).toBe(false);
+    expect(d.operational).toBe(false);
+    expect(d.tokenState).toBe("unconfirmed");
+  });
 });
 
 describe("Circuit config (Tests 6/10/11)", () => {

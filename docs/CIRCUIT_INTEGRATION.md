@@ -54,13 +54,24 @@ canonical evidence bundle → master prompt → stage prompt
   → deterministic fallback on failure
 ```
 
-## 6. The wire contract (source of truth)
+## 6. The wire contract (source of truth) + confirmation gate
 The exact request/response field mapping lives ONLY in
-`src/lib/circuit/contract.ts`. The defaults implement a standard OAuth2
-client-credentials token grant and an OpenAI-compatible chat-completions
-inference shape. **Confirm these against the attached Circuit notebook /
-sanitized cURL** and adjust only that file if Circuit differs (e.g. a
-Gemini-style `contents`/`candidates` shape). No other file needs to change.
+`src/lib/circuit/contract.ts`. The current defaults are **PROVISIONAL** (a
+standard OAuth2 client-credentials token grant + an OpenAI-compatible chat
+shape) and are **gated off by default**: until `CIRCUIT_CONTRACT_CONFIRMED=true`,
+the token manager and inference client return **`CIRCUIT_CONTRACT_UNCONFIRMED`
+without making any network request** — the provisional shapes can never run
+silently.
+
+To go live:
+1. Confirm `contract.ts` against `CIRCUIT_CONTRACT.txt` (the sanitized notebook)
+   — adjust field names/paths there only; no other file changes.
+2. Set `CIRCUIT_CONTRACT_VERSION=<the confirmed version>` and
+   `CIRCUIT_CONTRACT_CONFIRMED=true` in `.env.local`.
+3. Run `POST /api/circuit/test-auth` then `POST /api/circuit/test-inference`.
+
+`GET /api/circuit/status` reports `contractConfirmed` and `contractVersion`
+(never secrets).
 
 ## 7. Error model
 `src/lib/circuit/errorNormalizer.ts` maps every failure to a stable

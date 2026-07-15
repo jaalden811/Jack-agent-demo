@@ -23,6 +23,15 @@ export type CircuitConfig = {
   tokenRefreshSkewSeconds: number;
   promptVersion: string;
   schemaVersion: string;
+  /** The wire contract in contract.ts is confirmed against the Circuit
+   * notebook. Until this is explicitly true, NO live token or inference
+   * request is sent — the client returns CIRCUIT_CONTRACT_UNCONFIRMED so
+   * the provisional (assumed) request/response shapes can never run
+   * silently in production. */
+  contractConfirmed: boolean;
+  /** Human-set identifier of the confirmed contract, surfaced in safe
+   * diagnostics (never a secret). */
+  contractVersion: string | null;
 };
 
 function str(value: string | undefined): string | null {
@@ -53,8 +62,16 @@ export function getCircuitConfig(): CircuitConfig {
     tokenFallbackTtlSeconds: num(env.CIRCUIT_TOKEN_FALLBACK_TTL_SECONDS, 3_000),
     tokenRefreshSkewSeconds: num(env.CIRCUIT_TOKEN_REFRESH_SKEW_SECONDS, 60),
     promptVersion: str(env.CIRCUIT_PROMPT_VERSION) ?? "signal-to-action-circuit-v1",
-    schemaVersion: str(env.CIRCUIT_SCHEMA_VERSION) ?? "1.0"
+    schemaVersion: str(env.CIRCUIT_SCHEMA_VERSION) ?? "1.0",
+    contractConfirmed: (str(env.CIRCUIT_CONTRACT_CONFIRMED) ?? "false").toLowerCase() === "true",
+    contractVersion: str(env.CIRCUIT_CONTRACT_VERSION)
   };
+}
+
+/** True only when a human has confirmed contract.ts matches the Circuit
+ * notebook (CIRCUIT_CONTRACT_CONFIRMED=true). Gates every live call. */
+export function isCircuitContractConfirmed(config: CircuitConfig = getCircuitConfig()): boolean {
+  return config.contractConfirmed;
 }
 
 /** Circuit is "configured" when the credentials + endpoints needed to
