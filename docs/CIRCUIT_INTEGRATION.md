@@ -56,22 +56,32 @@ canonical evidence bundle → master prompt → stage prompt
 
 ## 6. The wire contract (source of truth) + confirmation gate
 The exact request/response field mapping lives ONLY in
-`src/lib/circuit/contract.ts`. The current defaults are **PROVISIONAL** (a
-standard OAuth2 client-credentials token grant + an OpenAI-compatible chat
-shape) and are **gated off by default**: until `CIRCUIT_CONTRACT_CONFIRMED=true`,
-the token manager and inference client return **`CIRCUIT_CONTRACT_UNCONFIRMED`
-without making any network request** — the provisional shapes can never run
-silently.
+`src/lib/circuit/contract.ts`.
 
-To go live:
-1. Confirm `contract.ts` against `CIRCUIT_CONTRACT.txt` (the sanitized notebook)
-   — adjust field names/paths there only; no other file changes.
-2. Set `CIRCUIT_CONTRACT_VERSION=<the confirmed version>` and
+**Token — CONFIRMED and live-verified** against the Cisco Circuit cURL:
+`POST {CIRCUIT_TOKEN_URL}` (`https://id.cisco.com/oauth2/default/v1/token`) with
+`Authorization: Basic base64(client_id:client_secret)` and body
+`grant_type=client_credentials`; response is standard Okta OAuth2
+`{ access_token (JWT with exp), token_type, expires_in, scope }`. Because the
+token contract is confirmed, `POST /api/circuit/test-auth` mints a real token
+whenever the client id/secret/token URL are configured.
+
+**Inference — NOT yet confirmed.** No inference cURL (endpoint +
+request/response shape for the Gemini gateway) has been provided, so the
+inference builder/parser remain PROVISIONAL and are **gated**: until
+`CIRCUIT_CONTRACT_CONFIRMED=true`, `circuitGenerate` / `test-inference` return
+**`CIRCUIT_CONTRACT_UNCONFIRMED` and make no network request** — the assumed
+shape can never run silently.
+
+To enable inference:
+1. Confirm the inference request/response fields in `contract.ts` against the
+   Circuit inference cURL (adjust that file only).
+2. Set `CIRCUIT_INFERENCE_URL`, `CIRCUIT_CONTRACT_VERSION`, and
    `CIRCUIT_CONTRACT_CONFIRMED=true` in `.env.local`.
-3. Run `POST /api/circuit/test-auth` then `POST /api/circuit/test-inference`.
+3. Run `POST /api/circuit/test-inference`.
 
-`GET /api/circuit/status` reports `contractConfirmed` and `contractVersion`
-(never secrets).
+`GET /api/circuit/status` reports `configured`, `contractConfirmed`,
+`contractVersion`, `authenticated`, and `tokenState` (never secrets/token).
 
 ## 7. Error model
 `src/lib/circuit/errorNormalizer.ts` maps every failure to a stable

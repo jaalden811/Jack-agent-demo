@@ -1,4 +1,4 @@
-import { getCircuitConfig, isCircuitConfigured, isCircuitContractConfirmed, type CircuitConfig } from "@/lib/circuit/config";
+import { getCircuitConfig, isCircuitTokenConfigured, type CircuitConfig } from "@/lib/circuit/config";
 import { buildTokenRequest, parseTokenResponse } from "@/lib/circuit/contract";
 import { classifyCircuitHttpStatus, classifyCircuitThrown, makeCircuitError } from "@/lib/circuit/errorNormalizer";
 import type { CircuitNormalizedError, CircuitToken, CircuitTokenState } from "@/lib/circuit/types";
@@ -77,16 +77,13 @@ async function requestNewToken(config: CircuitConfig): Promise<{ token: CircuitT
 /** Returns a valid access token, minting/refreshing as needed. Single
  * flight: concurrent callers share one in-flight token request. */
 export async function getCircuitAccessToken(config: CircuitConfig = getCircuitConfig()): Promise<{ token: CircuitToken | null; error: CircuitNormalizedError | null }> {
-  if (!isCircuitConfigured(config)) {
+  if (!isCircuitTokenConfigured(config)) {
     lastError = makeCircuitError("CIRCUIT_NOT_CONFIGURED");
     return { token: null, error: lastError };
   }
-  // Never send a live request against an unconfirmed wire contract — the
-  // provisional (assumed) shapes must not run silently.
-  if (!isCircuitContractConfirmed(config)) {
-    lastError = makeCircuitError("CIRCUIT_CONTRACT_UNCONFIRMED");
-    return { token: null, error: lastError };
-  }
+  // The TOKEN contract is confirmed (Cisco Okta Basic-auth client
+  // credentials), so token minting proceeds whenever configured. The
+  // INFERENCE contract gate lives in the client (circuitGenerate).
   if (isValid(cachedToken, config.tokenRefreshSkewSeconds)) {
     return { token: cachedToken, error: null };
   }
@@ -113,8 +110,7 @@ export function invalidateCircuitToken(): void {
 }
 
 export function getCircuitTokenState(config: CircuitConfig = getCircuitConfig()): { state: CircuitTokenState; expiresAt: string | null } {
-  if (!isCircuitConfigured(config)) return { state: "not_configured", expiresAt: null };
-  if (!isCircuitContractConfirmed(config)) return { state: "unconfirmed", expiresAt: null };
+  if (!isCircuitTokenConfigured(config)) return { state: "not_configured", expiresAt: null };
   if (inFlight) return { state: cachedToken ? "refreshing" : "acquiring", expiresAt: cachedToken ? new Date(cachedToken.expires_at).toISOString() : null };
   if (!cachedToken) return { state: lastError && lastError.code === "CIRCUIT_AUTHENTICATION_REJECTED" ? "rejected" : lastError ? "error" : "missing", expiresAt: null };
   if (isValid(cachedToken, config.tokenRefreshSkewSeconds)) return { state: "valid", expiresAt: new Date(cachedToken.expires_at).toISOString() };

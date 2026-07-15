@@ -2,31 +2,28 @@ import type { CircuitConfig } from "@/lib/circuit/config";
 
 /**
  * THE CIRCUIT WIRE CONTRACT — the single place that encodes Circuit's
- * exact request/response shapes. This is deliberately isolated so it can
- * be confirmed against the attached Circuit notebook / sanitized cURL
- * WITHOUT touching the token manager, client, provider abstraction, or
- * any call site.
+ * exact request/response shapes. Isolated so it can be confirmed against
+ * the Circuit contract WITHOUT touching the token manager, client,
+ * provider abstraction, or any call site.
  *
- * Defaults implement:
- *   - Token: standard OAuth2 client-credentials grant (RFC 6749) —
- *     form-encoded body with grant_type/client_id/client_secret (+ scope,
- *     audience when configured); response { access_token, token_type,
- *     expires_in }.
- *   - Inference: an OpenAI-compatible chat-completions gateway — Bearer
- *     token, body { model, messages: [...] }, response
- *     choices[0].message.content.
+ * TOKEN — CONFIRMED against the Cisco Circuit cURL (id.cisco.com Okta):
+ *   POST {CIRCUIT_TOKEN_URL}
+ *   Authorization: Basic base64(client_id:client_secret)
+ *   Content-Type: application/x-www-form-urlencoded
+ *   body: grant_type=client_credentials  (client id/secret are NOT in the
+ *   body — they are the Basic-auth header). Response is the standard Okta
+ *   OAuth2 JSON { access_token, token_type, expires_in, scope }; the
+ *   access_token is a JWT with exp.
  *
- * If the Circuit notebook specifies different field names or paths, adjust
- * ONLY this file. No App Key is sent (the current contract does not use
- * one); do not add an App Key here unless the current notebook cURL
- * includes a required App Key field/header.
+ * INFERENCE — NOT YET CONFIRMED. No inference cURL has been supplied
+ * (endpoint URL + request/response shape for the Gemini gateway). The
+ * inference builder/parser below remain PROVISIONAL and are gated off by
+ * CIRCUIT_CONTRACT_CONFIRMED: until that is true, the inference client
+ * returns CIRCUIT_CONTRACT_UNCONFIRMED and makes NO network request, so
+ * the assumed inference shape can never run silently. Confirm the
+ * inference fields here, then set CIRCUIT_CONTRACT_CONFIRMED=true.
  *
- * ⚠ PROVISIONAL + GATED: these defaults are assumptions until confirmed
- * against CIRCUIT_CONTRACT.txt. They are gated off by
- * CIRCUIT_CONTRACT_CONFIRMED — until that is true, the token manager and
- * client return CIRCUIT_CONTRACT_UNCONFIRMED and make NO network request,
- * so nothing here can run silently. After confirming the field
- * names/paths below, set CIRCUIT_CONTRACT_CONFIRMED=true.
+ * No App Key is used or sent (the current contract does not use one).
  */
 
 export type HttpRequestSpec = {
@@ -42,16 +39,23 @@ export function buildTokenRequest(config: CircuitConfig): HttpRequestSpec {
   if (!config.tokenUrl || !config.clientId || !config.clientSecret) {
     throw new Error("Circuit token request requires tokenUrl, clientId, and clientSecret.");
   }
+  // CONFIRMED contract: HTTP Basic auth (base64 of client_id:client_secret)
+  // in the Authorization header; the body carries ONLY grant_type (plus
+  // scope/audience when explicitly configured — the reference cURL sends
+  // neither, so they are omitted unless set).
+  const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
   const form = new URLSearchParams();
   form.set("grant_type", "client_credentials");
-  form.set("client_id", config.clientId);
-  form.set("client_secret", config.clientSecret);
   if (config.scope) form.set("scope", config.scope);
   if (config.audience) form.set("audience", config.audience);
   return {
     url: config.tokenUrl,
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json"
+    },
     body: form.toString()
   };
 }

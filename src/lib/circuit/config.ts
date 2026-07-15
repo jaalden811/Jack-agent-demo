@@ -74,17 +74,17 @@ export function isCircuitContractConfirmed(config: CircuitConfig = getCircuitCon
   return config.contractConfirmed;
 }
 
-/** Circuit is "configured" when the credentials + endpoints needed to
- * request a token and run inference are present. The active provider must
- * also be Circuit. Model is validated separately (CIRCUIT_MODEL_REQUIRED)
- * so a missing model surfaces a precise error rather than "not
- * configured". */
+/** Token minting needs only the client credentials + token URL (the token
+ * contract is confirmed). This lets authentication be tested even before
+ * the inference endpoint is known. */
+export function isCircuitTokenConfigured(config: CircuitConfig = getCircuitConfig()): boolean {
+  return config.provider === "circuit" && Boolean(config.clientId) && Boolean(config.clientSecret) && Boolean(config.tokenUrl);
+}
+
+/** Circuit is fully "configured" when token config AND the inference
+ * endpoint are present. The active provider must also be Circuit. Model is
+ * validated separately (CIRCUIT_MODEL_REQUIRED) so a missing model
+ * surfaces a precise error rather than "not configured". */
 export function isCircuitConfigured(config: CircuitConfig = getCircuitConfig()): boolean {
-  return (
-    config.provider === "circuit" &&
-    Boolean(config.clientId) &&
-    Boolean(config.clientSecret) &&
-    Boolean(config.tokenUrl) &&
-    Boolean(config.inferenceUrl)
-  );
+  return isCircuitTokenConfigured(config) && Boolean(config.inferenceUrl);
 }
