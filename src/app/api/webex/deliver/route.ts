@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const peachtree = await deliverPeachtreePipeline(result, result.transcript_meta.raw_text, body.webexSource ?? null);
+    const peachtree = await deliverPeachtreePipeline(result, result.transcript_meta.raw_text, body.webexSource ?? null, { idempotencyScope: "run" });
     return NextResponse.json({ peachtree });
   } catch (error) {
     return NextResponse.json(

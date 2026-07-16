@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     const readiness = await getAutomationReadiness();
     const shouldDeliver = parsed.data.options?.deliverToWebex ?? readiness.autoSendEnabled;
     const peachtree = shouldDeliver
-      ? await deliverPeachtreePipeline(result, transcriptText, webexSource)
+      ? await deliverPeachtreePipeline(result, transcriptText, webexSource, { idempotencyScope: "run" })
       : await computePeachtreePreview(result);
 
     const response: WebexAutomationRunResult = { ...result, peachtree, webex_source: webexSource ?? null };
