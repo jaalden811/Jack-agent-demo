@@ -11,18 +11,27 @@ import type { ParticipationMatrix } from "@/lib/meeting-participation/participat
  * person.
  */
 
-export type RequiredRole = { required_role: string; lane: RosterLane; product_domains?: string[]; specialties?: string[]; account?: string | null };
+export type RequiredRole = { required_role: string; lane: RosterLane; product_domains?: string[]; specialties?: string[]; account?: string | null; territories?: string[] };
 export type MessageMode = "ATTENDEE_ACTION_DELTA" | "ABSENT_FULL_HANDOFF" | "UNKNOWN_CONTEXTUAL_HANDOFF" | "LEADER_SUMMARY";
+
+export type RoutingAlternative = { person_id: string; name: string; score: number; reasons: string[] };
 
 export type RoutingDecision = {
   recipient_person_id: string;
   recipient_name: string;
   recipient_role: string;
+  recipient_email: string | null;
   lane: string;
   required_role: string;
-  selection_status: "selected" | "alternate" | "unresolved";
+  selection_status: "selected" | "ambiguous" | "unresolved";
   selection_confidence: number;
   selection_reasons: string[];
+  /** Real alternative candidates (next-best qualified people) for a
+   * human to override with — non-empty when the choice was ambiguous. */
+  alternatives: RoutingAlternative[];
+  /** Whether the recipient has a usable delivery channel (Webex identity or a
+   * configured notification channel). */
+  delivery_available: boolean;
   attendance_status: string;
   spoke: boolean;
   message_mode: MessageMode;
@@ -37,30 +46,52 @@ export type RoutingResult = {
   human_review_required: boolean;
 };
 
+/** A member is "delivery available" when there is a real channel to reach them
+ * — a Webex identity or at least one configured notification channel. */
+export function hasDeliveryChannel(member: RosterMember): boolean {
+  return Boolean(member.webex_email) || member.notification_channels.length > 0;
+}
+
 function scoreCandidate(member: RosterMember, role: RequiredRole): { score: number; reasons: string[] } {
   const reasons: string[] = [];
-  let score = 0;
+  // Role-relevance score first: a candidate must be relevant to the role
+  // (lane / account / specialty / product domain / territory) to be eligible.
+  let roleScore = 0;
   if (member.lane === role.lane) {
-    score += 3;
+    roleScore += 3;
     reasons.push(`lane match (${role.lane})`);
   }
   if (role.account && member.accounts.map((a) => a.toLowerCase()).includes(role.account.toLowerCase())) {
-    score += 4;
+    roleScore += 4;
     reasons.push("account ownership");
   }
   for (const s of role.specialties ?? []) {
     if (member.specialties.map((x) => x.toLowerCase()).includes(s.toLowerCase())) {
-      score += 1;
+      roleScore += 1;
       reasons.push(`specialty: ${s}`);
     }
   }
   for (const d of role.product_domains ?? []) {
     if (member.product_domains.map((x) => x.toLowerCase()).includes(d.toLowerCase())) {
-      score += 1;
+      roleScore += 1;
       reasons.push(`product domain: ${d}`);
     }
   }
-  return { score, reasons };
+  for (const t of role.territories ?? []) {
+    if (member.territories.map((x) => x.toLowerCase()).includes(t.toLowerCase())) {
+      roleScore += 1;
+      reasons.push(`territory: ${t}`);
+    }
+  }
+  // A member with no role relevance is never eligible — delivery availability
+  // is only ever a TIE-BREAKER among already-qualified candidates, never a
+  // qualification by itself.
+  if (roleScore === 0) return { score: 0, reasons: [] };
+  if (hasDeliveryChannel(member)) {
+    reasons.push("delivery channel available");
+    return { score: roleScore + 1, reasons };
+  }
+  return { score: roleScore, reasons };
 }
 
 export function attendanceModeFor(status: string, lane: RosterLane): MessageMode {
@@ -108,15 +139,25 @@ export function routeActions(params: { requiredRoles: RequiredRole[]; participat
     const attendanceStatus = entry?.attendance_status ?? "UNKNOWN";
     const spoke = entry?.spoke ?? false;
 
+    // Ambiguous when the next candidate ties the top score; surface real
+    // alternatives (next-best qualified people) for a human override.
+    const ambiguous = ranked.length > 1 && ranked[1].score === best.score;
+    const alternatives: RoutingAlternative[] = ranked
+      .slice(1, 4)
+      .map((c) => ({ person_id: c.member.person_id, name: c.member.name, score: c.score, reasons: c.reasons }));
+
     routing_decisions.push({
       recipient_person_id: best.member.person_id,
       recipient_name: best.member.name,
       recipient_role: best.member.title,
+      recipient_email: best.member.webex_email ?? best.member.emails[0] ?? null,
       lane: best.member.lane,
       required_role: role.required_role,
-      selection_status: ranked.length > 1 && ranked[1].score === best.score ? "alternate" : "selected",
-      selection_confidence: Math.min(1, best.score / 8),
+      selection_status: ambiguous ? "ambiguous" : "selected",
+      selection_confidence: Math.min(1, best.score / 10),
       selection_reasons: best.reasons,
+      alternatives,
+      delivery_available: hasDeliveryChannel(best.member),
       attendance_status: attendanceStatus,
       spoke,
       message_mode: attendanceModeFor(attendanceStatus, best.member.lane),

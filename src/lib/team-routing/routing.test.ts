@@ -144,3 +144,44 @@ describe("attendance-aware routing (Tests 13, 18-24)", () => {
     }
   });
 });
+
+describe("routing selection factors: territory, delivery availability, alternatives", () => {
+  const emptyParticipation = buildParticipationMatrix({ transcript_participants: [] });
+
+  const scoringRoster: Roster = {
+    members: [
+      { person_id: "t1", name: "Terri Territory", emails: ["terri@vendor.com"], webex_email: "terri@vendor.com", title: "SE", role_family: "technical", lane: "technical", specialties: ["architecture"], product_domains: ["security"], accounts: [], territories: ["NA-East"], manager_person_id: null, fallback_queue: "tech-q", notification_channels: ["webex"], default_webex_room_id: null, active: true },
+      { person_id: "t2", name: "Neil NoTerritory", emails: ["neil@vendor.com"], webex_email: "neil@vendor.com", title: "SE", role_family: "technical", lane: "technical", specialties: ["architecture"], product_domains: ["security"], accounts: [], territories: ["EMEA"], manager_person_id: null, fallback_queue: "tech-q", notification_channels: ["webex"], default_webex_room_id: null, active: true }
+    ]
+  };
+
+  it("territory match breaks a tie between equally-qualified members", () => {
+    const result = routeActions({ requiredRoles: [{ required_role: "se", lane: "technical", specialties: ["architecture"], product_domains: ["security"], territories: ["NA-East"] }], participation: emptyParticipation, roster: scoringRoster });
+    const d = result.routing_decisions[0];
+    expect(d.recipient_person_id).toBe("t1");
+    expect(d.selection_reasons).toContain("territory: NA-East");
+    // The equally-qualified out-of-territory SE is surfaced as an alternative.
+    expect(d.alternatives.map((a) => a.person_id)).toContain("t2");
+  });
+
+  it("prefers a delivery-available candidate and flags delivery_available", () => {
+    const deliverRoster: Roster = {
+      members: [
+        { person_id: "d1", name: "Reachable", emails: ["r@vendor.com"], webex_email: "r@vendor.com", title: "SE", role_family: "technical", lane: "technical", specialties: ["architecture"], product_domains: [], accounts: [], territories: [], manager_person_id: null, fallback_queue: null, notification_channels: ["webex"], default_webex_room_id: null, active: true },
+        { person_id: "d2", name: "Unreachable", emails: [], webex_email: null, title: "SE", role_family: "technical", lane: "technical", specialties: ["architecture"], product_domains: [], accounts: [], territories: [], manager_person_id: null, fallback_queue: null, notification_channels: [], default_webex_room_id: null, active: true }
+      ]
+    };
+    const result = routeActions({ requiredRoles: [{ required_role: "se", lane: "technical", specialties: ["architecture"] }], participation: emptyParticipation, roster: deliverRoster });
+    const d = result.routing_decisions[0];
+    expect(d.recipient_person_id).toBe("d1");
+    expect(d.delivery_available).toBe(true);
+    expect(d.selection_reasons).toContain("delivery channel available");
+  });
+
+  it("an exact tie is marked ambiguous with alternatives", () => {
+    const result = routeActions({ requiredRoles: [{ required_role: "se", lane: "technical", specialties: ["architecture"], product_domains: ["security"] }], participation: emptyParticipation, roster: scoringRoster });
+    const d = result.routing_decisions[0];
+    expect(d.selection_status).toBe("ambiguous");
+    expect(d.alternatives.length).toBeGreaterThan(0);
+  });
+});
