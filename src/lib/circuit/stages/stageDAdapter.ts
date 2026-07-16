@@ -14,22 +14,18 @@ import type { PersonalizationContext } from "@/lib/personalization/types";
  * is the fallback; only narrative-eligible public-signal URLs are allowed.
  */
 
-const DEFAULT_WEBEX_BYTE_BUDGET = 6400;
+// Concise, action-first push budget (bytes) — matches the delivery quality
+// gate so Circuit Stage D's concise drafts are the delivered message.
+const DEFAULT_WEBEX_BYTE_BUDGET = 1400;
 const SALES_ROLE_LABEL = "Commercial / Sales owner";
 const TECHNICAL_ROLE_LABEL = "Technical / Specialist owner";
 
-function bullets(items: string[], limit: number): string {
-  return items.slice(0, limit).map((i) => `- ${i}`).join("\n");
-}
-
-function section(heading: string, body: string | null): string | null {
-  if (!body || body.trim().length === 0) return null;
-  return `${heading}\n${body}`;
-}
-
-function line(heading: string, value: string | null): string | null {
-  if (!value || value.trim().length === 0) return null;
-  return `${heading} — ${value}`;
+function firstMeaningful(candidates: Array<string | null | undefined>): string | null {
+  for (const c of candidates) {
+    const t = (c ?? "").trim();
+    if (t && !/^(not stated|none|no quantified|no explicit|not yet|unknown|n\/a)\b/i.test(t)) return t;
+  }
+  return null;
 }
 
 function resolveTiming(result: SecureNetworkingTriageResult, stageC: StageCOutput): string {
@@ -52,7 +48,6 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const timing = resolveTiming(result, stageC);
   const successCriteria = (stageC.next_best_action?.success_criteria ?? []).filter(Boolean);
   const successText = successCriteria.length > 0 ? successCriteria.join("; ") : null;
-  const technicalEnvironment = stageC.technical_handoff.key_points.length > 0 ? stageC.technical_handoff.key_points : detBrief.stakeholder_lines;
 
   const sales_lane: StageDLane = {
     role_label: SALES_ROLE_LABEL,
@@ -84,56 +79,28 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     technical_lane
   };
 
-  // Deterministic fallback: the same recipient-specific skeleton Circuit is
+  // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
   // asked to produce, filled with real brief content. When a lane is too thin
   // the delivery quality gate rejects it and the trusted message builder is used.
+  const whyNow = firstMeaningful([...brief.why_now, timing]) ?? "The customer asked for a concrete next step.";
+  const salesAction = firstMeaningful(sales_lane.actions) ?? "Confirm the next commercial step and owner with the customer.";
+  const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
+
   const salesWebex = [
     `**Account:** ${accountLabel}`,
-    "",
-    line("**Why you're receiving this**", `${sales_lane.role_label}: ${sales_lane.why_selected}`),
-    "",
-    section("**Opportunity thesis** (what happened)", thesis),
-    "",
-    brief.why_now.length > 0 ? section("**Why now**", bullets(brief.why_now, 5)) : null,
-    "",
-    section("**MEDDPICC**", bullets(brief.meddpicc_lines, 6)),
-    "",
-    doNotReask.length > 0 ? section("**Customer already told us — do not re-ask**", bullets(doNotReask, 5)) : null,
-    "",
-    sales_lane.remaining_questions.length > 0 ? section("**Still unknown**", bullets(sales_lane.remaining_questions, 4)) : null,
-    "",
-    section("**Recommended next actions (you own)**", bullets(sales_lane.actions, 5)),
-    "",
-    line("**Expected output**", sales_lane.expected_output),
-    line("**Collaborator**", sales_lane.collaborator),
-    line("**Timing**", timing)
-  ]
-    .filter((s) => s !== null)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    `**Why you:** ${sales_lane.role_label} — own the commercial next step for ${accountLabel}.`,
+    `**Why now:** ${whyNow}`,
+    `**Recommended action:** ${salesAction}`,
+    `**Expected outcome:** ${sales_lane.expected_output}`
+  ].join("\n");
 
   const technicalWebex = [
     `**Account:** ${accountLabel}`,
-    "",
-    line("**Why you're receiving this**", `${technical_lane.role_label}: ${technical_lane.why_selected}`),
-    "",
-    section("**Customer problem & environment**", technicalEnvironment.length > 0 ? bullets(technicalEnvironment, 5) : null),
-    "",
-    doNotReask.length > 0 ? section("**Customer already told us — do not re-ask**", bullets(doNotReask, 5)) : null,
-    "",
-    technical_lane.remaining_questions.length > 0 ? section("**Still unknown**", bullets(technical_lane.remaining_questions, 4)) : null,
-    "",
-    section("**Recommended next actions (you own)**", bullets(technical_lane.actions, 5)),
-    "",
-    line("**Expected output**", technical_lane.expected_output),
-    line("**Collaborator**", technical_lane.collaborator),
-    line("**Timing**", timing)
-  ]
-    .filter((s) => s !== null)
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    `**Why you:** ${technical_lane.role_label} — scope the workshop and validate the environment for ${accountLabel}.`,
+    `**Why now:** ${whyNow}`,
+    `**Recommended action:** ${technicalAction}`,
+    `**Expected outcome:** ${technical_lane.expected_output}`
+  ].join("\n");
 
   const deterministic: StageDOutput = {
     sales_webex: salesWebex,

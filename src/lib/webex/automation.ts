@@ -174,7 +174,7 @@ function applyAiMessageSynthesis(params: {
     allowedUrls,
     charCeiling: WEBEX_HARD_CHAR_CEILING,
     byteCeiling: WEBEX_HARD_BYTE_CEILING,
-    requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
+    account: params.result.account_resolution?.name ?? params.result.executive_summary.account ?? null
   };
 
   // Circuit Stage D is the sole AI message synthesizer. When the run was
@@ -275,13 +275,20 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
 export async function deliverPeachtreePipeline(
   result: SecureNetworkingTriageResult,
   transcriptText: string,
-  webexSource: WebexTranscriptSource | null
+  webexSource: WebexTranscriptSource | null,
+  opts?: { idempotencyScope?: "transcript" | "run" }
 ): Promise<PeachtreePilotResult> {
   const config = loadRoutingConfig();
   const lifecycle = classifyLifecycle(result);
   const routing = buildLaneRouting(result, config, lifecycle);
   const transcriptId = computeTranscriptId(transcriptText, webexSource);
   const runId = result.timestamp;
+  // Idempotency scope: the webhook autopilot dedups per TRANSCRIPT (the same
+  // meeting transcript must never be double-sent across event retries). A
+  // deliberate, user-initiated re-analysis (manual Analyze & Route / retry)
+  // dedups per RUN, so a fresh run resends to the recipient while a retry of
+  // the SAME run still only re-attempts previously-failed lanes.
+  const idempotencyId = opts?.idempotencyScope === "run" ? `${transcriptId}:run:${runId}` : transcriptId;
   const analysisLink = await resolveAnalysisLink(result);
   result.analysis_link = analysisLink;
   const deterministicMessages = buildMessagesForRouting({ result, routing, runId, analysisLink });
@@ -309,7 +316,7 @@ export async function deliverPeachtreePipeline(
   const messages = orderLanesByAttendance(framed.messages, laneAttendance);
   const emails = orderLanesByAttendance(framed.emails, laneAttendance);
 
-  const alreadyProcessed = await getProcessedTranscript(transcriptId);
+  const alreadyProcessed = await getProcessedTranscript(idempotencyId);
   const alreadySentKeys = new Set<string>(alreadyProcessed?.lanesSent ?? []);
 
   const skipped: ChannelDeliveryResult[] = [];
@@ -390,14 +397,14 @@ export async function deliverPeachtreePipeline(
   const newlySucceededKeys = [...webexResults, ...emailResults].filter((item) => item.delivered).map((item) => channelKey(item.lane, item.channel));
 
   await markTranscriptProcessed({
-    transcriptId,
+    transcriptId: idempotencyId,
     processedAt: new Date().toISOString(),
     lanesSent: Array.from(new Set([...alreadySentKeys, ...newlySucceededKeys])),
     verdict: result.executive_summary.verdict,
     runId
   });
   if (newlySucceededKeys.length > 0) {
-    await addLanesSent(transcriptId, newlySucceededKeys);
+    await addLanesSent(idempotencyId, newlySucceededKeys);
   }
 
   await appendWebexAudit({

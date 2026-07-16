@@ -1,7 +1,6 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { AnalysisLink } from "@/lib/qualification/types";
 import type { EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } from "@/lib/webex/types";
-import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 
 /**
@@ -80,8 +79,32 @@ function composeToByteBudget(sections: Section[], budgetBytes: number): string {
   return markdown;
 }
 
-function bulletList(lines: string[]): string {
-  return lines.map((l) => `- ${l}`).join("\n");
+/** Returns trimmed text unless it is empty or a "nothing stated" placeholder
+ * (so a concise message never surfaces "No quantified impact was stated"). */
+function meaningful(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  if (/^(not stated|none|no quantified|no explicit|not yet|unknown|n\/a)\b/i.test(t)) return null;
+  return t;
+}
+
+function firstMeaningful(candidates: Array<string | null | undefined>): string | null {
+  for (const c of candidates) {
+    const m = meaningful(c);
+    if (m) return m;
+  }
+  return null;
+}
+
+/** The single recommended action: the canonical Next Best Action summary when
+ * it is a real action, else the routed lane's first action, else a lane
+ * default — never a vague "follow up". */
+function actionLine(result: SecureNetworkingTriageResult, decision: LaneRoutingDecision, lane: "sales" | "technical"): string {
+  const nba = result.next_best_action;
+  if (nba && nba.action_type !== "hold" && nba.action_type !== "suppress" && nba.summary?.trim()) return nba.summary.trim();
+  const first = decision.actions?.[0];
+  if (first) return first;
+  return lane === "sales" ? "Confirm the next commercial step and owner with the customer." : "Scope the technical validation and success criteria with the customer.";
 }
 
 function analysisLinkMarkdown(analysisLink: AnalysisLink, runId: string): string {
@@ -96,24 +119,6 @@ function analysisLinkHtml(analysisLink: AnalysisLink, runId: string): string {
     return `<p><a href="${analysisLink.url}">Open full analysis</a></p>`;
   }
   return `<p><strong>Analysis reference:</strong> Run <code>${runId}</code>. Full analysis is available in the Signal-to-Solution app.</p>`;
-}
-
-/** Technical-lane variant — architecture-relevant strategy/technology
- * alignment and trigger events only, never the commercial score number
- * (Section 16: "Do not overload Jack's technical message with the
- * commercial score"). */
-function technicalStrategyContextMarkdown(result: SecureNetworkingTriageResult): string {
-  const relevantSignals = result.serpapi_signals.signals
-    // Only narrative-eligible public signals belong in an outbound message
-    // (Section 2/13): account-context + real transcript alignment +
-    // credible source — never weak/relevance-zero/account-context-only
-    // snippets.
-    .filter((s) => s.narrative_eligible)
-    .filter((s) => s.category === "technology_alignment" || s.category === "trigger_event" || s.category === "strategic_objective")
-    .slice(0, 3);
-  if (relevantSignals.length === 0) return "";
-  const lines = ["**Account strategy context**", ...relevantSignals.map((s) => `- ${s.claim.slice(0, 100)} ([source](${s.source_url}))`)];
-  return lines.join("\n");
 }
 
 function technicalCounterpartText(decision: LaneRoutingDecision): string {
@@ -141,53 +146,32 @@ export function buildSalesMessage(params: {
 }): WebexMessagePreview {
   const { result, decision, runId, analysisLink } = params;
   const summary = result.executive_summary;
-  const brief = buildDeterministicBrief(result);
   const account = getCanonicalAccount(result);
-  const confidencePct = Math.round(summary.confidence * 100);
-
-  // Full sentences survive (no per-field ellipsis); the byte budget drops
-  // whole low-priority sections if ever needed. Core sections (account,
-  // signal, pursuit, thesis, why-now, primary actions, footer) are never
-  // dropped.
-  const whyNow = brief.why_now.slice(0, 4);
-  const stakeholders = brief.stakeholder_lines.filter((s) => !s.includes("(role only)")).slice(0, 5);
-  const salesActions = brief.sales_actions.slice(0, 5);
-  const topRisks = brief.top_risks.slice(0, 4);
-
   const nba = result.next_best_action;
-  const handoff = result.specialist_handoffs?.sales;
-  const doNotReask = handoff?.questions_not_to_reask ?? [];
-  const stillNeed = (handoff?.remaining_questions ?? []).map((q) => q.question);
+
+  // Concise, action-first commercial nudge. The full MEDDPICC / stakeholders /
+  // do-not-re-ask detail lives in the app (Decision Packet + Specialist
+  // handoff) — the push message only has to make the recipient act.
+  const opportunity = summary.primary_opportunity ?? result.matches[0]?.pain_category ?? "this opportunity";
+  const whyNow = firstMeaningful([...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a concrete next step.";
+  const action = actionLine(result, decision, "sales");
+  const expected = firstMeaningful([...(nba?.success_criteria ?? []), summary.business_impact]) ?? "A documented outcome and an agreed next step.";
+  const impact = meaningful(summary.business_impact);
+  const scoring = result.opportunity_scoring;
+  const pursuitLine =
+    scoring && scoring.decision ? `**Pursuit:** ${scoring.decision} — ${Math.round(scoring.final_pursuit_score)}/100` : null;
 
   const markdown = composeToByteBudget(
     [
-      { text: `**Commercial action — ${summary.verdict.replace(/_/g, " ")} (${confidencePct}%)**` },
-      { text: brief.pursuit_line ? `**Pursuit:** ${brief.pursuit_line}` : null },
-      { text: `**Account:** ${account.label}${brief.account_action ? ` — ${brief.account_action}` : ""}` },
-      { text: `**Why you:** ${decision.reason || "Routed to the commercial lane."}` },
-      { text: nba && nba.action_type !== "hold" && nba.action_type !== "suppress" ? `**Recommended action:** ${nba.summary}` : null },
+      { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — commercial` },
+      { text: `**Why you:** Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.label}.` },
+      { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
+      { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
+      { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: pursuitLine },
+      { text: impact ? `**Business impact:** ${clipAtWord(impact, 200)}` : null },
       { text: "" },
-      { text: "**Opportunity thesis**" },
-      { text: brief.opportunity_thesis },
-      { text: whyNow.length > 0 ? "\n**Why now**" : null },
-      { text: whyNow.length > 0 ? bulletList(whyNow) : null },
-      { text: doNotReask.length > 0 ? "\n**Customer already told us — do not re-ask**" : null },
-      { text: doNotReask.length > 0 ? bulletList(doNotReask.slice(0, 5)) : null },
-      { text: stillNeed.length > 0 ? "\n**Still need to learn**" : null, droppable: true, priority: 3 },
-      { text: stillNeed.length > 0 ? bulletList(stillNeed.slice(0, 3)) : null, droppable: true, priority: 3 },
-      { text: "\n**MEDDPICC**", droppable: true, priority: 2 },
-      { text: bulletList(brief.meddpicc_lines), droppable: true, priority: 2 },
-      { text: "\n**Bella next**" },
-      { text: bulletList(salesActions) },
-      { text: topRisks.length > 0 ? "\n**Top risks**" : null, droppable: true, priority: 2 },
-      { text: topRisks.length > 0 ? bulletList(topRisks) : null, droppable: true, priority: 2 },
-      { text: stakeholders.length > 0 ? "\n**Stakeholders**" : null, droppable: true, priority: 1 },
-      { text: stakeholders.length > 0 ? bulletList(stakeholders) : null, droppable: true, priority: 1 },
-      { text: `\n**Technical counterpart:** ${technicalCounterpartText(decision)} — Jack to define architecture, integrations, and POV success criteria.` },
-      { text: "" },
-      { text: analysisLinkMarkdown(analysisLink, runId) },
-      { text: "" },
-      { text: "You received this because the transcript produced a Sales / Commercial action for the Peachtree Select pilot." }
+      { text: analysisLinkMarkdown(analysisLink, runId) }
     ],
     MAX_MESSAGE_BYTES
   );
@@ -212,58 +196,31 @@ export function buildTechnicalMessage(params: {
   const summary = result.executive_summary;
   const primaryMatch = result.matches[0];
   const account = getCanonicalAccount(result);
-
-  const brief = buildDeterministicBrief(result);
+  const nba = result.next_best_action;
 
   const currentEnvironment = primaryMatch?.solution_decision.retained_existing_platforms.length
     ? primaryMatch.solution_decision.retained_existing_platforms.join(", ")
-    : "Not stated in transcript";
+    : "not stated";
+  const solutionMotion = primaryMatch?.recommended_solutions.length ? primaryMatch.recommended_solutions.join(", ") : "to be scoped";
+  const evidence = meaningful((primaryMatch?.matched_text ?? [])[0]);
 
-  const solutionMotion = primaryMatch?.recommended_solutions.length ? primaryMatch.recommended_solutions.join(", ") : "Not yet routed";
-
-  // Full verbatim snippets (generous word-boundary clip, no ellipsis).
-  const evidenceSnippets = (primaryMatch?.matched_text ?? []).slice(0, 2).map((snippet) => clipAtWord(snippet, 400));
-  const strategyContext = technicalStrategyContextMarkdown(result);
-
-  // Technical lane is deliberately distinct from sales: architecture,
-  // integrations, evidence, and validation — and the commercial pursuit
-  // score is intentionally omitted (Section 13).
-  const nba = result.next_best_action;
-  const handoff = result.specialist_handoffs?.technical;
-  const doNotReask = handoff?.questions_not_to_reask ?? [];
-  const remainingTech = (handoff?.remaining_questions ?? []).map((q) => q.question);
-  const meeting = handoff?.meeting_or_workshop_plan;
-  const workshopLine = meeting
-    ? `${meeting.title} (${meeting.recommended_duration_minutes} min). Scenarios: ${meeting.scenarios.map((s) => s.name).join("; ") || "to be agreed"}. Success: ${handoff?.success_criteria.join("; ") || "agree pass/fail before the session"}.`
-    : null;
+  // Concise, action-first technical nudge — distinct from sales (environment +
+  // workshop scope, not the commercial framing). Detail lives in the app.
+  const whyNow = firstMeaningful([...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a scenario-based working session.";
+  const action = actionLine(result, decision, "technical");
+  const expected = firstMeaningful([...(nba?.success_criteria ?? [])]) ?? "Validated data sources and pass/fail criteria for the scenarios.";
 
   const markdown = composeToByteBudget(
     [
-      { text: `**Technical action — ${summary.verdict.replace(/_/g, " ")}**` },
-      { text: `**Account:** ${account.label}` },
-      { text: `**Why you:** ${decision.reason || "Routed to the technical lane."}` },
-      { text: nba && nba.action_type !== "hold" && nba.action_type !== "suppress" ? `**Recommended action:** ${nba.summary}` : null },
+      { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — technical` },
+      { text: `**Why you:** Technical owner — scope the workshop and validate the environment.` },
+      { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
+      { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
+      { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: `**Environment:** ${clipAtWord(currentEnvironment, 140)} · **Motion:** ${clipAtWord(solutionMotion, 140)}` },
+      { text: evidence ? `**Proof:** "${clipAtWord(evidence, 200)}"` : null },
       { text: "" },
-      { text: "**Customer problem**" },
-      { text: clipAtWord(summary.business_problem, 600) },
-      { text: "" },
-      { text: `**Current environment:** ${clipAtWord(currentEnvironment, 400)}` },
-      { text: `**Solution motion:** ${clipAtWord(solutionMotion, 400)}` },
-      { text: doNotReask.length > 0 ? "\n**Already known — do not re-ask**" : null },
-      { text: doNotReask.length > 0 ? bulletList(doNotReask.slice(0, 6)) : null },
-      { text: remainingTech.length > 0 ? "\n**Remaining technical decisions**" : null },
-      { text: remainingTech.length > 0 ? bulletList(remainingTech.slice(0, 4)) : null },
-      { text: workshopLine ? "\n**Workshop / POV**" : null },
-      { text: workshopLine ? workshopLine : null },
-      { text: "\n**Jack next — architecture & validation**" },
-      { text: bulletList(brief.technical_actions) },
-      { text: "\n**Evidence**", droppable: true, priority: 3 },
-      { text: evidenceSnippets.length > 0 ? bulletList(evidenceSnippets.map((s) => `"${s}"`)) : "- No verbatim snippet available.", droppable: true, priority: 3 },
-      { text: strategyContext ? `\n${strategyContext}` : null, droppable: true, priority: 1 },
-      { text: "" },
-      { text: analysisLinkMarkdown(analysisLink, runId) },
-      { text: "" },
-      { text: "You received this because the transcript produced a Technical / Specialist action for the Peachtree Select pilot." }
+      { text: analysisLinkMarkdown(analysisLink, runId) }
     ],
     MAX_MESSAGE_BYTES
   );

@@ -146,18 +146,23 @@ describe("Webex message templates", () => {
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
-    expect(salesMessage.markdown).toContain("Commercial action");
-    expect(salesMessage.markdown).toContain("Opportunity thesis");
-    expect(salesMessage.markdown).toContain("Bella next");
-    expect(salesMessage.markdown).toContain("Technical counterpart");
-    expect(technicalMessage.markdown).toContain("Technical action");
-    expect(technicalMessage.markdown).toContain("Current environment");
-    expect(technicalMessage.markdown).toContain("Jack next");
-    // The sales lane leads with the commercial thesis + MEDDPICC; the
-    // technical lane leads with pain + environment + architecture — and
-    // never carries the commercial pursuit score.
-    expect(salesMessage.markdown).not.toContain("Current environment");
+    // Both lanes are concise + action-first: account, why-you, why-now, ONE
+    // recommended action, expected outcome.
+    expect(salesMessage.markdown).toContain("— commercial");
+    expect(salesMessage.markdown).toContain("**Why you:**");
+    expect(salesMessage.markdown).toContain("**Recommended action:**");
+    expect(technicalMessage.markdown).toContain("— technical");
+    expect(technicalMessage.markdown).toContain("**Environment:**");
+    expect(technicalMessage.markdown).toContain("**Recommended action:**");
+    // The sales lane carries the commercial pursuit line; the technical lane
+    // leads with environment/motion and never carries the commercial score.
+    expect(salesMessage.markdown).not.toContain("**Environment:**");
     expect(technicalMessage.markdown).not.toContain("**Pursuit:**");
+    // The push message is a concise nudge — no MEDDPICC dump / thesis / long
+    // stakeholder lists (those live in the app).
+    expect(salesMessage.markdown).not.toContain("MEDDPICC");
+    expect(salesMessage.markdown.length).toBeLessThanOrEqual(1100);
+    expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1100);
   });
 
   it("never pastes the full transcript into a message", () => {
@@ -179,8 +184,8 @@ describe("Webex message templates", () => {
     const result = buildResult();
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
-    expect(salesMessage.markdown).toContain("Sales / Commercial action for the Peachtree Select pilot");
-    expect(technicalMessage.markdown).toContain("Technical / Specialist action for the Peachtree Select pilot");
+    expect(salesMessage.markdown).toMatch(/\*\*Why you:\*\* Commercial owner/);
+    expect(technicalMessage.markdown).toMatch(/\*\*Why you:\*\* Technical owner/);
   });
 
   it("never renders a hyperlink when no valid public analysis link exists (Section 11)", () => {

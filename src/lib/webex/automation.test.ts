@@ -225,39 +225,21 @@ describe("computePeachtreePreview — no delivery attempted", () => {
 });
 
 describe("Circuit Stage D message synthesis in delivery", () => {
-  // A rich, quality-passing Stage D draft (distinct sales/technical, canonical
-  // account, opportunity thesis + MEDDPICC + ≥3 why-now + ≥3 next actions).
+  // A concise, quality-passing Stage D draft (distinct sales/technical,
+  // canonical account, why-now + one recommended action + expected outcome).
   const salesWebex = [
-    "**Account:** Acme Retail",
-    "",
-    "**Opportunity thesis**",
-    "Acme Retail needs unified cross-domain network operations across campus, branch, and cloud.",
-    "",
-    "**MEDDPICC**",
-    "- Economic buyer: CIO Dana Whitfield",
-    "- Decision criteria: pilot metrics must be met",
-    "",
-    "**Why now**",
-    "- Board approved a $1.4M budget",
-    "- Architecture workshop requested this quarter",
-    "- Prepared to purchase this quarter",
-    "",
-    "**Bella next actions**",
-    "- Confirm the architecture workshop date",
-    "- Align on the pilot success metrics",
-    "- Prepare the commercial proposal"
+    "**REVIEW · Acme Retail** — commercial",
+    "**Why you:** Commercial owner for the cross-domain network operations opportunity at Acme Retail.",
+    "**Why now:** The customer requested an architecture workshop this quarter.",
+    "**Recommended action:** Book the architecture workshop and align on the pilot success metrics.",
+    "**Expected outcome:** A confirmed workshop date and agreed pilot metrics."
   ].join("\n");
   const technicalWebex = [
-    "**Account:** Acme Retail",
-    "",
-    "**Current environment**",
-    "- Five disconnected dashboards across campus, branch, and cloud-managed sites",
-    "- A different single pane of glass per team",
-    "",
-    "**Jack next actions**",
-    "- Scope the architecture workshop agenda",
-    "- Map the current console inventory",
-    "- Define the POV technical success criteria"
+    "**REVIEW · Acme Retail** — technical",
+    "**Why you:** Technical owner — scope the workshop and validate the environment at Acme Retail.",
+    "**Why now:** The team wants a scoped proof-of-value across the disconnected dashboards.",
+    "**Recommended action:** Define the POV technical success criteria and map the console inventory.",
+    "**Expected outcome:** Validated architecture and agreed POV success criteria."
   ].join("\n");
 
   function withStageD(result: Awaited<ReturnType<typeof runSignalAgent>>, sales: string, technical: string) {

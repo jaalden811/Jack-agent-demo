@@ -1,69 +1,66 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 /**
- * Pre-delivery message-quality validator (Section 15). Applies to BOTH
- * OpenAI-synthesized messages (a failure triggers one retry, then the
- * deterministic fallback) and — as a regression guard — the
- * deterministic messages themselves, so a shallow one-line notification
- * can never reach a recipient. Every check is generic: it inspects
- * structure and provenance, never a specific company/product/score.
+ * Pre-delivery message-quality validator. The delivered Webex/Outlook message
+ * is a CONCISE, action-first nudge — not a full brief. The rich MEDDPICC /
+ * decision-packet detail lives in the app; the push message only has to be
+ * clear, complete, within a tight budget, and grounded (no invented URLs /
+ * secrets). This gate now REWARDS conciseness (and rejects over-budget "wall
+ * of text" messages) so Circuit Stage D's concise drafts are the delivered
+ * message. Every check is generic — structure/provenance, never a specific
+ * company/product/score. Budgets/vague-action lexicon are config-driven
+ * (signal-agent-poc/config/message_quality_policy.json).
  */
 
 export type MessageQualityContext = {
   verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
   /** URLs that are legitimately allowed to appear (the validated public
-   * analysis link + any real SerpAPI-returned source URLs). Any other
-   * URL in a message is treated as invented. */
+   * analysis link + any real SerpAPI-returned source URLs). Any other URL is
+   * treated as invented. */
   allowedUrls: string[];
+  /** Absolute hard channel character ceiling (provider limit). */
   charCeiling: number;
-  /** Webex hard byte ceiling (provider limit is 7,439 bytes). */
+  /** Absolute hard channel byte ceiling (provider limit is 7,439 bytes). */
   byteCeiling: number;
-  /** Skip the "≥3 why-now / ≥3 actions" richness checks — used only for
-   * NOISE/low-intent routes that intentionally carry less. */
-  requireRichBrief: boolean;
+  /** Canonical account name — when provided, the message must reference it by
+   * name (stronger than merely containing the word "account"). */
+  account?: string | null;
 };
 
 export type MessageQualityResult = { valid: boolean; failures: string[] };
 
-const URL_RE = /https?:\/\/[^\s)]+/gi;
-// Conservative secret patterns — an outbound message must never contain
-// a key-shaped token. (The app already never places secrets in messages;
-// this is defense-in-depth.)
-const SECRET_RES = [/sk-[A-Za-z0-9_-]{16,}/, /\bBearer\s+[A-Za-z0-9._-]{16,}/i, /api[_-]?key\s*[=:]\s*\S{12,}/i];
+type DeliveryMessagePolicy = {
+  min_chars: number;
+  max_chars: number;
+  max_bytes: number;
+  required_sections: string[];
+  require_why_now: boolean;
+};
 
-function countActionBullets(markdown: string): number {
-  // Action bullets live under a "next" section (Bella next / Jack next).
-  const lines = markdown.split(/\n/);
-  let inAction = false;
-  let count = 0;
-  for (const line of lines) {
-    const heading = line.trim().toLowerCase();
-    if (/^\*\*.*(next|action).*\*\*$/.test(heading)) {
-      inAction = true;
-      continue;
-    }
-    if (inAction && /^\*\*.+\*\*$/.test(line.trim())) inAction = false;
-    if (inAction && /^[-*]\s+\S/.test(line.trim())) count += 1;
-  }
-  return count;
+type MessageQualityPolicy = { delivery_message: DeliveryMessagePolicy; vague_actions: string[] };
+
+let cachedPolicy: MessageQualityPolicy | null = null;
+
+export function clearMessageQualityPolicyCache(): void {
+  cachedPolicy = null;
 }
 
-function countWhyNowBullets(markdown: string): number {
-  const lines = markdown.split(/\n/);
-  let inWhy = false;
-  let count = 0;
-  for (const line of lines) {
-    if (/^\*\*why now\*\*$/i.test(line.trim())) {
-      inWhy = true;
-      continue;
-    }
-    if (inWhy && /^\*\*.+\*\*$/.test(line.trim())) inWhy = false;
-    if (inWhy && /^[-*]\s+\S/.test(line.trim())) count += 1;
-  }
-  return count;
+function loadPolicy(): MessageQualityPolicy {
+  if (cachedPolicy) return cachedPolicy;
+  const filePath = path.join(process.cwd(), "signal-agent-poc", "config", "message_quality_policy.json");
+  cachedPolicy = JSON.parse(readFileSync(filePath, "utf8")) as MessageQualityPolicy;
+  return cachedPolicy;
+}
+
+const URL_RE = /https?:\/\/[^\s)]+/gi;
+const SECRET_RES = [/sk-[A-Za-z0-9_-]{16,}/, /\bBearer\s+[A-Za-z0-9._-]{16,}/i, /api[_-]?key\s*[=:]\s*\S{12,}/i];
+
+function byteLength(text: string): number {
+  return new TextEncoder().encode(text).length;
 }
 
 function normalizeForCompare(markdown: string): string {
-  // Strip the shared footer/link boilerplate and whitespace before
-  // comparing the two lanes for material distinctness.
   return markdown
     .replace(/you received this because[\s\S]*$/i, "")
     .replace(/\*\*analysis reference[\s\S]*$/i, "")
@@ -73,8 +70,8 @@ function normalizeForCompare(markdown: string): string {
     .trim();
 }
 
-/** Jaccard token overlap of the two lane bodies — a high overlap means
- * the sales and technical messages are not materially different. */
+/** Jaccard token overlap of the two lane bodies — a high overlap means the
+ * sales and technical messages are not materially different. */
 function bodyOverlap(a: string, b: string): number {
   const tokensA = new Set(normalizeForCompare(a).split(" ").filter((t) => t.length > 3));
   const tokensB = new Set(normalizeForCompare(b).split(" ").filter((t) => t.length > 3));
@@ -84,51 +81,65 @@ function bodyOverlap(a: string, b: string): number {
   return intersection / union;
 }
 
-function validateOneMessage(label: string, markdown: string, context: MessageQualityContext): string[] {
+const ACTION_HEADING_RE = /\b(recommended action|recommended next action|do next|do this|next action|next step|you own)\b/i;
+
+function validateOneMessage(label: string, markdown: string, context: MessageQualityContext, policy: DeliveryMessagePolicy, vagueActions: string[]): string[] {
   const failures: string[] = [];
-  const body = markdown ?? "";
-  if (body.trim().length === 0) {
+  const body = (markdown ?? "").trim();
+  if (body.length === 0) {
     failures.push(`${label}: empty message`);
     return failures;
   }
-  // Phase 13: a mid-content truncation ellipsis means a field was cut —
-  // messages must be complete. (A literal "…" inside a real quote is
-  // extremely rare and would also read as truncation, so it is rejected.)
+  if (body.length < policy.min_chars) failures.push(`${label}: too short to be actionable (${body.length} < ${policy.min_chars})`);
+  // Complete messages only — a mid-content ellipsis means a field was cut.
   if (body.includes("…")) failures.push(`${label}: contains a truncation ellipsis (message field was cut)`);
-  const byteLen = new TextEncoder().encode(body).length;
-  if (byteLen > context.byteCeiling) failures.push(`${label}: exceeds channel byte ceiling (${byteLen} > ${context.byteCeiling})`);
-  if (body.length > context.charCeiling) failures.push(`${label}: exceeds channel ceiling (${body.length} > ${context.charCeiling})`);
+
+  // Tight, action-first budget: reject "wall of text". The effective cap is
+  // the tighter of the config budget and the absolute channel ceiling.
+  const charCap = Math.min(policy.max_chars, context.charCeiling);
+  const byteCap = Math.min(policy.max_bytes, context.byteCeiling);
+  if (body.length > charCap) failures.push(`${label}: too detailed — exceeds the concise budget (${body.length} > ${charCap} chars)`);
+  if (byteLength(body) > byteCap) failures.push(`${label}: exceeds the byte budget (${byteLength(body)} > ${byteCap})`);
+
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(body)) failures.push(`${label}: contains a localhost/loopback link`);
   for (const secretRe of SECRET_RES) {
     if (secretRe.test(body)) failures.push(`${label}: contains a secret-shaped token`);
   }
-  // Invented-URL check: every URL must be in the allow-list.
   const urls = body.match(URL_RE) ?? [];
   const allowed = new Set(context.allowedUrls.map((u) => u.replace(/[).,]+$/, "")));
   for (const url of urls) {
     const cleaned = url.replace(/[).,]+$/, "");
     if (!allowed.has(cleaned)) failures.push(`${label}: contains a URL not in the allowed set (${cleaned})`);
   }
-  // Account state must be shown.
-  if (!/\*\*account:?\*\*/i.test(body) && !/account/i.test(body)) failures.push(`${label}: account state is not shown`);
+
+  // Essentials for an action-first message: the account and a clear action.
+  if (policy.required_sections.includes("account")) {
+    const accountShown = context.account ? body.toLowerCase().includes(context.account.toLowerCase()) : /account/i.test(body);
+    if (!accountShown) failures.push(`${label}: account is not referenced`);
+  }
+  if (policy.required_sections.includes("recommended action") && !ACTION_HEADING_RE.test(body)) failures.push(`${label}: no clear recommended action`);
+  // A vague action ("follow up", "touch base") is not an action — checked ONLY
+  // on the recommended-action line, so a noun such as "a confirmed follow-up"
+  // elsewhere is not a false positive.
+  const actionLine = body.split(/\n/).find((l) => ACTION_HEADING_RE.test(l)) ?? "";
+  const vague = vagueActions.find((phrase) => new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(actionLine));
+  if (vague) failures.push(`${label}: vague action ("${vague}") — state a specific next step`);
   return failures;
 }
 
 export function validateMessageQuality(params: { salesMarkdown: string; technicalMarkdown: string; context: MessageQualityContext }): MessageQualityResult {
+  const { delivery_message: policy, vague_actions: vagueActions } = loadPolicy();
   const failures: string[] = [];
-  failures.push(...validateOneMessage("sales", params.salesMarkdown, params.context));
-  failures.push(...validateOneMessage("technical", params.technicalMarkdown, params.context));
+  failures.push(...validateOneMessage("sales", params.salesMarkdown, params.context, policy, vagueActions ?? []));
+  failures.push(...validateOneMessage("technical", params.technicalMarkdown, params.context, policy, vagueActions ?? []));
 
-  // Sales-specific richness (only enforced for routes that should be rich).
-  if (params.context.requireRichBrief) {
-    if (!/opportunity thesis/i.test(params.salesMarkdown)) failures.push("sales: missing opportunity thesis");
-    if (!/meddpicc|economic buyer|decision criteria/i.test(params.salesMarkdown)) failures.push("sales: missing MEDDPICC");
-    if (countActionBullets(params.salesMarkdown) < 3) failures.push("sales: fewer than three specific next actions");
-    if (params.context.verdict === "HIGH_INTENT" && countWhyNowBullets(params.salesMarkdown) < 3) failures.push("sales: fewer than three why-now signals for a HIGH_INTENT verdict");
-    if (countActionBullets(params.technicalMarkdown) < 3) failures.push("technical: fewer than three specific next actions");
+  // Both messages must explain why now (timeliness) unless a NOISE route.
+  if (policy.require_why_now && params.context.verdict !== "NOISE") {
+    if (!/why now/i.test(params.salesMarkdown)) failures.push("sales: missing why-now");
+    if (!/why now/i.test(params.technicalMarkdown)) failures.push("technical: missing why-now");
   }
 
-  // Sales and technical must be materially different.
+  // Sales and technical must be materially different (role-specific).
   if (bodyOverlap(params.salesMarkdown, params.technicalMarkdown) > 0.7) failures.push("sales and technical messages are not materially different");
 
   return { valid: failures.length === 0, failures };

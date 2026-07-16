@@ -75,61 +75,25 @@ function byteLength(s: string): number {
 }
 
 /**
- * Each recipient message answers the full set of questions: why THEY were
- * selected, what happened, what the customer already answered (do-not-re-ask),
- * what remains unknown, the action they own + its expected output, their
- * collaborator, and timing. The delivery quality gate
- * (@/lib/webex/messageQuality) also requires specific heading tokens, so those
- * are kept verbatim in the skeleton.
+ * Concise, action-first recipient messages. The push message is a nudge to
+ * act — the full MEDDPICC / decision-packet detail lives in the app, not the
+ * notification. Each message: who + why you, why now, the ONE action you own,
+ * and the expected outcome. Distinct per lane (commercial vs technical).
  */
 const SALES_SKELETON = [
   "**Account:** <canonical account>",
-  "",
-  "**Why you're receiving this** — <sales_lane.role_label>: <sales_lane.why_selected>",
-  "",
-  "**Opportunity thesis** (what happened)",
-  "<1-2 sentences from opportunity_thesis>",
-  "",
-  "**Why now**",
-  "- <one bullet per provided why_now signal>",
-  "",
-  "**MEDDPICC**",
-  "- <compact lines from meddpicc_lines; name the economic buyer / decision criteria state>",
-  "",
-  "**Customer already told us — do not re-ask**",
-  "- <one bullet per provided do_not_reask item>",
-  "",
-  "**Still unknown**",
-  "- <one bullet per provided sales_lane.remaining_questions item>",
-  "",
-  "**Recommended next actions (you own)**",
-  "- <one bullet per provided sales_lane.actions item>",
-  "",
-  "**Expected output** — <sales_lane.expected_output>",
-  "**Collaborator** — <sales_lane.collaborator>",
-  "**Timing** — <timing>"
+  "**Why you:** <sales_lane.role_label> — <one concise clause from sales_lane.why_selected>",
+  "**Why now:** <ONE sentence from why_now[0] or timing>",
+  "**Recommended action:** <the single most important item from sales_lane.actions>",
+  "**Expected outcome:** <sales_lane.expected_output>"
 ].join("\n");
 
 const TECHNICAL_SKELETON = [
   "**Account:** <canonical account>",
-  "",
-  "**Why you're receiving this** — <technical_lane.role_label>: <technical_lane.why_selected>",
-  "",
-  "**Customer problem & environment**",
-  "- <points from stakeholder_lines / top_risks that are technical>",
-  "",
-  "**Customer already told us — do not re-ask**",
-  "- <one bullet per provided do_not_reask item>",
-  "",
-  "**Still unknown**",
-  "- <one bullet per provided technical_lane.remaining_questions item>",
-  "",
-  "**Recommended next actions (you own)**",
-  "- <one bullet per provided technical_lane.actions item>",
-  "",
-  "**Expected output** — <technical_lane.expected_output>",
-  "**Collaborator** — <technical_lane.collaborator>",
-  "**Timing** — <timing>"
+  "**Why you:** <technical_lane.role_label> — <one concise clause from technical_lane.why_selected>",
+  "**Why now:** <ONE sentence from why_now[0] or timing>",
+  "**Recommended action:** <the single most important item from technical_lane.actions>",
+  "**Expected outcome:** <technical_lane.expected_output>"
 ].join("\n");
 
 const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
@@ -145,16 +109,15 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
       required_sales_skeleton: SALES_SKELETON,
       required_technical_skeleton: TECHNICAL_SKELETON,
       task:
-        "STAGE D — write two DISTINCT, recipient-specific internal action messages by rewriting the provided `material` into polished Markdown. Each message tells ONE owner why they were selected, what happened, what the customer already answered (do not re-ask), what remains unknown, the action they own and its expected output, their collaborator, and the timing. " +
-        "sales_webex is the commercial owner's message and MUST use exactly these headings in order: '**Account:**', \"**Why you're receiving this**\", '**Opportunity thesis**', '**Why now**', '**MEDDPICC**', '**Customer already told us — do not re-ask**', '**Still unknown**', '**Recommended next actions (you own)**', '**Expected output**', '**Collaborator**', '**Timing**'. " +
-        "technical_webex is the technical owner's message and MUST use exactly these headings in order: '**Account:**', \"**Why you're receiving this**\", '**Customer problem & environment**', '**Customer already told us — do not re-ask**', '**Still unknown**', '**Recommended next actions (you own)**', '**Expected output**', '**Collaborator**', '**Timing**'. " +
-        "Under bulleted sections write ONE bullet per provided material item; use material.sales_lane / material.technical_lane for that lane's role_label, why_selected, actions, remaining_questions, expected_output, collaborator, and material.timing for timing. " +
-        "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs, and do NOT add a bullet not backed by the material. If a lane's material is too thin, include only what is provided (the system falls back to the deterministic message). " +
-        "If personalization_context is present, use it ONLY to tune salience and tone for the recipient (goals/lane/preferred tone) — never invent goal/quota impact, never expose private compensation, and never add facts not in `material`. " +
-        "Use the canonical account name '" + (input.account ?? "the account") + "' in the '**Account:**' line of BOTH messages. " +
-        "Use complete sentences and valid Markdown. Do NOT invent URLs (only use allowed_public_source_urls, at most three). Do NOT use truncation ellipses. sales_webex and technical_webex MUST be materially different and each stay within " +
-        input.channel_byte_budget + " bytes. " +
-        "Also produce sales_email and technical_email, each with a subject and a body that mirrors the matching Webex message. Return ONE JSON object with keys: sales_webex, technical_webex, sales_email, technical_email."
+        "STAGE D — write two DISTINCT, CONCISE, action-first internal messages by rewriting the provided `material` into polished Markdown. This is a push notification, NOT a full brief: it must make ONE owner act, fast. Keep each message SHORT (aim for 4-6 short lines, well under " +
+        input.channel_byte_budget + " bytes). Do NOT include a MEDDPICC dump, an opportunity-thesis paragraph, a do-not-re-ask list, a stakeholder list, or multiple action bullets — that detail lives in the app. " +
+        "sales_webex is the commercial owner's message and MUST use exactly these headings in order: '**Account:**', '**Why you:**', '**Why now:**', '**Recommended action:**', '**Expected outcome:**'. " +
+        "technical_webex is the technical owner's message and MUST use the SAME headings in the SAME order. " +
+        "For '**Recommended action:**' write the SINGLE most important action for that lane (from material.sales_lane.actions / material.technical_lane.actions) as one clear sentence — never a bulleted list, never a vague action like 'follow up' or 'touch base'. Use material.<lane>.role_label + why_selected for '**Why you:**', material.why_now[0] or material.timing for '**Why now:**', and material.<lane>.expected_output for '**Expected outcome:**'. " +
+        "The two lanes MUST be materially different: the commercial message emphasizes the account/commercial next step; the technical message emphasizes the environment/workshop scope. " +
+        "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs. If personalization_context is present, use it ONLY to tune salience/tone (goals/lane/preferred tone) — never invent goal/quota impact, never expose private compensation. " +
+        "Use the canonical account name '" + (input.account ?? "the account") + "' in the '**Account:**' line of BOTH messages. Complete sentences, valid Markdown, no truncation ellipses, at most one link (only from allowed_public_source_urls). " +
+        "Also produce sales_email and technical_email, each with a subject and a body that mirrors the matching (concise) Webex message. Return ONE JSON object with keys: sales_webex, technical_webex, sales_email, technical_email."
     };
     return JSON.stringify(payload);
   },
@@ -167,17 +130,16 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
     }
     const badUrls = invalidUrls(output, input.allowed_urls);
     if (badUrls.length > 0) issues.push(`invented URLs: ${badUrls.slice(0, 4).join(", ")}`);
-    // The canonical account must appear in BOTH messages when known.
+    // Canonical account must appear in BOTH messages when known.
     if (input.account && !output.sales_webex.includes(input.account)) issues.push("sales_webex does not use the canonical account name");
     if (input.account && !output.technical_webex.includes(input.account)) issues.push("technical_webex does not use the canonical account name");
-    // Structural headings the delivery gate requires (presence only — never a
-    // bullet-count requirement here, so the model is never pushed to fabricate).
-    const salesLc = output.sales_webex.toLowerCase();
-    if (!salesLc.includes("opportunity thesis")) issues.push("sales_webex is missing the '**Opportunity thesis**' section");
-    if (!/meddpicc|economic buyer|decision criteria/.test(salesLc)) issues.push("sales_webex is missing the MEDDPICC section");
-    if (!/next action|recommended next/.test(salesLc)) issues.push("sales_webex is missing the '**Recommended next actions**' section");
-    if (input.brief.why_now.length > 0 && !salesLc.includes("why now")) issues.push("sales_webex is missing the '**Why now**' section");
-    if (!/next action|recommended next/.test(output.technical_webex.toLowerCase())) issues.push("technical_webex is missing the '**Recommended next actions**' section");
+    // Essentials for an action-first message (presence only — never a
+    // bullet-count requirement, so the model is never pushed to pad).
+    for (const [label, msg] of [["sales_webex", output.sales_webex], ["technical_webex", output.technical_webex]] as const) {
+      const lc = msg.toLowerCase();
+      if (!/recommended action|next action/.test(lc)) issues.push(`${label} is missing the '**Recommended action:**' line`);
+      if (!lc.includes("why now")) issues.push(`${label} is missing the '**Why now:**' line`);
+    }
     return issues;
   },
   deterministicFallback: (input) => input.deterministic

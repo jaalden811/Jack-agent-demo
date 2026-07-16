@@ -353,8 +353,8 @@ describe("runStageD", () => {
   it("returns distinct Circuit messages using the canonical account + required sections", async () => {
     configure();
     vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
-      sales_webex: "**Account:** Meridian\n\n**Opportunity thesis**\nA credible opportunity.\n\n**Why now**\n- Budget approved\n\n**MEDDPICC**\n- EB confirmed\n\n**Recommended next actions**\n- Validate the budget owner",
-      technical_webex: "**Account:** Meridian\n\n**Customer problem & environment**\n- Fragmented tooling\n\n**Recommended next actions**\n- Scope a proof-of-value",
+      sales_webex: "**Account:** Meridian\n**Why you:** Commercial owner.\n**Why now:** Budget approved this quarter.\n**Recommended action:** Validate the budget owner and book the review.\n**Expected outcome:** A confirmed owner and next step.",
+      technical_webex: "**Account:** Meridian\n**Why you:** Technical owner.\n**Why now:** Customer requested a scoped proof-of-value.\n**Recommended action:** Scope a proof-of-value with success criteria.\n**Expected outcome:** Validated architecture and data sources.",
       sales_email: { subject: "Commercial — Meridian", body: "b" },
       technical_email: { subject: "Technical — Meridian", body: "b" }
     }));
@@ -362,7 +362,8 @@ describe("runStageD", () => {
     expect(trace.succeeded).toBe(true);
     expect(output.sales_webex).not.toEqual(output.technical_webex);
     expect(output.sales_webex).toContain("Meridian");
-    expect(output.sales_webex.toLowerCase()).toContain("opportunity thesis");
+    expect(output.sales_webex.toLowerCase()).toContain("recommended action");
+    expect(output.technical_webex.toLowerCase()).toContain("why now");
   });
 
   it("rejects identical messages / missing account / invented URL / ellipsis -> fallback", async () => {
