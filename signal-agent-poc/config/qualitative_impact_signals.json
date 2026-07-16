@@ -1,0 +1,20 @@
+{
+  "description": "Generic linguistic markers for QUALITATIVE material business/operational impact — the way senior stakeholders describe consequence without a number ('hundreds of specialists unable to work efficiently', 'a deadline becoming harder to meet', 'material business risk', 'client delivery'). Used ONLY as a boolean signal that enables the discovery-momentum verdict rescue (pain + accepted next step must not be silently suppressed as NOISE). It deliberately does NOT flow into the numeric opportunity score or the `quantified_impact` field, which stay numeric-only — qualitative impact must never masquerade as a quantified figure. Logic lives in src/lib/signal-agent/intentExtraction.ts (detectQualitativeImpact); this file supplies only the lexicon and is editable without code changes. Nothing here references a company, product, speaker, or a specific transcript.",
+  "version": "1.0",
+  "scale_terms": ["hundreds", "thousands", "dozens", "scores", "many", "numerous", "countless", "a large number"],
+  "affected_population": [
+    "specialists", "employees", "users", "staff", "people", "engineers", "workers",
+    "professionals", "consultants", "responders", "analysts", "designers", "clients", "customers", "teams"
+  ],
+  "impairment_leads": ["unable to", "can't", "cannot", "can not", "couldn't", "could not", "struggling to", "prevented from"],
+  "impairment_verbs": ["work", "access", "deliver", "operate", "collaborate", "connect", "function", "log in", "log on"],
+  "risk_subjects": ["deadline", "deadlines", "milestone", "milestones", "delivery", "deliverable", "deliverables", "sla", "slas", "commitment", "commitments"],
+  "risk_terms": ["risk", "at risk", "harder", "slip", "slipping", "miss", "missed", "missing", "jeopardy", "jeopardize", "delayed", "delay", "in danger", "threatened"],
+  "exposure_phrases": [
+    "material business risk", "material risk", "business risk", "business exposure", "business impact",
+    "client delivery", "client commitment", "client commitments", "customer commitment",
+    "regulatory exposure", "regulatory implication", "regulatory implications", "reputational risk"
+  ],
+  "disruption_terms": ["disruption", "disrupt", "disrupted", "disrupts", "disrupting", "outage", "degradation", "degraded", "unavailable", "downtime", "impaired"],
+  "disruption_consequences": ["work", "operations", "operation", "delivery", "design", "collaboration", "project", "projects", "client", "clients", "business", "service", "services", "milestone", "milestones", "productivity"]
+}

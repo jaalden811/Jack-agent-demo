@@ -52,8 +52,14 @@ export async function evaluateEntry(params: {
   config: ParsedMatchingConfig;
   intentEvidence: BuyingIntentEvidence[];
   stakeholders: Stakeholder[];
+  /** Boolean-only qualitative material-impact signal (see
+   * intentExtraction#detectQualitativeImpact). Never enters the scored intent
+   * list — it only enables the discovery-momentum verdict rescue below, so
+   * numeric scores/corroboration stay identical whether it is true or false. */
+  hasQualitativeImpactEvidence?: boolean;
 }): Promise<EntryEvaluation> {
   const { entry, transcript, account, embeddingBundle, negationConfig, config, intentEvidence, stakeholders } = params;
+  const hasQualitativeImpactEvidence = Boolean(params.hasQualitativeImpactEvidence);
 
   const keywordResult = scoreKeywords(entry, transcript, config);
   const negationResult = analyzeNegativeCues(entry, transcript, negationConfig, config);
@@ -117,9 +123,18 @@ export async function evaluateEntry(params: {
   // yet on the table in discovery). Pure "general interest" noise lacks
   // both an accepted next step and quantified impact, so it is unaffected.
   const hasNextStepEvidence = intentEvidence.some((item) => item.type === "next_step");
-  const hasImpactEvidence = intentEvidence.some((item) => item.type === "impact");
+  // Impact is either a quantified figure (scored intent evidence) OR a
+  // qualitative material-impact statement ("hundreds of specialists unable to
+  // work", "material business risk"). The qualitative signal is boolean-only
+  // and does not alter any numeric score or corroboration.
+  const hasImpactEvidence = intentEvidence.some((item) => item.type === "impact") || hasQualitativeImpactEvidence;
+  // Discovery momentum (real pain/impact + an accepted next step) is a genuine
+  // early-stage opportunity that must never collapse to NOISE. This applies
+  // whether or not an account/CRM row was supplied: providing account context
+  // must never SUPPRESS a real signal (previously the rescue ran only in
+  // transcript-only mode, so pasting account JSON perversely hid it).
   const discoveryMomentumOverride =
-    transcriptOnlyMode && hasNextStepEvidence && hasImpactEvidence && intentEvidenceScore >= DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE;
+    hasNextStepEvidence && hasImpactEvidence && intentEvidenceScore >= DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE;
 
   const intentLabel = classifyIntent({
     confidence,
@@ -185,12 +200,14 @@ function classifyIntent(params: {
   if (meetsHighIntentGate) return "HIGH_INTENT";
   if (confidence >= config.gates.review.min) return "REVIEW";
 
-  // Transcript-only exception: even below the REVIEW floor on raw
-  // confidence, sufficiently strong explicit timing/ownership/impact/
-  // buying-intent evidence — or genuine discovery momentum (quantified
-  // pain + an accepted next step) — keeps the result at REVIEW rather than
-  // letting it collapse to NOISE purely because no CRM row exists.
-  if (transcriptOnlyMode && (strongIntentOverride || discoveryMomentumOverride)) return "REVIEW";
+  // Below the REVIEW floor on raw confidence, two exceptions keep a real
+  // signal out of NOISE:
+  //  - strongIntentOverride: a transcript-only "HIGH_INTENT without a CRM row"
+  //    exception (4+ explicit intent types), so it stays transcript-only;
+  //  - discoveryMomentumOverride: pain/impact + an accepted next step — a
+  //    genuine early-stage opportunity — applies in BOTH modes, because
+  //    supplying account context must never suppress a real signal.
+  if ((transcriptOnlyMode && strongIntentOverride) || discoveryMomentumOverride) return "REVIEW";
 
   return "NOISE";
 }

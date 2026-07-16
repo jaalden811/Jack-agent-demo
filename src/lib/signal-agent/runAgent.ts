@@ -8,7 +8,7 @@ import { evaluateEntry, selectMultiLabelEvaluations } from "@/lib/signal-agent/s
 import { buildRouting } from "@/lib/signal-agent/routing";
 import { draftNotification } from "@/lib/signal-agent/notification";
 import { appendAuditRecord, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
-import { extractBuyingIntentEvidence, extractStakeholders } from "@/lib/signal-agent/intentExtraction";
+import { detectQualitativeImpact, extractBuyingIntentEvidence, extractStakeholders } from "@/lib/signal-agent/intentExtraction";
 import { extractNamedStakeholders, inferFunctionalOwners } from "@/lib/signal-agent/stakeholderExtraction";
 import { buildCommercialSignals } from "@/lib/signal-agent/commercialSignals";
 import { fetchPublicSignals } from "@/lib/signal-agent/publicSignals";
@@ -163,6 +163,9 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   const account = applyAccountOverride(baseAccount, request.accountOverride);
 
   const intentEvidence = extractBuyingIntentEvidence(transcript);
+  // Boolean-only qualitative material-impact signal — used solely to enable
+  // the discovery-momentum verdict rescue; never enters the scored intent list.
+  const hasQualitativeImpactEvidence = detectQualitativeImpact(transcript);
   const stakeholders = extractStakeholders(transcript);
   const namedStakeholders = extractNamedStakeholders(transcript);
   const functionalOwners = inferFunctionalOwners(transcript, namedStakeholders);
@@ -183,7 +186,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
         negationConfig: catalog.negationConfig,
         config: catalog.matchingConfig,
         intentEvidence,
-        stakeholders
+        stakeholders,
+        hasQualitativeImpactEvidence
       })
     )
   );

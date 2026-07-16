@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { BuyingIntentEvidence, BuyingIntentEvidenceType, IngestedTranscript, Stakeholder } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { classifyOwnership } from "@/lib/signal-agent/stakeholderExtraction";
@@ -174,6 +176,82 @@ export function extractBuyingIntentEvidence(transcript: IngestedTranscript): Buy
   }
 
   return refineIntentEvidence(evidence);
+}
+
+// ─── Qualitative (non-numeric) material-impact detection ────────────────────
+// Senior stakeholders describe consequence WITHOUT a number ("hundreds of
+// specialists unable to work efficiently", "a deadline becoming harder to
+// meet", "material business risk"). The numeric `impact` rules above miss
+// this entirely. This detector returns a BOOLEAN used ONLY to enable the
+// discovery-momentum verdict rescue (pain + accepted next step must not be
+// silently suppressed as NOISE). It deliberately does NOT enter the shared
+// intent-evidence list, so transcript corroboration, confidence, the numeric
+// opportunity score, and `quantified_impact` all remain unchanged.
+
+type QualitativeImpactConfig = {
+  scale_terms: string[];
+  affected_population: string[];
+  impairment_leads: string[];
+  impairment_verbs: string[];
+  risk_subjects: string[];
+  risk_terms: string[];
+  exposure_phrases: string[];
+  disruption_terms: string[];
+  disruption_consequences: string[];
+};
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function alt(values: string[]): string {
+  return values.map((v) => v.trim()).filter(Boolean).map(escapeRegex).join("|");
+}
+
+let qualitativeImpactConfig: QualitativeImpactConfig | null = null;
+let qualitativeImpactPatterns: RegExp[] | null = null;
+
+export function clearQualitativeImpactCache(): void {
+  qualitativeImpactConfig = null;
+  qualitativeImpactPatterns = null;
+}
+
+function loadQualitativeImpactConfig(): QualitativeImpactConfig {
+  if (qualitativeImpactConfig) return qualitativeImpactConfig;
+  const filePath = path.join(process.cwd(), "signal-agent-poc", "config", "qualitative_impact_signals.json");
+  qualitativeImpactConfig = JSON.parse(readFileSync(filePath, "utf8")) as QualitativeImpactConfig;
+  return qualitativeImpactConfig;
+}
+
+function qualitativePatterns(): RegExp[] {
+  if (qualitativeImpactPatterns) return qualitativeImpactPatterns;
+  const cfg = loadQualitativeImpactConfig();
+  qualitativeImpactPatterns = [
+    // Scale of affected people ("hundreds of specialists", "many employees").
+    new RegExp(`\\b(?:${alt(cfg.scale_terms)})\\s+(?:of\\s+)?(?:[\\w-]+\\s+){0,3}?(?:${alt(cfg.affected_population)})\\b`, "i"),
+    // Inability to perform work ("unable to work", "can't access", "prevented from delivering").
+    new RegExp(`\\b(?:${alt(cfg.impairment_leads)})\\s+(?:[\\w-]+\\s+){0,2}?(?:${alt(cfg.impairment_verbs)})\\b`, "i"),
+    // Delivery/deadline in jeopardy ("deadline becoming harder", "milestone at risk").
+    new RegExp(`\\b(?:${alt(cfg.risk_subjects)})\\b[\\w\\s,'-]{0,40}?\\b(?:${alt(cfg.risk_terms)})\\b`, "i"),
+    // Named business/regulatory exposure ("material business risk", "client delivery").
+    new RegExp(`\\b(?:${alt(cfg.exposure_phrases)})\\b`, "i"),
+    // Disruption to work/operations/delivery ("disruption ... delivery milestones").
+    new RegExp(`\\b(?:${alt(cfg.disruption_terms)})\\b[\\w\\s,'-]{0,40}?\\b(?:${alt(cfg.disruption_consequences)})\\b`, "i")
+  ];
+  return qualitativeImpactPatterns;
+}
+
+/** True when the customer describes material business/operational impact in
+ * qualitative (non-numeric) terms. Read from customer-attributed text only. */
+export function detectQualitativeImpact(transcript: IngestedTranscript): boolean {
+  const patterns = qualitativePatterns();
+  for (const chunk of selectRelevantChunks(transcript)) {
+    // A question that merely asks whether impact can be quantified is not an
+    // assertion of impact ("Are you able to quantify that impact today?").
+    if (isInterrogative(chunk.text)) continue;
+    if (patterns.some((re) => re.test(chunk.text))) return true;
+  }
+  return false;
 }
 
 /** Total intent-evidence score, capped at 1.0 and de-duplicated per
