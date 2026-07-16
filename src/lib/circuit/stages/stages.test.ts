@@ -326,10 +326,25 @@ const stageDInput: StageDInput = {
     why_now: ["Board approved a $1.4M budget", "Renewal window in Q3", "Purchase intent this quarter"],
     meddpicc_lines: ["EB — Confirmed: CIO owns the budget", "DC — Partial: pilot metrics"],
     stakeholder_lines: ["CIO — executive sponsor"],
-    sales_actions: ["Validate the budget owner", "Anchor the business case", "Map the procurement path"],
-    technical_actions: ["Define the target architecture", "Scope a proof-of-value", "Confirm integrations"],
     top_risks: ["Economic buyer not yet confirmed"],
-    do_not_reask: ["current environment"]
+    do_not_reask: ["current environment"],
+    timing: "Purchase intent this quarter; renewal in Q3",
+    sales_lane: {
+      role_label: "Commercial / Sales owner",
+      why_selected: "You own the commercial lane for Meridian.",
+      collaborator: "Technical / Specialist owner (paired technical lane)",
+      actions: ["Validate the budget owner", "Anchor the business case", "Map the procurement path"],
+      remaining_questions: ["Confirm procurement steps"],
+      expected_output: "A confirmed commercial next step."
+    },
+    technical_lane: {
+      role_label: "Technical / Specialist owner",
+      why_selected: "You own the technical lane for Meridian.",
+      collaborator: "Commercial / Sales owner (paired commercial lane)",
+      actions: ["Define the target architecture", "Scope a proof-of-value", "Confirm integrations"],
+      remaining_questions: ["Confirm data sources"],
+      expected_output: "A scoped technical validation."
+    }
   },
   deterministic: stageDDeterministic
 };

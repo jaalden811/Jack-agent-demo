@@ -15,7 +15,11 @@ vi.mock("@/lib/circuit/stages/stageDAdapter", () => ({
     account: "Acme",
     channel_byte_budget: 6400,
     allowed_urls: [],
-    brief: { opportunity_thesis: "", why_now: [], meddpicc_lines: [], stakeholder_lines: [], sales_actions: [], technical_actions: [], top_risks: [], do_not_reask: [] },
+    brief: {
+      opportunity_thesis: "", why_now: [], meddpicc_lines: [], stakeholder_lines: [], top_risks: [], do_not_reask: [], timing: "",
+      sales_lane: { role_label: "", why_selected: "", collaborator: "", actions: [], remaining_questions: [], expected_output: "" },
+      technical_lane: { role_label: "", why_selected: "", collaborator: "", actions: [], remaining_questions: [], expected_output: "" }
+    },
     deterministic: { sales_webex: "", technical_webex: "", sales_email: { subject: "", body: "" }, technical_email: { subject: "", body: "" } }
   }))
 }));

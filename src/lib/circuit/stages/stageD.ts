@@ -29,6 +29,18 @@ export const stageDSchema = z.object({
 
 export type StageDOutput = z.infer<typeof stageDSchema>;
 
+/** Per-lane recipient context: who the message is for and why. Role-based and
+ * deterministic (never a fabricated person); the delivery layer adds the
+ * attendance/delivery-state banner and the concrete collaborator name. */
+export type StageDLane = {
+  role_label: string;
+  why_selected: string;
+  collaborator: string;
+  actions: string[];
+  remaining_questions: string[];
+  expected_output: string;
+};
+
 /** Real, evidence-derived material for the messages (the deterministic
  * opportunity brief). Circuit rewrites this into polished prose using the
  * required section skeleton — it must NOT add signals, actions, metrics,
@@ -38,10 +50,11 @@ export type StageDBrief = {
   why_now: string[];
   meddpicc_lines: string[];
   stakeholder_lines: string[];
-  sales_actions: string[];
-  technical_actions: string[];
   top_risks: string[];
   do_not_reask: string[];
+  timing: string;
+  sales_lane: StageDLane;
+  technical_lane: StageDLane;
 };
 
 export type StageDInput = {
@@ -58,15 +71,19 @@ function byteLength(s: string): number {
 }
 
 /**
- * The delivery quality gate (@/lib/webex/messageQuality) requires specific
- * section headings; Circuit must produce them so its drafts are actually
- * preferred over the deterministic builder. These are the exact heading tokens
- * the gate looks for.
+ * Each recipient message answers the full set of questions: why THEY were
+ * selected, what happened, what the customer already answered (do-not-re-ask),
+ * what remains unknown, the action they own + its expected output, their
+ * collaborator, and timing. The delivery quality gate
+ * (@/lib/webex/messageQuality) also requires specific heading tokens, so those
+ * are kept verbatim in the skeleton.
  */
 const SALES_SKELETON = [
   "**Account:** <canonical account>",
   "",
-  "**Opportunity thesis**",
+  "**Why you're receiving this** — <sales_lane.role_label>: <sales_lane.why_selected>",
+  "",
+  "**Opportunity thesis** (what happened)",
   "<1-2 sentences from opportunity_thesis>",
   "",
   "**Why now**",
@@ -75,18 +92,40 @@ const SALES_SKELETON = [
   "**MEDDPICC**",
   "- <compact lines from meddpicc_lines; name the economic buyer / decision criteria state>",
   "",
-  "**Recommended next actions**",
-  "- <one bullet per provided sales_actions item>"
+  "**Customer already told us — do not re-ask**",
+  "- <one bullet per provided do_not_reask item>",
+  "",
+  "**Still unknown**",
+  "- <one bullet per provided sales_lane.remaining_questions item>",
+  "",
+  "**Recommended next actions (you own)**",
+  "- <one bullet per provided sales_lane.actions item>",
+  "",
+  "**Expected output** — <sales_lane.expected_output>",
+  "**Collaborator** — <sales_lane.collaborator>",
+  "**Timing** — <timing>"
 ].join("\n");
 
 const TECHNICAL_SKELETON = [
   "**Account:** <canonical account>",
   "",
+  "**Why you're receiving this** — <technical_lane.role_label>: <technical_lane.why_selected>",
+  "",
   "**Customer problem & environment**",
   "- <points from stakeholder_lines / top_risks that are technical>",
   "",
-  "**Recommended next actions**",
-  "- <one bullet per provided technical_actions item>"
+  "**Customer already told us — do not re-ask**",
+  "- <one bullet per provided do_not_reask item>",
+  "",
+  "**Still unknown**",
+  "- <one bullet per provided technical_lane.remaining_questions item>",
+  "",
+  "**Recommended next actions (you own)**",
+  "- <one bullet per provided technical_lane.actions item>",
+  "",
+  "**Expected output** — <technical_lane.expected_output>",
+  "**Collaborator** — <technical_lane.collaborator>",
+  "**Timing** — <timing>"
 ].join("\n");
 
 const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
@@ -101,11 +140,11 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
       required_sales_skeleton: SALES_SKELETON,
       required_technical_skeleton: TECHNICAL_SKELETON,
       task:
-        "STAGE D — write two DISTINCT internal action messages by rewriting the provided `material` into polished Markdown. " +
-        "sales_webex is the commercial message and MUST use exactly these section headings in order: '**Account:**', '**Opportunity thesis**', '**Why now**', '**MEDDPICC**', '**Recommended next actions**'. " +
-        "technical_webex is the technical message and MUST use exactly these headings in order: '**Account:**', '**Customer problem & environment**', '**Recommended next actions**'. " +
-        "Under '**Why now**' write ONE bullet for EACH provided why_now signal; under each '**Recommended next actions**' write ONE bullet for EACH provided action for that lane. " +
-        "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs. Do NOT add a bullet that is not backed by the material. If the material has fewer than three why-now signals or actions, include only those provided (the system will fall back to the deterministic message when a lane is too thin). " +
+        "STAGE D — write two DISTINCT, recipient-specific internal action messages by rewriting the provided `material` into polished Markdown. Each message tells ONE owner why they were selected, what happened, what the customer already answered (do not re-ask), what remains unknown, the action they own and its expected output, their collaborator, and the timing. " +
+        "sales_webex is the commercial owner's message and MUST use exactly these headings in order: '**Account:**', \"**Why you're receiving this**\", '**Opportunity thesis**', '**Why now**', '**MEDDPICC**', '**Customer already told us — do not re-ask**', '**Still unknown**', '**Recommended next actions (you own)**', '**Expected output**', '**Collaborator**', '**Timing**'. " +
+        "technical_webex is the technical owner's message and MUST use exactly these headings in order: '**Account:**', \"**Why you're receiving this**\", '**Customer problem & environment**', '**Customer already told us — do not re-ask**', '**Still unknown**', '**Recommended next actions (you own)**', '**Expected output**', '**Collaborator**', '**Timing**'. " +
+        "Under bulleted sections write ONE bullet per provided material item; use material.sales_lane / material.technical_lane for that lane's role_label, why_selected, actions, remaining_questions, expected_output, collaborator, and material.timing for timing. " +
+        "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs, and do NOT add a bullet not backed by the material. If a lane's material is too thin, include only what is provided (the system falls back to the deterministic message). " +
         "Use the canonical account name '" + (input.account ?? "the account") + "' in the '**Account:**' line of BOTH messages. " +
         "Use complete sentences and valid Markdown. Do NOT invent URLs (only use allowed_public_source_urls, at most three). Do NOT use truncation ellipses. sales_webex and technical_webex MUST be materially different and each stay within " +
         input.channel_byte_budget + " bytes. " +
