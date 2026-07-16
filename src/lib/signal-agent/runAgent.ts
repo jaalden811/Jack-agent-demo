@@ -23,6 +23,8 @@ import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { buildPersonalizationBlock } from "@/lib/personalization/buildPersonalization";
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
+import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
+import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -462,15 +464,34 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   }
 
   // Additive personalization layer (seller-goal-aware relevance, goal impact,
-  // notification decision, concise teaser). Purely a function of the final
-  // result + the active seller profile — never changes deterministic scores,
-  // routing, or evidence identity. No-op-safe when no profile exists.
+  // notification decision, concise teaser) + opportunity threading (delta
+  // detection feeds novelty/duplicate into the notification decision). Purely
+  // a function of the final result + the active seller profile + thread
+  // history — never changes deterministic scores, routing, or evidence
+  // identity. No-op-safe when no profile/thread exists.
   try {
     const sellerProfile = await resolveActiveSellerProfile();
     const verifiedOpportunityValue = account.openOpportunity && account.dealValue > 0 ? account.dealValue : null;
-    result.personalization = buildPersonalizationBlock({ result, profile: sellerProfile, verifiedOpportunityValue });
+    const thread = await recordAndBuildThread(result);
+    result.opportunity_thread = {
+      thread_id: thread.thread_id,
+      previous_run_count: thread.previous_run_count,
+      material_changes: thread.material_changes,
+      previous_decision: thread.previous_decision
+    };
+    const materialChange = thread.material_changes.some((c) => c !== "No material change since last time.");
+    result.personalization = buildPersonalizationBlock({
+      result,
+      profile: sellerProfile,
+      verifiedOpportunityValue,
+      extras: { novelty: thread.novelty, duplicateOf: thread.duplicate_of, materialChange }
+    });
+    const latestFb = await latestPursuitFeedback(result.run_id);
+    result.feedback = { latest_decision: latestFb?.decision ?? null, action_status: latestFb?.action_status ?? "recommended" };
+    result.assistant = { available: false, suggested_questions: [] };
   } catch {
     result.personalization = null;
+    result.opportunity_thread = null;
   }
 
   const auditOutcome = await appendAuditRecord(result);

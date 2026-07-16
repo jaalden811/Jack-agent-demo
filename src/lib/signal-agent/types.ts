@@ -727,6 +727,21 @@ export type SecureNetworkingTriageResult = {
    * the deterministic opportunity scores, routing, or evidence identity.
    * Optional: absent on legacy/unpersonalized runs. */
   personalization?: PersonalizationBlock | null;
+  /** Local opportunity-thread summary: how this account+motion has evolved
+   * across runs (what changed, prior pursuit decision) so repeat unchanged
+   * opportunities don't create alert fatigue. Additive/optional. */
+  opportunity_thread?: {
+    thread_id: string;
+    previous_run_count: number;
+    material_changes: string[];
+    previous_decision: string | null;
+  } | null;
+  /** Latest pursuit-feedback state for this run (Pursue/Need more/Not now/
+   * Pass) + resulting action status. Additive/optional. */
+  feedback?: { latest_decision: string | null; action_status: string } | null;
+  /** Run-scoped assistant availability + suggested grounded questions.
+   * Additive/optional. */
+  assistant?: { available: boolean; suggested_questions: string[] } | null;
 };
 
 export type GenericDiagnostics = {
