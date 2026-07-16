@@ -8,10 +8,10 @@ import { deliverMessages } from "@/lib/webex/delivery";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
-import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
+import { buildMeetingParticipation, laneAttendanceFor, applyAttendanceFraming, orderLanesByAttendance, annotateDeliveryAttendance } from "@/lib/webex/attendanceRouting";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
-import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
+import type { AnalysisLink } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
@@ -93,45 +93,73 @@ function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
 }
 
 // Webex accepts up to 7,439 bytes of markdown. The deterministic brief
-// composes against a ~6,400-byte budget; these ceilings give AI synthesis
+// composes against a ~6,400-byte budget; these ceilings give Circuit Stage D
 // headroom while staying within the provider limit (Phase 13).
 const WEBEX_HARD_CHAR_CEILING = 7000;
 const WEBEX_HARD_BYTE_CEILING = 7439;
-const SYNTHESIS_CHAR_LIMIT = 6400;
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
+/** Converts a Stage D email body (Markdown-ish plain text) into safe HTML for
+ * Outlook. HTML entities are escaped FIRST (XSS-safe), then `**bold**` markers
+ * and line breaks are rendered on the already-escaped text. */
+function stageDBodyToHtml(body: string): string {
+  const escaped = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const withBold = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return `<p>${withBold.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`;
 }
 
-/** Stage D: replaces the deterministic Webex/email content with
- * OpenAI-synthesized, evidence-backed content when qualification/
- * message synthesis is enabled, configured, and validates — otherwise
- * the already-built deterministic messages/emails are returned
- * unchanged. Never blocks delivery on a synthesis failure. */
-async function applyAiMessageSynthesis(params: {
+/** Prefers Circuit Stage D message drafts (ai_trace.stage_d) — the sole AI
+ * message synthesizer. Returns mapped previews only when Stage D is present AND
+ * passes the delivery-time quality gate; otherwise null so the caller uses the
+ * deterministic message builder. */
+function applyCircuitStageD(params: {
+  result: SecureNetworkingTriageResult;
+  messages: WebexMessagePreview[];
+  emails: EmailMessagePreview[];
+  qualityContext: Parameters<typeof validateMessageQuality>[0]["context"];
+}): { messages: WebexMessagePreview[]; emails: EmailMessagePreview[] } | null {
+  const aiTrace = params.result.ai_trace;
+  const stageD = aiTrace?.enhanced ? aiTrace.stage_d : null;
+  if (!stageD) return null;
+
+  const validation = validateMessageQuality({
+    salesMarkdown: stageD.sales_webex,
+    technicalMarkdown: stageD.technical_webex,
+    context: params.qualityContext
+  });
+  if (!validation.valid) return null;
+
+  const messages = params.messages.map((message) =>
+    message.lane === "sales"
+      ? { ...message, markdown: stageD.sales_webex, character_count: stageD.sales_webex.length, synthesized_by_ai: true }
+      : { ...message, markdown: stageD.technical_webex, character_count: stageD.technical_webex.length, synthesized_by_ai: true }
+  );
+  const emails = params.emails.map((email) =>
+    email.lane === "sales"
+      ? { ...email, subject: stageD.sales_email.subject, html: stageDBodyToHtml(stageD.sales_email.body), text: stageD.sales_email.body, synthesized_by_ai: true }
+      : { ...email, subject: stageD.technical_email.subject, html: stageDBodyToHtml(stageD.technical_email.body), text: stageD.technical_email.body, synthesized_by_ai: true }
+  );
+  return { messages, emails };
+}
+
+/** Message synthesis for delivery. Precedence: (1) Circuit Stage D drafts
+ * (ai_trace.stage_d) when the run was Circuit-enhanced and they pass the
+ * delivery quality gate; (2) the already-built deterministic messages/emails.
+ * Circuit is the only generative provider; when it is unavailable or its drafts
+ * fail the gate, the deterministic builder output is delivered. Never blocks
+ * delivery on a synthesis failure. */
+function applyAiMessageSynthesis(params: {
   result: SecureNetworkingTriageResult;
   routing: ReturnType<typeof buildLaneRouting>;
   runId: string;
   analysisLink: AnalysisLink;
   messages: WebexMessagePreview[];
   emails: EmailMessagePreview[];
-}): Promise<{ messages: WebexMessagePreview[]; emails: EmailMessagePreview[]; used: boolean; fallback_reason: string | null }> {
+}): { messages: WebexMessagePreview[]; emails: EmailMessagePreview[]; used: boolean; fallback_reason: string | null } {
   const salesDecision = params.routing.find((d) => d.lane === "sales");
   const technicalDecision = params.routing.find((d) => d.lane === "technical");
   if (!salesDecision || !technicalDecision) {
     return { messages: params.messages, emails: params.emails, used: false, fallback_reason: "no sales/technical lane routed for this transcript" };
   }
-
-  const publicEvidenceSummaries = (params.result.public_enrichment?.accepted_evidence ?? [])
-    .filter((item) => item.url)
-    .slice(0, 3)
-    .map((item) => ({ title: item.title ?? "Source", url: item.url as string, summary: item.quote_or_snippet }));
 
   // Allowed URLs: the validated public analysis link plus any real
   // SerpAPI source URLs; anything else in an AI message is treated as
@@ -149,58 +177,15 @@ async function applyAiMessageSynthesis(params: {
     requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
   };
 
-  const synthesisArgs = {
-    result: params.result,
-    meddpicc: params.result.meddpicc,
-    accountResolution: params.result.account_resolution,
-    namedStakeholders: params.result.stakeholder_analysis.named_stakeholders,
-    salesRecipientName: salesDecision.recipient_name,
-    technicalRecipientName: technicalDecision.recipient_name,
-    analysisLink: params.analysisLink,
-    runId: params.runId,
-    webexCharLimit: SYNTHESIS_CHAR_LIMIT,
-    publicEvidenceSummaries,
-    enabled: true
-  };
-
-  // Section 15: try synthesis, validate; on validation failure retry ONCE
-  // with the failures fed back; if still invalid, fall through to the
-  // rich deterministic messages (recording the reason).
-  let lastFailureReason: string | null = null;
-  let synthesized: SynthesizedMessages | null = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const outcome = await synthesizeQualifiedMessages({ ...synthesisArgs, validationFeedback: attempt === 0 ? undefined : lastFailureReason ? lastFailureReason.split("; ") : undefined });
-    if (!outcome.used || !outcome.messages) {
-      lastFailureReason = outcome.fallback_reason;
-      break; // a provider/parse failure will not be fixed by a retry with feedback
-    }
-    const validation = validateMessageQuality({
-      salesMarkdown: outcome.messages.sales_webex_markdown,
-      technicalMarkdown: outcome.messages.technical_webex_markdown,
-      context: qualityContext
-    });
-    if (validation.valid) {
-      synthesized = outcome.messages;
-      break;
-    }
-    lastFailureReason = `message quality validation failed: ${validation.failures.join("; ")}`;
+  // Circuit Stage D is the sole AI message synthesizer. When the run was
+  // Circuit-enhanced and Stage D produced quality-valid distinct messages, use
+  // them; otherwise deliver the deterministic builder output.
+  const circuit = applyCircuitStageD({ result: params.result, messages: params.messages, emails: params.emails, qualityContext });
+  if (circuit) {
+    return { messages: circuit.messages, emails: circuit.emails, used: true, fallback_reason: null };
   }
 
-  if (!synthesized) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: lastFailureReason };
-  }
-  const messages = params.messages.map((message) =>
-    message.lane === "sales"
-      ? { ...message, markdown: synthesized.sales_webex_markdown, character_count: synthesized.sales_webex_markdown.length, synthesized_by_ai: true }
-      : { ...message, markdown: synthesized.technical_webex_markdown, character_count: synthesized.technical_webex_markdown.length, synthesized_by_ai: true }
-  );
-  const emails = params.emails.map((email) =>
-    email.lane === "sales"
-      ? { ...email, subject: synthesized.sales_email_subject, html: synthesized.sales_email_html, text: stripHtml(synthesized.sales_email_html), synthesized_by_ai: true }
-      : { ...email, subject: synthesized.technical_email_subject, html: synthesized.technical_email_html, text: stripHtml(synthesized.technical_email_html), synthesized_by_ai: true }
-  );
-
-  return { messages, emails, used: true, fallback_reason: null };
+  return { messages: params.messages, emails: params.emails, used: false, fallback_reason: "Circuit Stage D unavailable or did not pass the quality gate; deterministic messages used." };
 }
 
 function previewOnlyDelivery(
@@ -243,17 +228,30 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
-  const previewDelivery = previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this.");
+
+  // Attendance-aware framing (Phase 7b): derive each recipient's meeting
+  // attendance + message mode and frame the messages accordingly. Recipients
+  // are unchanged (still the routed lanes); this only adapts HOW each is
+  // addressed and the ordering.
+  const participation = buildMeetingParticipation(result);
+  result.meeting_participation = participation;
+  const laneAttendance = laneAttendanceFor(routing, participation);
+  const framed = applyAttendanceFraming(synthesis.messages, synthesis.emails, laneAttendance);
+
+  const previewDelivery = annotateDeliveryAttendance(
+    previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this."),
+    laneAttendance
+  );
   // Re-persist with the now-final analysis_link/messages so the shared
   // results page matches this preview exactly (same runId/token issued
   // above, just richer content).
-  await finalizeRunPersistence({ result, analysisLink, messages: synthesis.messages, delivery: previewDelivery });
+  await finalizeRunPersistence({ result, analysisLink, messages: framed.messages, delivery: previewDelivery });
 
   return {
     lifecycle,
     routing,
-    messages: synthesis.messages,
-    emails: synthesis.emails,
+    messages: framed.messages,
+    emails: framed.emails,
     delivery: previewDelivery,
     routing_config_version: config.metadata.version,
     auto_send_enabled: false
@@ -283,8 +281,17 @@ export async function deliverPeachtreePipeline(
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
-  const messages = synthesis.messages;
-  const emails = synthesis.emails;
+
+  // Attendance-aware framing + send ordering (Phase 7b). Recipients are
+  // unchanged (still the routed lanes); attendance only adapts HOW each is
+  // addressed and the order sends are attempted (present-attendee action
+  // deltas before full/contextual handoffs).
+  const participation = buildMeetingParticipation(result);
+  result.meeting_participation = participation;
+  const laneAttendance = laneAttendanceFor(routing, participation);
+  const framed = applyAttendanceFraming(synthesis.messages, synthesis.emails, laneAttendance);
+  const messages = orderLanesByAttendance(framed.messages, laneAttendance);
+  const emails = orderLanesByAttendance(framed.emails, laneAttendance);
 
   const alreadyProcessed = await getProcessedTranscript(transcriptId);
   const alreadySentKeys = new Set<string>(alreadyProcessed?.lanesSent ?? []);
@@ -363,7 +370,7 @@ export async function deliverPeachtreePipeline(
     });
   }
 
-  const delivery = [...skipped, ...webexResults, ...emailResults];
+  const delivery = annotateDeliveryAttendance([...skipped, ...webexResults, ...emailResults], laneAttendance);
   const newlySucceededKeys = [...webexResults, ...emailResults].filter((item) => item.delivered).map((item) => channelKey(item.lane, item.channel));
 
   await markTranscriptProcessed({

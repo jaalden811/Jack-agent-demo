@@ -20,7 +20,7 @@ export type AccountResolutionInput = {
   attendeeEmailDomains: string[];
   uploadedAccountContextName: string | null;
   dialogueMentionedCompany: string | null;
-  openAiAccountCandidates: AccountCandidate[];
+  aiAccountCandidates: AccountCandidate[];
   /** All transcript sentence texts — scanned by the generic
    * company-introduction + organization-entity parsers (org named in a
    * negated claim still resolves). */
@@ -58,11 +58,11 @@ export async function resolveAccountIdentity(input: AccountResolutionInput): Pro
     // Raw dialogue text for the generic company-introduction-pattern
     // scanner (@/lib/account-resolution/candidateExtractor) — separate
     // from `dialogueMentionedCompany`, which is already a pre-extracted
-    // candidate name (e.g. from OpenAI Stage A) and is passed through
-    // via openAiAccountCandidates below instead of being re-scanned.
+    // candidate name (e.g. from a Circuit Stage A interpretation) and is
+    // passed through via aiAccountCandidates below instead of being re-scanned.
     transcriptDialogueText: input.transcriptDialogueText ?? [],
-    openAiAccountCandidates: [
-      ...input.openAiAccountCandidates.map((c) => ({ name: c.name, domain: c.domain, confidence: c.confidence, evidence_ids: c.evidence_ids })),
+    aiAccountCandidates: [
+      ...input.aiAccountCandidates.map((c) => ({ name: c.name, domain: c.domain, confidence: c.confidence, evidence_ids: c.evidence_ids })),
       ...(input.dialogueMentionedCompany ? [{ name: input.dialogueMentionedCompany, domain: null, confidence: 0.55, evidence_ids: ["dialogue_mention"] }] : [])
     ],
     productStoplist: input.productStoplist,

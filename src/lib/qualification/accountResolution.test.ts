@@ -11,7 +11,7 @@ function baseInput(overrides: Partial<AccountResolutionInput> = {}): AccountReso
     attendeeEmailDomains: [],
     uploadedAccountContextName: null,
     dialogueMentionedCompany: null,
-    openAiAccountCandidates: [],
+    aiAccountCandidates: [],
     ...overrides
   };
 }
@@ -49,12 +49,12 @@ describe("resolveAccountIdentity — Section 2/7 priority order and generic-name
     expect(result.name).toContain("Acme Corp");
   });
 
-  it("surfaces OpenAI-extracted candidates as alternatives even when a higher-priority source resolves the account", async () => {
+  it("surfaces AI-extracted candidates as alternatives even when a higher-priority source resolves the account", async () => {
     const result = await resolveAccountIdentity(
       baseInput({
         transcriptAccountLine: "Meridian Health Systems",
         transcriptAccountMatchedInCrm: true,
-        openAiAccountCandidates: [{ name: "Meridian Health Partners", domain: null, confidence: 0.4, evidence_ids: [] }]
+        aiAccountCandidates: [{ name: "Meridian Health Partners", domain: null, confidence: 0.4, evidence_ids: [] }]
       })
     );
     expect(result.alternatives.some((a) => a.name === "Meridian Health Partners")).toBe(true);

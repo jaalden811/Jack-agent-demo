@@ -12,7 +12,7 @@ import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
  * before quota is added" requirement.
  */
 
-const OFF = { useOpenAIEmbeddings: false, useOpenAISynthesis: false };
+const OFF = {};
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;

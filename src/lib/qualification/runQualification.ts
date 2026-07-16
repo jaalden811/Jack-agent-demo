@@ -1,7 +1,4 @@
-import { getConfig } from "@/lib/config";
-import { buildTranscriptEvidenceItems } from "@/lib/qualification/evidenceIds";
-import { extractTranscriptEvidence } from "@/lib/qualification/openaiEvidenceExtraction";
-import { classifyPublicEvidence } from "@/lib/qualification/openaiPublicEvidence";
+import { getCircuitConfig, isCircuitConfigured } from "@/lib/circuit/config";
 import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
 import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
 import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
@@ -11,7 +8,7 @@ import { computeTranscriptOpportunityScore, computeQualificationCompletenessScor
 import { buildPursuitRecommendation, evaluateHardGates } from "@/lib/opportunity-fit/pursueDecision";
 import { classifyDealMaturity, signalStrengthBand, detectMaturityLimitingEvidence } from "@/lib/opportunity-fit/dealMaturity";
 import { inferAuthorityGraph, type AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
-import type { AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
+import type { AccountCandidate, AccountResolution, AiProcessingStatus, ClassifiedPublicResult, Meddpicc, PublicEnrichmentStatus } from "@/lib/qualification/types";
 import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 import type { BuyingIntentEvidence, IngestedTranscript, MatchOutput, StakeholderRecord } from "@/lib/signal-agent/types";
 import type { QueryPlannerInput } from "@/lib/connectors/serpapi/types";
@@ -64,29 +61,23 @@ export async function runQualificationPipeline(params: {
    * never a placeholder that is unconditionally true. */
   nextStepSignals?: string[];
 }): Promise<QualificationPipelineResult> {
-  const config = getConfig();
-  const openAiConfigured = Boolean(config.OPENAI_API_KEY);
   let fallbackReason: string | null = null;
 
-  // Stage A: transcript + stakeholder extraction.
-  const evidenceItems = buildTranscriptEvidenceItems(params.transcript);
-  const selectedTaxonomyCandidates = params.matches.slice(0, 3).map((m) => ({ id: m.entry_id, pain_category: m.pain_category }));
-  const extraction = await extractTranscriptEvidence(
-    {
-      evidence_items: evidenceItems,
-      webex_meeting_title: params.webexMeetingTitle,
-      webex_meeting_date: null,
-      webex_host: null,
-      user_entered_account: null,
-      uploaded_account_context: null,
-      deterministic_intent_signals: params.intentEvidence.map((e) => e.text),
-      deterministic_negative_cues: [],
-      selected_taxonomy_candidates: selectedTaxonomyCandidates,
-      lifecycle_candidate: params.lifecycleStageGuess
-    },
-    params.useQualification
-  );
-  fallbackReason = extraction.fallback_reason;
+  // Stage A (transcript/evidence interpretation) is deterministic. Circuit
+  // provides an ADDITIVE interpretation on result.ai_trace (@/lib/signal-agent/
+  // aiEnhancement); it never feeds the authoritative qualification below, so the
+  // deterministic path here stands alone. `extraction` is a null-result stand-in
+  // (result is always null) so every `extraction.result?.…` access resolves to
+  // its deterministic branch.
+  const extraction: {
+    used: false;
+    result: {
+      account_candidates: AccountCandidate[];
+      commercial_signals: { competitor_mentions: string[]; timeline: string[]; budget: string[] };
+      preliminary_meddpicc: Meddpicc;
+    } | null;
+    fallback_reason: string | null;
+  } = { used: false, result: null, fallback_reason: null };
 
   // Account resolution — Section 2/7 priority order.
   const dialogueMention = extraction.result?.account_candidates.find((c) => c.confidence >= 0.5)?.name ?? null;
@@ -99,7 +90,7 @@ export async function runQualificationPipeline(params: {
     attendeeEmailDomains: [],
     uploadedAccountContextName: null,
     dialogueMentionedCompany: dialogueMention,
-    openAiAccountCandidates: extraction.result?.account_candidates ?? [],
+    aiAccountCandidates: extraction.result?.account_candidates ?? [],
     // Scan ALL sentences (not only customer-attributed) for the org-
     // entity parser — an organization can be named in any turn, including
     // inside a negated commercial claim.
@@ -120,8 +111,11 @@ export async function runQualificationPipeline(params: {
   });
 
   let publicEnrichment: PublicEnrichmentStatus;
-  let classifiedPublicResults: ClassifiedPublicResult[] = [];
-  let usedPublicClassification = false;
+  // Public-evidence classification is handled ADDITIVELY by Circuit Stage B
+  // (@/lib/circuit/stages/stageB) on result.ai_trace; the authoritative
+  // deterministic MEDDPICC below uses accepted enrichment directly.
+  const classifiedPublicResults: ClassifiedPublicResult[] = [];
+  const usedPublicClassification = false;
 
   if (gate.allowed && accountResolution.confidence >= 0.65 && accountResolution.name) {
     const detectedProducts = Array.from(new Set(params.matches.flatMap((m) => m.recommended_solutions)));
@@ -142,38 +136,6 @@ export async function runQualificationPipeline(params: {
 
     publicEnrichment = await runSerpApiEnrichment({ ...plannerInput, accountName: accountResolution.name, accountDomain: accountResolution.domain });
     fallbackReason = fallbackReason ?? publicEnrichment.fallback_reason;
-
-    if (publicEnrichment.sources.length > 0 && params.useQualification) {
-      const classification = await classifyPublicEvidence(
-        publicEnrichment.sources.map((s) => ({
-          source_id: s.source_id,
-          provider: "serpapi" as const,
-          query_id: "",
-          query: "",
-          purpose: "strategic_initiative" as const,
-          title: s.title ?? "",
-          url: s.url ?? "",
-          canonical_url: s.url ?? "",
-          domain: s.url ? new URL(s.url).hostname : "",
-          snippet: s.quote_or_snippet,
-          position: 0,
-          published_at: s.published_at,
-          retrieved_at: new Date().toISOString(),
-          result_type: "organic" as const,
-          account_match_confidence: s.confidence,
-          stakeholder_match_confidence: 0,
-          signal_relevance: s.confidence,
-          authority_score: s.confidence,
-          recency_score: s.confidence,
-          public_evidence_score: s.confidence
-        })),
-        { account_candidate: accountResolution.name, transcript_signal: params.businessProblem },
-        params.useQualification
-      );
-      usedPublicClassification = classification.used;
-      classifiedPublicResults = classification.classified;
-      if (!classification.used) fallbackReason = fallbackReason ?? classification.fallback_reason;
-    }
   } else {
     publicEnrichment = buildDefaultPublicEnrichment(gate.reason);
   }
@@ -226,13 +188,15 @@ export async function runQualificationPipeline(params: {
   }
 
   const aiProcessing: AiProcessingStatus = {
-    openai_configured: openAiConfigured,
+    // The qualification pipeline is deterministic; Circuit enhancement is
+    // additive on result.ai_trace and never feeds this authoritative path.
+    ai_provider_configured: isCircuitConfigured(getCircuitConfig()),
     transcript_extraction_used: extraction.used,
     public_evidence_classification_used: usedPublicClassification,
     qualification_synthesis_used: extraction.used,
     message_synthesis_used: false,
-    embedding_model: config.OPENAI_EMBEDDING_MODEL,
-    synthesis_model: config.OPENAI_SYNTHESIS_MODEL,
+    embedding_model: "deterministic-local",
+    synthesis_model: "circuit",
     fallback_reason: fallbackReason
   };
 

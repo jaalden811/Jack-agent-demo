@@ -13,7 +13,7 @@ import { computeTranscriptOpportunityScore } from "@/lib/opportunity-fit/opportu
  * are reproducible in CI.
  */
 
-const OFF = { useOpenAIEmbeddings: false, useOpenAISynthesis: false };
+const OFF = {};
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;

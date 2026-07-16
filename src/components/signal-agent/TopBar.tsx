@@ -17,8 +17,11 @@ function StatusPill({ label, ok, detail }: { label: string; ok: boolean | null; 
  * degrades gracefully to deterministic matching. */
 function aiReady(agentStatus: SignalAgentStatus | null): boolean | null {
   if (!agentStatus) return null;
-  if (!agentStatus.openai.configured) return true;
-  return agentStatus.openai.embeddings.usable || agentStatus.openai.synthesis.usable;
+  // Circuit is optional: unconfigured is not an error (the deterministic engine
+  // is authoritative). Only a configured-but-not-operational Circuit is a
+  // genuine problem to surface.
+  if (!agentStatus.ai_provider.configured) return true;
+  return agentStatus.ai_provider.operational;
 }
 
 export function TopBar({
@@ -62,7 +65,7 @@ export function TopBar({
         <StatusPill
           label={`AI: ${aiOk ? "Ready" : "Action required"}`}
           ok={aiOk}
-          detail={agentStatus ? `Embeddings: ${agentStatus.openai.embeddings.message} · Synthesis: ${agentStatus.openai.synthesis.message}` : undefined}
+          detail={agentStatus ? `Circuit: ${agentStatus.ai_provider.message}` : undefined}
         />
         <StatusPill label={`Auto-send: ${status?.auto_send_enabled ? "On" : "Off"}`} ok={status ? status.auto_send_enabled : null} />
         <StatusPill label={`Autopilot: ${status?.autopilot_enabled ? "On" : "Off"}`} ok={status ? status.autopilot_enabled : null} />

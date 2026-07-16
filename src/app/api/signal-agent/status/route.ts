@@ -5,12 +5,8 @@ import { getSignalAgentStatus } from "@/lib/signal-agent/status";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const useOpenAiParam = url.searchParams.get("useOpenAI");
-  const useOpenAI = useOpenAiParam === null ? true : useOpenAiParam !== "false";
-
-  const status = await getSignalAgentStatus({ useOpenAI });
+export async function GET() {
+  const status = await getSignalAgentStatus();
   return NextResponse.json(status, {
     headers: { "Cache-Control": "no-store, no-cache, must-revalidate" }
   });

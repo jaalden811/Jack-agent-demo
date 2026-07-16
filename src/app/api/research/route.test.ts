@@ -1,8 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { POST } from "@/app/api/research/route";
 import { POST as RERUN_POST } from "@/app/api/research/[runId]/rerun/route";
-
-vi.mock("openai", () => ({ default: vi.fn() }));
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;

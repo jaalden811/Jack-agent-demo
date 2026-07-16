@@ -1,8 +1,9 @@
 import { randomUUID, createHash } from "node:crypto";
-import OpenAI from "openai";
 import mammoth from "mammoth";
 import { parse as parseCsv } from "csv-parse/sync";
 import { getConfig } from "@/lib/config";
+import { getActiveAiProvider } from "@/lib/ai-provider/registry";
+import { getCircuitConfig, isCircuitConfigured } from "@/lib/circuit/config";
 import type {
   AccountRecommendation,
   BuyerTarget,
@@ -26,9 +27,15 @@ import type {
 
 const now = () => new Date().toISOString();
 
+/**
+ * Tracks how KB semantic retrieval was performed for a run. Circuit exposes no
+ * embedding endpoint, so Market + Buyer Intelligence uses deterministic local
+ * embeddings by design — this is the standard mode, not a degradation, and it
+ * does NOT reduce a run's verification status (which depends on real search
+ * evidence, not on the embedding backend).
+ */
 type EmbeddingRuntime = {
-  attemptedOpenAi: boolean;
-  usedFallback: boolean;
+  localOnly: boolean;
   errors: string[];
 };
 
@@ -52,17 +59,20 @@ function providerCheck(
 
 export function getProviderDiagnostics(): ProviderStatusSnapshot {
   // Read directly from process.env (trimmed) to ensure freshness at request time.
-  const openAiConfigured = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const aiProviderConfigured = isCircuitConfigured(getCircuitConfig());
   const searchConfigured = Boolean(process.env.SEARCH_API_KEY?.trim());
   const firecrawlConfigured = Boolean(process.env.FIRECRAWL_API_KEY?.trim());
   const config = getConfig();
   const checks = [
     providerCheck(
-      "OPENAI_API_KEY",
-      openAiConfigured,
-      true,
-      "Configured",
-      "Missing required provider: OPENAI_API_KEY is not configured. Development fallback embeddings will be used."
+      "AI provider (Circuit)",
+      aiProviderConfigured,
+      // Optional: Circuit only enhances entity extraction, org-fit synthesis, and
+      // reranking. Its absence degrades gracefully to the deterministic engine and
+      // does NOT block verified research or force fallback mode.
+      false,
+      "Configured (Circuit generative enhancement available)",
+      "Missing optional provider: Circuit is not configured. Deterministic entity extraction, synthesis, and reranking are used."
     ),
     providerCheck(
       "SEARCH_API_KEY",
@@ -107,7 +117,8 @@ export function getProviderDiagnostics(): ProviderStatusSnapshot {
     searchProvider: config.SEARCH_PROVIDER,
     checks,
     liveSearchAvailable: searchConfigured,
-    openAiEmbeddingsAvailable: openAiConfigured,
+    aiProviderConfigured,
+    remoteEmbeddingsAvailable: false,
     firecrawlAvailable: firecrawlConfigured,
     contactEnrichmentAvailable: config.hasContactEnrichment,
     fallbackModeActive,
@@ -306,26 +317,78 @@ function sanitizeProviderError(error: unknown) {
   return error instanceof Error ? `${error.name}: ${error.message}` : "Unknown provider error";
 }
 
-async function embedTextWithRuntime(text: string, runtime?: EmbeddingRuntime) {
-  const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key) {
-    if (runtime) runtime.usedFallback = true;
-    return deterministicEmbedding(text);
+/**
+ * Extract the first balanced JSON object/array from model output. Tolerates
+ * markdown code fences and surrounding prose so a Circuit response that wraps
+ * JSON in ```json ... ``` or adds a sentence still parses. Returns null when no
+ * balanced structure is present.
+ */
+function extractJsonBlock(text: string): string | null {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1].trim() : trimmed;
+  const start = body.search(/[{[]/);
+  if (start === -1) return null;
+  const open = body[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < body.length; i += 1) {
+    const ch = body[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return body.slice(start, i + 1);
+    }
   }
-  if (runtime) runtime.attemptedOpenAi = true;
+  return null;
+}
+
+/**
+ * Market + Buyer Intelligence generative calls (entity extraction, org-fit
+ * synthesis, reranking) route through the shared AI provider (Circuit today) via
+ * the provider registry — never a vendor SDK. Returns parsed JSON from the model
+ * or null when the provider is unavailable/misconfigured or the output is not
+ * usable JSON; every caller then falls back to its deterministic path so the
+ * flow degrades gracefully with no external AI provider.
+ */
+async function aiGenerateJson<T>(
+  prompt: string,
+  opts: { maxOutputTokens?: number; temperature?: number } = {}
+): Promise<T | null> {
   try {
-    const client = new OpenAI({ apiKey: key, timeout: 5000, maxRetries: 0 });
-    const response = await withRetry(
-      () => client.embeddings.create({ model: "text-embedding-3-small", input: text.slice(0, 8000) }),
-      { label: "OpenAI embedding", retries: 1, baseDelayMs: 200 }
-    );
-    return response.data[0]?.embedding ?? deterministicEmbedding(text);
+    const result = await getActiveAiProvider().generate({
+      prompt,
+      temperature: opts.temperature ?? 0.2,
+      maxOutputTokens: opts.maxOutputTokens ?? 600
+    });
+    if (!result.ok || !result.text) return null;
+    const block = extractJsonBlock(result.text);
+    if (!block) return null;
+    return JSON.parse(block) as T;
   } catch (error) {
-    const sanitized = sanitizeProviderError(error);
-    if (runtime) { runtime.usedFallback = true; runtime.errors.push(sanitized); }
-    console.warn("OpenAI embedding failure metadata:", sanitized);
-    return deterministicEmbedding(text);
+    console.warn("AI provider generation failed (non-fatal):", sanitizeProviderError(error));
+    return null;
   }
+}
+
+/**
+ * KB semantic retrieval embeddings. Circuit has no embedding endpoint, so this
+ * uses deterministic local embeddings by design. Retrieval stays fully
+ * functional with no external embedding provider; this local mode is standard
+ * and does not lower a run's verification status.
+ */
+async function embedTextWithRuntime(text: string, runtime?: EmbeddingRuntime) {
+  if (runtime) runtime.localOnly = true;
+  return deterministicEmbedding(text);
 }
 
 export function cosineSimilarity(a: number[], b: number[]) {
@@ -766,11 +829,10 @@ export function buildDynamicDiscoveryQueries(input: ResearchInput): string[] {
   ];
 }
 
-/** Use OpenAI to extract verified org names from search results snippets. */
-async function extractOrgsWithOpenAI(
+/** Use the AI provider (Circuit) to extract verified org names from search result snippets. */
+async function extractOrgsWithAi(
   results: SearchResult[],
   input: ResearchInput,
-  apiKey: string,
   debugStats: RunDebugStats
 ): Promise<string[]> {
   const snippets = results
@@ -790,21 +852,16 @@ Return a JSON object with a "organizations" array of real organization names (no
 Only include actual ${input.targetMarket} organizations clearly identifiable from the snippets/titles.
 {"organizations": ["Org Name 1", "Org Name 2"]}`;
 
+  const parsed = await aiGenerateJson<{ organizations?: string[] }>(prompt, {
+    maxOutputTokens: 400,
+    temperature: 0.1
+  });
+  if (!parsed) return [];
+  debugStats.aiEntityExtractionRan = true;
   try {
-    const client = new OpenAI({ apiKey, timeout: 15000, maxRetries: 0 });
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 400,
-      temperature: 0.1
-    });
-    debugStats.openAiEntityExtractionRan = true;
-    const text = response.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as { organizations?: string[] };
     return (parsed.organizations ?? []).filter(isValidOrganizationName).slice(0, 10);
   } catch (error) {
-    console.warn("OpenAI entity extraction failed (non-fatal):", sanitizeProviderError(error));
+    console.warn("AI entity extraction post-processing failed (non-fatal):", sanitizeProviderError(error));
     return [];
   }
 }
@@ -939,8 +996,8 @@ export function selectOrganizations(input: ResearchInput): {
 /**
  * Async version of selectOrganizations that tries live dynamic discovery first.
  * Seeds always take absolute priority. If no seeds, runs discovery queries,
- * uses OpenAI to extract org names, validates them, and falls back to the
- * approved fallback list for any missing slots.
+ * uses the AI provider (Circuit) to extract org names, validates them, and falls
+ * back to the approved fallback list for any missing slots.
  */
 export async function selectOrganizationsWithDiscovery(
   input: ResearchInput,
@@ -973,20 +1030,21 @@ export async function selectOrganizationsWithDiscovery(
 
   debugStats.dynamicOrgsDiscovered = 0;
 
-  // Only OpenAI can extract org names from search results reliably.
-  // The deterministic classifier is intentionally NOT used here because it
+  // The generative AI provider (Circuit) extracts org names from search results.
+  // The deterministic title classifier is intentionally NOT used here because it
   // accepts article titles containing org keywords (e.g. "Hospital CISO Report").
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  // When Circuit is unavailable, extraction yields nothing and we fall straight
+  // to the approved fallback list below (never noisy title classification).
   let dynamicOrgs: string[] = [];
 
-  if (apiKey && discoveryResults.length > 0) {
-    dynamicOrgs = await extractOrgsWithOpenAI(discoveryResults, input, apiKey, debugStats);
-    // Validate every name OpenAI returns — OpenAI can hallucinate article titles as orgs
+  if (discoveryResults.length > 0) {
+    dynamicOrgs = await extractOrgsWithAi(discoveryResults, input, debugStats);
+    // Validate every returned name — a model can hallucinate article titles as orgs.
     dynamicOrgs = dynamicOrgs.filter(isValidOrganizationName);
   }
 
-  // If no OpenAI key or OpenAI found nothing → use fallback list immediately.
-  // DO NOT fall back to deterministic title classification (it produces false positives).
+  // If the AI provider is unavailable or found nothing → use fallback list.
+  // DO NOT fall back to deterministic title classification (false positives).
   debugStats.dynamicOrgsDiscovered = dynamicOrgs.length;
 
   // Fill remaining slots with approved fallback orgs
@@ -1534,7 +1592,7 @@ function buildBuyerMap(orgName: string, capabilityMap: CapabilityMap, persons: A
   return { economicBuyer, businessChampion, technicalInfluencers };
 }
 
-// ─── OpenAI synthesis ─────────────────────────────────────────────────────────
+// ─── AI provider (Circuit) synthesis ──────────────────────────────────────────
 
 function deterministicOrgFit(
   orgName: string,
@@ -1564,9 +1622,6 @@ export async function synthesizeOrgFit(
   debugStats: RunDebugStats,
   contactCandidates?: ContactCandidate[]
 ): Promise<{ fitReason: string; ciscoFitSummary: string; nextStep: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return deterministicOrgFit(orgName, signals, capabilityMap, input);
-
   const liveSignals = signals.filter((s) => s.sourceUrl?.startsWith("http") && s.verification !== "unverified");
   if (liveSignals.length === 0) return deterministicOrgFit(orgName, signals, capabilityMap, input);
 
@@ -1594,33 +1649,22 @@ Return a JSON object:
 
 Rules: Be specific to ${orgName}. Only reference evidence provided above. Do not invent facts or contacts. If evidence is thin, say so explicitly.`;
 
-  try {
-    const client = new OpenAI({ apiKey, timeout: 15000, maxRetries: 0 });
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 400,
-      temperature: 0.2
-    });
-    debugStats.openAiSynthesisUsed = true;
-    const text = response.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as { fitReason?: string; ciscoFitSummary?: string; nextStep?: string };
-    if (parsed.fitReason && parsed.ciscoFitSummary && parsed.nextStep) {
-      return {
-        fitReason: parsed.fitReason,
-        ciscoFitSummary: parsed.ciscoFitSummary,
-        nextStep: parsed.nextStep
-      };
-    }
-    return deterministicOrgFit(orgName, signals, capabilityMap, input);
-  } catch (error) {
-    console.warn("OpenAI synthesis failed (non-fatal):", sanitizeProviderError(error));
-    return deterministicOrgFit(orgName, signals, capabilityMap, input);
+  const parsed = await aiGenerateJson<{ fitReason?: string; ciscoFitSummary?: string; nextStep?: string }>(prompt, {
+    maxOutputTokens: 400,
+    temperature: 0.2
+  });
+  if (parsed?.fitReason && parsed.ciscoFitSummary && parsed.nextStep) {
+    debugStats.aiSynthesisUsed = true;
+    return {
+      fitReason: parsed.fitReason,
+      ciscoFitSummary: parsed.ciscoFitSummary,
+      nextStep: parsed.nextStep
+    };
   }
+  return deterministicOrgFit(orgName, signals, capabilityMap, input);
 }
 
-/** Deterministic fallback reranking — used when OpenAI reranking fails. */
+/** Deterministic fallback reranking — used when AI reranking is unavailable. */
 function deterministicRerank(accounts: AccountRecommendation[]): AccountRecommendation[] {
   return accounts
     .map((account) => {
@@ -1661,8 +1705,10 @@ function deterministicRerank(accounts: AccountRecommendation[]): AccountRecommen
 }
 
 /**
- * Use OpenAI to assign A/B/C priority and re-order accounts by opportunity strength.
- * Hard validation (org name validity) cannot be overridden.
+ * Use the AI provider (Circuit) to assign A/B/C priority and re-order accounts
+ * by opportunity strength. Hard validation (org name validity) cannot be
+ * overridden. When Circuit is not configured, the deterministic ranking is used
+ * silently; a warning is surfaced only when a configured provider actually fails.
  */
 export async function reRankAccounts(
   accounts: AccountRecommendation[],
@@ -1670,8 +1716,15 @@ export async function reRankAccounts(
   input: ResearchInput,
   debugStats: RunDebugStats
 ): Promise<{ accounts: AccountRecommendation[]; rerankWarning?: string }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey || accounts.length === 0) {
+  if (accounts.length === 0) {
+    return { accounts: deterministicRerank(accounts) };
+  }
+
+  const provider = getActiveAiProvider();
+  const status = await provider.getStatus();
+  if (!status.configured) {
+    // No generative provider configured — deterministic ranking is the standard
+    // path here, not a failure, so no warning is surfaced.
     return { accounts: deterministicRerank(accounts) };
   }
 
@@ -1703,50 +1756,42 @@ Return JSON array with one entry per account:
 
 scoreAdjustment: -10 to +10 modification. Be org-specific in rankReason.`;
 
-  try {
-    const client = new OpenAI({ apiKey, timeout: 20000, maxRetries: 0 });
-    const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 800,
-      temperature: 0.2
-    });
-    debugStats.openAiRerankingRan = true;
-    const text = response.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as {
-      rankings?: Array<{ name: string; priority: string; rankReason: string; scoreAdjustment: number }>;
-    };
-    const rankings = parsed.rankings ?? [];
+  const parsed = await aiGenerateJson<{
+    rankings?: Array<{ name: string; priority: string; rankReason: string; scoreAdjustment: number }>;
+  }>(prompt, { maxOutputTokens: 800, temperature: 0.2 });
 
-    const ranked = accounts.map((account) => {
-      const r = rankings.find((x) => x.name?.toLowerCase() === account.companyName.toLowerCase());
-      const priority = (["A", "B", "C"].includes(r?.priority ?? "") ? r!.priority : "C") as PriorityLevel;
-      const priorityReason = r?.rankReason ?? "Priority not assigned for this account.";
-      const adjustment = Math.max(-10, Math.min(10, r?.scoreAdjustment ?? 0));
-      return {
-        ...account,
-        priority,
-        priorityReason,
-        confidenceScore: Math.max(0, Math.min(95, account.confidenceScore + adjustment))
-      };
-    });
-
-    // Sort: A > B > C, then by confidenceScore
-    const order: Record<string, number> = { A: 0, B: 1, C: 2 };
-    return {
-      accounts: ranked.sort((a, b) => {
-        const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
-        return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
-      })
-    };
-  } catch (error) {
-    console.warn("OpenAI reranking failed (non-fatal):", sanitizeProviderError(error));
+  if (!parsed) {
+    // Provider is configured but produced no usable output — surface a warning.
     return {
       accounts: deterministicRerank(accounts),
-      rerankWarning: "OpenAI reranking unavailable; deterministic priority used."
+      rerankWarning: "AI reranking unavailable; deterministic priority used."
     };
   }
+
+  debugStats.aiRerankingRan = true;
+  const rankings = parsed.rankings ?? [];
+
+  const ranked = accounts.map((account) => {
+    const r = rankings.find((x) => x.name?.toLowerCase() === account.companyName.toLowerCase());
+    const priority = (["A", "B", "C"].includes(r?.priority ?? "") ? r!.priority : "C") as PriorityLevel;
+    const priorityReason = r?.rankReason ?? "Priority not assigned for this account.";
+    const adjustment = Math.max(-10, Math.min(10, r?.scoreAdjustment ?? 0));
+    return {
+      ...account,
+      priority,
+      priorityReason,
+      confidenceScore: Math.max(0, Math.min(95, account.confidenceScore + adjustment))
+    };
+  });
+
+  // Sort: A > B > C, then by confidenceScore
+  const order: Record<string, number> = { A: 0, B: 1, C: 2 };
+  return {
+    accounts: ranked.sort((a, b) => {
+      const diff = (order[a.priority] ?? 2) - (order[b.priority] ?? 2);
+      return diff !== 0 ? diff : b.confidenceScore - a.confidenceScore;
+    })
+  };
 }
 
 // ─── Per-org enrichment ───────────────────────────────────────────────────────
@@ -1840,7 +1885,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   const createdAt = now();
   const warnings: string[] = [];
   const providerStatus = getProviderDiagnostics();
-  const embeddingRuntime: EmbeddingRuntime = { attemptedOpenAi: false, usedFallback: false, errors: [] };
+  const embeddingRuntime: EmbeddingRuntime = { localOnly: true, errors: [] };
   const debugStats: RunDebugStats = {
     selectedAccountBase: "market_default",
     selectedOrganizationNames: [],
@@ -1863,9 +1908,9 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     accountSignalsAttached: 0,
     marketSignalsOnly: 0,
     finalGuardReplacements: 0,
-    openAiSynthesisUsed: false,
-    openAiEntityExtractionRan: false,
-    openAiRerankingRan: false,
+    aiSynthesisUsed: false,
+    aiEntityExtractionRan: false,
+    aiRerankingRan: false,
     linkedInQueriesRun: 0,
     contactCandidatesFound: 0,
     dynamicOrgsDiscovered: 0
@@ -2013,7 +2058,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
       technicalInfluencers[0].contactStatus = "named_public_profile";
     }
 
-    // ─ Stage 4a: OpenAI synthesis per org ──────────────────────────────────
+    // ─ Stage 4a: AI provider (Circuit) synthesis per org ───────────────────
     const synthesis = await synthesizeOrgFit(orgName, signals, capabilityMap, input, debugStats, org.contactCandidates);
 
     const website = enrichmentResults.find((r) => r.url.startsWith("http") && extractDomain(r.url).includes(orgName.split(" ")[0].toLowerCase()))
@@ -2079,7 +2124,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   // Sort by confidence before reranking
   accounts.sort((a, b) => b.confidenceScore - a.confidenceScore);
 
-  // ─ Stage 4b: OpenAI reranking ─────────────────────────────────────────────
+  // ─ Stage 4b: AI provider (Circuit) reranking ──────────────────────────────
   const { accounts: rerankedAccounts, rerankWarning } = await reRankAccounts(accounts, capabilityMap, input, debugStats);
   if (rerankWarning) warnings.push(rerankWarning);
   accounts.length = 0;
@@ -2105,14 +2150,14 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
   if (accounts.length === 0) {
     warnings.push("No target accounts produced. Add seed accounts or configure a valid search provider.");
   }
-  if (embeddingRuntime.attemptedOpenAi && embeddingRuntime.usedFallback) {
-    warnings.push("OpenAI embeddings failed. Check network access and key validity.");
-  }
-  if (embeddingRuntime.usedFallback && !embeddingRuntime.attemptedOpenAi) {
-    warnings.push("Development fallback embeddings used — OPENAI_API_KEY not configured.");
+  // KB semantic retrieval uses deterministic local embeddings by design (Circuit
+  // has no embedding endpoint). This is the standard mode — not a degradation —
+  // so it does NOT emit a warning and does NOT mark the run as fallback/unverified.
+  if (embeddingRuntime.errors.length > 0) {
+    warnings.push("Local embedding computation reported a non-fatal error; KB ranking may be degraded.");
   }
 
-  const usedFallbackRun = providerStatus.fallbackModeActive || embeddingRuntime.usedFallback || searchFellBack;
+  const usedFallbackRun = providerStatus.fallbackModeActive || searchFellBack;
 
   return {
     id: runId,
@@ -2120,7 +2165,7 @@ export async function runResearch(input: ResearchInput, files: File[] = []): Pro
     status: "completed",
     providerStatus,
     liveSearchUsed: providerStatus.liveSearchAvailable && !searchFellBack,
-    openAiEmbeddingsUsed: providerStatus.openAiEmbeddingsAvailable && !embeddingRuntime.usedFallback,
+    remoteEmbeddingsUsed: false,
     firecrawlExtractionUsed: accounts.some((a) => a.evidence.some((e) => e.verificationLevel === "full_page")),
     contactEnrichmentUsed: providerStatus.contactEnrichmentAvailable,
     isVerified: !usedFallbackRun && accounts.every((a) => a.evidence.some((e) => e.url.startsWith("http"))),

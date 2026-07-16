@@ -61,7 +61,7 @@ describe("Speaker-side inference (Section 9) — generic, behavior-based", () =>
 describe("Untagged vendor/customer discovery fixture — end-to-end (Sections 9-12)", () => {
   it("Test 14/15/16/24: vendors excluded, seller question is not renewal, working session drives SOLUTION_DISCOVERY + PURSUE_WITH_DISCOVERY", async () => {
     const text = readFileSync(FIXTURE, "utf8");
-    const result = await runSignalAgent({ customTranscript: text, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: text, options: {} });
 
     // Vendor-side speakers never enter the customer stakeholder set.
     const stakeholderNames = result.stakeholders.map((s) => (s.name ?? "").toLowerCase());

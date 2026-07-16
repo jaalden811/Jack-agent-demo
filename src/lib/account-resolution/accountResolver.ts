@@ -96,8 +96,8 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
     pushIfValid(guessed, mention.domain, 0.55, "transcript", ["domain_mention"]);
   }
 
-  for (const openAiCandidate of inputs.openAiAccountCandidates) {
-    pushIfValid(openAiCandidate.name, openAiCandidate.domain, Math.min(0.65, openAiCandidate.confidence), "combined", openAiCandidate.evidence_ids);
+  for (const aiCandidate of inputs.aiAccountCandidates) {
+    pushIfValid(aiCandidate.name, aiCandidate.domain, Math.min(0.65, aiCandidate.confidence), "combined", aiCandidate.evidence_ids);
   }
 
   if (candidates.length === 0) {

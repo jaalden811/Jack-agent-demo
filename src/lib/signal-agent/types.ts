@@ -4,6 +4,42 @@ import type { OpportunityScoringResult, SerpApiSignalsResult } from "@/lib/oppor
 import type { AuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import type { NextBestAction } from "@/lib/action-intelligence/types";
 import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types";
+import type { StageAOutput } from "@/lib/circuit/stages/stageA";
+import type { StageBOutput } from "@/lib/circuit/stages/stageB";
+import type { StageCOutput } from "@/lib/circuit/stages/stageC";
+import type { StageDOutput } from "@/lib/circuit/stages/stageD";
+import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
+
+/** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
+export type CircuitStageTraceSummary = {
+  stage: string;
+  attempted: boolean;
+  succeeded: boolean;
+  model_returned: string | null;
+  duration_ms: number;
+  repair_attempted: boolean;
+  fallback_used: boolean;
+  safe_error_code: string | null;
+};
+
+/** The AI-enhancement trace attached to every run. When Circuit is
+ * unconfigured/unavailable this is { provider: "circuit", enhanced: false
+ * } and the deterministic result stands unchanged. */
+export type AiTrace = {
+  provider: "circuit";
+  enhanced: boolean;
+  stages: CircuitStageTraceSummary[];
+  /** Circuit's evidence-backed interpretation (additive — deterministic
+   * fields remain authoritative; scores are never changed). */
+  stage_a: StageAOutput | null;
+  stage_b: StageBOutput | null;
+  stage_c: StageCOutput | null;
+  /** Circuit's recipient-specific message drafts (commercial + technical
+   * Webex/email). Preferred by the delivery layer over the deterministic
+   * message builder when present and quality-valid; null when Circuit is
+   * unconfigured/unavailable or Stage D fell back. */
+  stage_d: StageDOutput | null;
+};
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";
 
@@ -228,7 +264,10 @@ export type CorroborationSignal = {
   source: "account_csv" | "transcript" | "mapping";
 };
 
-export type SemanticMode = "openai_embeddings" | "fallback";
+/** Semantic taxonomy-matching engine. Only the deterministic local engine
+ * exists (Circuit has no embedding endpoint); retained as a single-value type
+ * for the status/audit wire shape. */
+export type SemanticMode = "deterministic";
 
 export type NegativeCuePolarity = "negative" | "negated_negative" | "hypothetical" | "resolved";
 
@@ -376,14 +415,10 @@ export const runRequestSchema = z.object({
   webexSource: webexSourceSchema.optional(),
   options: z
     .object({
-      useOpenAIEmbeddings: z.boolean().optional(),
-      useOpenAISynthesis: z.boolean().optional(),
       enrichPublicSignals: z.boolean().optional(),
       /** "Enrich with public account and stakeholder signals" toggle
-       * (Section 13) — gates both the new SerpAPI qualification pass
-       * and, unless explicitly overridden, the legacy `public_signals`
-       * search below. Distinct from useOpenAI* — this also controls
-       * whether OpenAI Stage A/B run at all for this run. */
+       * (Section 13) — gates the SerpAPI qualification pass and, unless
+       * explicitly overridden, the legacy `public_signals` search. */
       useQualification: z.boolean().optional(),
       maxLabels: z.number().int().min(1).max(5).optional(),
       deliverToWebex: z.boolean().optional()
@@ -403,75 +438,27 @@ export type ProviderStatusEntry = {
   message: string;
 };
 
-export type SanitizedProviderError = {
-  http_status: number | null;
-  error_type: string | null;
-  error_code: string | null;
-  message: string;
-};
-
-/** Exact safe diagnostic shape for one tested OpenAI operation (Section
- * 8) — never the raw SDK error, but always the safe HTTP status,
- * provider error type/code, request ID, and a specific classification
- * (never a generic "request rejected"). See @/lib/signal-agent/openaiStatus. */
-export type OpenAiOperationDiagnostic = {
-  operation: "authentication" | "embeddings" | "synthesis" | "extraction" | "qualification" | "message_synthesis" | "public_evidence";
+/** AI provider (Circuit) status for the Setup/status UI. Built from the safe
+ * Circuit diagnostics (@/lib/circuit/diagnostics) — never a secret, never a
+ * network probe. Circuit is an OPTIONAL enhancement layer, so "not configured"
+ * is a normal, non-fatal state (the deterministic engine stays authoritative). */
+export type AiProviderStatus = {
+  provider: "circuit";
   configured: boolean;
+  contract_confirmed: boolean;
   operational: boolean;
+  /** Five-state Circuit provider summary (see @/lib/circuit/types). */
+  state: string;
   model: string | null;
-  http_status: number | null;
-  error_type: string | null;
-  error_code: string | null;
-  /** The stable safe classification (e.g. OPENAI_QUOTA_EXCEEDED) — the UI
-   * should surface this, never "unclassified", whenever the error
-   * carried any usable field. */
-  safe_classification: string | null;
-  safe_message: string;
-  request_id: string | null;
-  retryable: boolean;
-  checked_at: string;
-};
-
-export type OpenAiCapabilityStatus = {
-  usable: boolean;
+  /** Safe, human-readable status/next-action message (never a secret). */
   message: string;
-  error: SanitizedProviderError | null;
-  last_check: string | null;
-  /** Present once the capability has actually been checked — the full
-   * structured diagnostic per Section 8. */
-  diagnostic?: OpenAiOperationDiagnostic;
-};
-
-/** OpenAI has two independent capabilities, each with its own model and
- * its own API call — an embedding-only model can never serve synthesis,
- * so each is tested (and can fail) independently. */
-export type OpenAiStatus = {
-  configured: boolean;
-  embedding_model: string;
-  synthesis_model: string;
-  authentication: OpenAiCapabilityStatus;
-  embeddings: OpenAiCapabilityStatus;
-  synthesis: OpenAiCapabilityStatus;
-  /** Single overall provider state (Section 3): missing / configured /
-   * authenticated / operational / quota_exhausted / permission_rejected
-   * / model_unavailable / temporarily_unavailable, plus whether the key
-   * itself must be replaced and the concrete required action. Quota
-   * exhaustion is never a key-replacement condition. */
-  provider_state: {
-    state: string;
-    configured: boolean;
-    authenticated: boolean;
-    operational: boolean;
-    requires_key_replacement: boolean;
-    required_action: string;
-  };
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of
  * ProviderStatusSnapshot in @/lib/types, reusing @/lib/config's
  * getConfig() as the single source of truth for what is configured. */
 export type SignalAgentStatus = {
-  openai: OpenAiStatus;
+  ai_provider: AiProviderStatus;
   search: ProviderStatusEntry;
   firecrawl: ProviderStatusEntry;
   contact_enrichment: ProviderStatusEntry;
@@ -618,8 +605,8 @@ export type SecureNetworkingTriageResult = {
    * present; `enabled: false` when disabled, not configured, or gated
    * off by the search-enrichment decision logic. */
   public_enrichment: PublicEnrichmentStatus;
-  /** Which OpenAI qualification/synthesis stages actually ran for this
-   * result (Section 13/14) — independent of the existing
+  /** Which AI-provider (Circuit) qualification/synthesis stages actually ran
+   * for this result (Section 13/14) — independent of the existing
    * `providers` block, which covers only embeddings/legacy synthesis. */
   ai_processing: AiProcessingStatus;
   /** Signed, expiring public link to this run's read-only result page
@@ -661,6 +648,14 @@ export type SecureNetworkingTriageResult = {
   specialist_handoffs: { sales: SpecialistHandoffPacket; technical: SpecialistHandoffPacket };
   /** The do-not-re-ask index: answered / open / declined / contradictory. */
   question_index: QuestionIndex;
+  /** Circuit AI-enhancement trace (additive; deterministic path is
+   * authoritative and complete without it). */
+  ai_trace: AiTrace;
+  /** Meeting participation matrix (who spoke / attended, matched to the
+   * team roster) used for attendance-aware message routing. Optional and
+   * additive — computed in the delivery path; null when not yet computed.
+   * A transcript proves speakers only; absence is never inferred. */
+  meeting_participation?: ParticipationMatrix | null;
 };
 
 export type GenericDiagnostics = {

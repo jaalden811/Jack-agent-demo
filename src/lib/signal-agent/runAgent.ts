@@ -3,7 +3,7 @@ import path from "node:path";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { ingestTranscript, selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { findAccount, applyAccountOverride } from "@/lib/signal-agent/accountContext";
-import { embedTranscript, prefetchCueEmbeddings } from "@/lib/signal-agent/semanticMatch";
+import { embedTranscript } from "@/lib/signal-agent/semanticMatch";
 import { evaluateEntry, selectMultiLabelEvaluations } from "@/lib/signal-agent/scoring";
 import { buildRouting } from "@/lib/signal-agent/routing";
 import { draftNotification } from "@/lib/signal-agent/notification";
@@ -11,7 +11,6 @@ import { appendAuditRecord, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/a
 import { extractBuyingIntentEvidence, extractStakeholders } from "@/lib/signal-agent/intentExtraction";
 import { extractNamedStakeholders, inferFunctionalOwners } from "@/lib/signal-agent/stakeholderExtraction";
 import { buildCommercialSignals } from "@/lib/signal-agent/commercialSignals";
-import { synthesizeExecutiveBrief } from "@/lib/signal-agent/openaiSynthesis";
 import { fetchPublicSignals } from "@/lib/signal-agent/publicSignals";
 import { randomUUID } from "node:crypto";
 import { runQualificationPipeline } from "@/lib/qualification/runQualification";
@@ -20,6 +19,7 @@ import { buildCategoryScores } from "@/lib/signal-agent/dominance";
 import { buildNextBestAction, type ActionOwners } from "@/lib/action-intelligence/nextBestAction";
 import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
 import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
+import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -158,13 +158,9 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   const namedStakeholders = extractNamedStakeholders(transcript);
   const functionalOwners = inferFunctionalOwners(transcript, namedStakeholders);
 
-  const useOpenAI = request.options?.useOpenAIEmbeddings ?? true;
-  const embeddingBundle = await embedTranscript(transcript, useOpenAI);
-
-  const prefetchSucceeded = await prefetchCueEmbeddings(catalog.entries, embeddingBundle);
-  const effectiveBundle = prefetchSucceeded
-    ? embeddingBundle
-    : { ...embeddingBundle, mode: "fallback" as const, warning: "Semantic matching unavailable; using deterministic fallback." };
+  // Semantic taxonomy matching is deterministic (Circuit has no embedding
+  // endpoint); the bundle is always in "fallback" (local) mode.
+  const effectiveBundle = await embedTranscript(transcript);
 
   const genericSignals = extractGenericSignals(transcript);
 
@@ -280,23 +276,17 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
 
   const deterministicDiscoveryQuestions = buildDiscoveryQuestions(matches);
 
-  const useSynthesis = request.options?.useOpenAISynthesis ?? true;
-  const synthesis = await synthesizeExecutiveBrief({
-    transcriptExcerpt: transcript.rawText,
-    matches,
-    useSynthesis
-  });
-
-  const finalExecutiveSummary = synthesis.used && synthesis.output
-    ? synthesis.output
-    : {
-        business_problem: businessProblem,
-        business_impact: businessImpact,
-        urgency,
-        recommended_next_action: deterministicNextAction,
-        internal_brief: buildDeterministicBrief(matches, commercialSignals, recommendedSpecialists, deterministicNextAction),
-        discovery_questions: deterministicDiscoveryQuestions
-      };
+  // The executive summary is produced deterministically. Generative narrative
+  // enhancement is provided by Circuit (attached additively to ai_trace); it
+  // never replaces this authoritative deterministic summary.
+  const finalExecutiveSummary = {
+    business_problem: businessProblem,
+    business_impact: businessImpact,
+    urgency,
+    recommended_next_action: deterministicNextAction,
+    internal_brief: buildDeterministicBrief(matches, commercialSignals, recommendedSpecialists, deterministicNextAction),
+    discovery_questions: deterministicDiscoveryQuestions
+  };
 
   const enrichPublicSignals = request.options?.enrichPublicSignals ?? false;
   const publicSignals = await fetchPublicSignals(account.matched ? account.account : transcript.account, enrichPublicSignals);
@@ -362,11 +352,13 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     internal_brief: finalExecutiveSummary.internal_brief,
     notification_text: notificationText,
     providers: {
-      embeddings_used: effectiveBundle.mode === "openai_embeddings",
-      synthesis_used: synthesis.used,
-      fallback_reason: !synthesis.used ? synthesis.fallback_reason : effectiveBundle.mode === "fallback" ? (effectiveBundle.warning ?? "deterministic fallback") : null,
+      // Embeddings + synthesis are deterministic/Circuit now; no external LLM
+      // is called in this pipeline (Circuit enhancement is additive on ai_trace).
+      embeddings_used: false,
+      synthesis_used: false,
+      fallback_reason: effectiveBundle.warning ?? "deterministic engine (Circuit enhancement is additive on ai_trace)",
       semantic_mode: effectiveBundle.mode,
-      analysis_mode: computeAnalysisMode(effectiveBundle.mode === "openai_embeddings", synthesis.used)
+      analysis_mode: computeAnalysisMode(false, false)
     },
     reference_pack: buildReferencePack(catalog),
     corroboration_summary: corroborationSummary,
@@ -410,7 +402,8 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     // assembled result rather than re-deriving evidence.
     next_best_action: {} as SecureNetworkingTriageResult["next_best_action"],
     specialist_handoffs: {} as SecureNetworkingTriageResult["specialist_handoffs"],
-    question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] }
+    question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] },
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null }
   };
 
   // Action-intelligence + specialist-handoff layer (the defining output):
@@ -424,6 +417,11 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
+
+  // Circuit AI-enhancement (additive; deterministic result is
+  // authoritative and complete without it). No-op when Circuit is
+  // unconfigured/unavailable — never throws, never changes scores.
+  result.ai_trace = await enhanceWithCircuit(result);
 
   const auditOutcome = await appendAuditRecord(result);
   result.audit = { logged: auditOutcome.logged, path: AUDIT_LOG_RELATIVE_PATH, warning: auditOutcome.warning ?? effectiveBundle.warning };

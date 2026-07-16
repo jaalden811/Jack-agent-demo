@@ -25,21 +25,38 @@ Open http://localhost:3000.
 Required for verified live provider-backed runs:
 
 ```bash
-OPENAI_API_KEY=
 SEARCH_API_KEY=
 SEARCH_PROVIDER=tavily # tavily, brave, exa, or serpapi
+```
+
+Generative AI is provided by **Circuit** (the only active AI provider) and is an
+**optional enhancement layer** — entity extraction, org-fit synthesis, and
+account reranking use Circuit when configured and fall back to the deterministic
+engine when it is not. KB semantic retrieval always uses deterministic local
+embeddings (Circuit exposes no embedding endpoint). See `.env.example` for the
+full `CIRCUIT_*` block:
+
+```bash
+AI_PROVIDER=circuit
+CIRCUIT_CLIENT_ID=...
+CIRCUIT_CLIENT_SECRET=...
+CIRCUIT_APP_KEY=...
+CIRCUIT_TOKEN_URL=...
+CIRCUIT_INFERENCE_URL=...        # {model} placeholder substituted with CIRCUIT_MODEL
+CIRCUIT_MODEL=...
+CIRCUIT_CONTRACT_CONFIRMED=true  # gate: no live token/inference call until confirmed
 ```
 
 Expected `.env.local` shape:
 
 ```bash
-OPENAI_API_KEY=...
 SEARCH_API_KEY=...
 SEARCH_PROVIDER=tavily
 FIRECRAWL_API_KEY=...
 HUNTER_API_KEY=
 PEOPLE_DATA_LABS_API_KEY=
 CLEARBIT_API_KEY=
+# plus the CIRCUIT_* block above for generative AI
 ```
 
 Recommended:
@@ -77,13 +94,13 @@ The app shows provider diagnostics before research starts:
 - **Missing optional provider**: the app can run, but some evidence/contact fields will be lower confidence.
 - **Fallback mode active**: one or more required providers are missing; results are explicitly unverified.
 
-If `SEARCH_API_KEY` is missing, only seed/demo accounts can be returned and the run is labeled **Unverified fallback run**. If `OPENAI_API_KEY` is missing, deterministic local development embeddings are used and the run is not production-quality. If `FIRECRAWL_API_KEY` is missing, evidence remains snippet-only and the app does not claim full-page verification.
+If `SEARCH_API_KEY` is missing, only seed/demo accounts can be returned and the run is labeled **Unverified fallback run**. If **Circuit** is not configured, the deterministic engine handles entity extraction, synthesis, and reranking — the run is still valid (Circuit is an optional enhancement, not a required provider) and does not force fallback mode. KB semantic retrieval always uses deterministic local embeddings. If `FIRECRAWL_API_KEY` is missing, evidence remains snippet-only and the app does not claim full-page verification.
 
 After adding real API keys to `.env.local`, rerun old fallback results with the **Rerun with configured APIs** button. Reruns create a new research run using the current providers; old fallback evidence remains visible and is not silently overwritten.
 
 ## Verified vs unverified results
 
-- Verified/live runs require configured search and OpenAI providers.
+- Verified/live runs require a configured search provider. Circuit (generative AI) is an optional enhancement layer, not a requirement for a verified run.
 - Full-page evidence requires Firecrawl extraction.
 - Snippet-only evidence is labeled and receives lower confidence.
 - Every account recommendation includes evidence URLs or clear low-confidence/fallback warnings.

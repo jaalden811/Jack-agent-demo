@@ -1,4 +1,4 @@
-import { getCircuitConfig, isCircuitConfigured, type CircuitConfig } from "@/lib/circuit/config";
+import { getCircuitConfig, isCircuitConfigured, isCircuitContractConfirmed, type CircuitConfig } from "@/lib/circuit/config";
 import { buildInferenceRequest, parseInferenceResponse, extractRequestId } from "@/lib/circuit/contract";
 import { classifyCircuitHttpStatus, classifyCircuitThrown, makeCircuitError, isRetryable } from "@/lib/circuit/errorNormalizer";
 import { getCircuitAccessToken, invalidateCircuitToken } from "@/lib/circuit/tokenManager";
@@ -33,6 +33,11 @@ export async function circuitGenerate(request: CircuitGenerateRequest, config: C
 
   if (!isCircuitConfigured(config)) {
     return { ...base, ok: false, duration_ms: Date.now() - startedAt, error: makeCircuitError("CIRCUIT_NOT_CONFIGURED") };
+  }
+  // Fail explicitly (no network) until the wire contract is confirmed —
+  // never silently send the provisional/assumed inference payload.
+  if (!isCircuitContractConfirmed(config)) {
+    return { ...base, ok: false, duration_ms: Date.now() - startedAt, error: makeCircuitError("CIRCUIT_CONTRACT_UNCONFIRMED") };
   }
   if (!config.model) {
     return { ...base, ok: false, duration_ms: Date.now() - startedAt, error: makeCircuitError("CIRCUIT_MODEL_REQUIRED") };

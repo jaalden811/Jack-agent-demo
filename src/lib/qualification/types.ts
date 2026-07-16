@@ -178,12 +178,15 @@ export type AccountResolution = {
 // ─── AI processing / public enrichment status (API contract) ──────────────
 
 export type AiProcessingStatus = {
-  openai_configured: boolean;
+  /** Whether the generative AI provider (Circuit) is configured. */
+  ai_provider_configured: boolean;
   transcript_extraction_used: boolean;
   public_evidence_classification_used: boolean;
   qualification_synthesis_used: boolean;
   message_synthesis_used: boolean;
+  /** Semantic-retrieval mode label (always deterministic-local). */
   embedding_model: string;
+  /** Generative synthesis provider label (Circuit). */
   synthesis_model: string;
   fallback_reason: string | null;
 };

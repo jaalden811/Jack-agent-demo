@@ -1,12 +1,12 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
 /**
- * "Sources & enrichment" tab (Section 13): shows exactly which OpenAI
- * qualification stages ran, the full SerpAPI query trace (purpose,
- * query, result/accept/reject counts, cache status, errors), and every
- * accepted public source with its evidence score and inclusion
- * rationale — so a reviewer can see precisely what evidence contributed
- * to the result, and what did not.
+ * "Sources & enrichment" tab (Section 13): shows whether the Circuit AI
+ * provider is configured for the qualification pipeline, the full SerpAPI
+ * query trace (purpose, query, result/accept/reject counts, cache status,
+ * errors), and every accepted public source with its evidence score and
+ * inclusion rationale — so a reviewer can see precisely what evidence
+ * contributed to the result, and what did not.
  */
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
@@ -18,12 +18,12 @@ export function SourcesEnrichmentTab({ result }: { result: SecureNetworkingTriag
 
   return (
     <div className="tab-content">
-      <h3>OpenAI qualification pipeline</h3>
+      <h3>AI provider (Circuit) qualification pipeline</h3>
       <div className="detail-grid">
         <div>
-          <span className="muted">Configured</span>
+          <span className="muted">Circuit configured</span>
           <p>
-            <StatusPill ok={ai.openai_configured} label={ai.openai_configured ? "Yes" : "No"} />
+            <StatusPill ok={ai.ai_provider_configured} label={ai.ai_provider_configured ? "Yes" : "No"} />
           </p>
         </div>
         <div>

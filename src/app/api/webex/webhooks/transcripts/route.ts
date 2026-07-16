@@ -87,7 +87,7 @@ async function processTranscriptCreatedEvent(transcriptId: string, meetingId: st
       meetingDate: metadata?.startTime ?? null
     });
 
-    const result = await runSignalAgent({ customTranscript: transcriptText, options: { useOpenAIEmbeddings: true, useOpenAISynthesis: true } });
+    const result = await runSignalAgent({ customTranscript: transcriptText });
     await deliverPeachtreePipeline(result, transcriptText, webexSource);
   } catch (error) {
     await appendWebexAudit({

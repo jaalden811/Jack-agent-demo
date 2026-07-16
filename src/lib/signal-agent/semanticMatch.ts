@@ -3,19 +3,14 @@ import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 
 /**
  * Semantic similarity between transcript chunks and each entry's
- * `semanticCues`.
+ * `semanticCues`, computed deterministically (local token/phrase overlap).
  *
- * Mode A (OpenAI embeddings): server-side only, uses
- * process.env.OPENAI_API_KEY / process.env.OPENAI_EMBEDDING_MODEL. Never
- * hard-codes the key, never returns embeddings or raw key material to the
- * browser.
- *
- * Mode B (deterministic fallback): local token/phrase overlap. Used
- * automatically whenever OpenAI is not configured or a call fails for any
- * reason — this module never throws out to its caller.
+ * There is no external embedding provider: Circuit exposes no embedding
+ * endpoint, so the Signal-to-Action taxonomy match uses this deterministic
+ * engine exclusively. It requires no network, never throws, and is the sole
+ * scoring path (the previous OpenAI-embeddings mode has been removed).
  */
 
-const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const STOPWORDS = new Set([
   "the", "a", "an", "and", "or", "but", "of", "to", "in", "on", "for", "with", "is", "are", "was", "were",
   "we", "our", "us", "you", "your", "it", "this", "that", "these", "those", "at", "as", "be", "have", "has",
@@ -46,17 +41,16 @@ function tokenize(text: string): string[] {
     .map(stem);
 }
 
-/** Deterministic text-similarity fallback: token coverage, phrase overlap
- * (shared bigrams), and normalized keyword density — combined into a
- * single 0..1 similarity score. No network, no external dependency, never
- * fails.
+/** Deterministic text-similarity: token coverage, phrase overlap (shared
+ * bigrams), and normalized keyword density — combined into a single 0..1
+ * similarity score. No network, no external dependency, never fails.
  *
  * Coverage uses the overlap coefficient (intersection / smaller-set-size)
- * rather than Jaccard (intersection / union): transcript chunks are
- * naturally longer, more verbose utterances than the short, dense
- * semantic_cues phrases they are compared against, and Jaccard's
- * union-sized denominator structurally under-scores a short reference
- * phrase that is nonetheless fully covered by a longer sentence. */
+ * rather than Jaccard (intersection / union): transcript chunks are naturally
+ * longer, more verbose utterances than the short, dense semantic_cues phrases
+ * they are compared against, and Jaccard's union-sized denominator structurally
+ * under-scores a short reference phrase that is nonetheless fully covered by a
+ * longer sentence. */
 function deterministicSimilarity(a: string, b: string): number {
   const tokensA = tokenize(a);
   const tokensB = tokenize(b);
@@ -86,42 +80,6 @@ function deterministicSimilarity(a: string, b: string): number {
   return Math.min(1, coverage * 0.5 + phraseOverlap * 0.35 + density * 0.15);
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i += 1) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/** Cache of cue-text -> embedding for the lifetime of the Node process.
- * Entry semantic_cues are static within a catalog load, so this avoids
- * re-embedding the same ~100 cue strings on every run. */
-const cueEmbeddingCache = new Map<string, number[]>();
-
-async function embedTexts(texts: string[], apiKey: string, model: string): Promise<number[][] | null> {
-  const { default: OpenAI } = await import("openai");
-  const client = new OpenAI({ apiKey, timeout: 8000, maxRetries: 0 });
-  const response = await client.embeddings.create({ model, input: texts });
-  return response.data.map((item) => item.embedding as number[]);
-}
-
-async function getCueEmbeddings(cues: string[], apiKey: string, model: string): Promise<number[][]> {
-  const uncached = cues.filter((cue) => !cueEmbeddingCache.has(`${model}::${cue}`));
-  if (uncached.length > 0) {
-    const embeddings = await embedTexts(uncached, apiKey, model);
-    if (embeddings) {
-      uncached.forEach((cue, index) => cueEmbeddingCache.set(`${model}::${cue}`, embeddings[index]));
-    }
-  }
-  return cues.map((cue) => cueEmbeddingCache.get(`${model}::${cue}`)).filter((value): value is number[] => Boolean(value));
-}
-
 export type EmbeddingBundle = {
   mode: SemanticMode;
   chunkTexts: string[];
@@ -129,62 +87,11 @@ export type EmbeddingBundle = {
   warning: string | null;
 };
 
-/** Computes (or attempts to compute) transcript-chunk embeddings exactly
- * once per run, shared across every catalog entry evaluated. Never
- * throws — any OpenAI failure downgrades to the fallback mode and returns
- * a user-safe warning string. */
-export async function embedTranscript(transcript: IngestedTranscript, useOpenAI: boolean): Promise<EmbeddingBundle> {
+/** Selects the transcript chunks to compare against catalog cues. No external
+ * embedding call is made; the deterministic engine is always used. */
+export async function embedTranscript(transcript: IngestedTranscript): Promise<EmbeddingBundle> {
   const chunkTexts = selectRelevantChunks(transcript).map((chunk) => chunk.text);
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  const model = process.env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
-
-  if (!useOpenAI || !apiKey || chunkTexts.length === 0) {
-    return {
-      mode: "fallback",
-      chunkTexts,
-      chunkEmbeddings: null,
-      warning: !apiKey ? "Semantic matching unavailable; using deterministic fallback." : null
-    };
-  }
-
-  try {
-    const chunkEmbeddings = await embedTexts(chunkTexts, apiKey, model);
-    if (!chunkEmbeddings) throw new Error("empty embedding response");
-    return { mode: "openai_embeddings", chunkTexts, chunkEmbeddings, warning: null };
-  } catch {
-    // Never surface error internals (could contain request metadata); log
-    // a sanitized, key-free warning only.
-    console.warn("Signal agent: OpenAI embeddings unavailable, using deterministic fallback.");
-    return {
-      mode: "fallback",
-      chunkTexts,
-      chunkEmbeddings: null,
-      warning: "Semantic matching unavailable; using deterministic fallback."
-    };
-  }
-}
-
-/** Batches every catalog entry's semantic_cues into as few OpenAI calls as
- * possible (ideally one) before the per-entry scoring loop runs, instead
- * of issuing one embeddings call per entry. Returns false if the batched
- * fetch fails outright, so the caller can downgrade the whole run to
- * fallback mode rather than silently mixing modes across entries. */
-export async function prefetchCueEmbeddings(entries: CatalogEntry[], bundle: EmbeddingBundle): Promise<boolean> {
-  if (bundle.mode !== "openai_embeddings") return true;
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return true;
-  const model = process.env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
-
-  const allCues = Array.from(new Set(entries.flatMap((entry) => entry.semanticCues))).filter(Boolean);
-  if (allCues.length === 0) return true;
-
-  try {
-    await getCueEmbeddings(allCues, apiKey, model);
-    return true;
-  } catch {
-    console.warn("Signal agent: batched cue embedding prefetch failed, downgrading run to deterministic fallback.");
-    return false;
-  }
+  return { mode: "deterministic", chunkTexts, chunkEmbeddings: null, warning: null };
 }
 
 export type SemanticScoreResult = {
@@ -192,9 +99,9 @@ export type SemanticScoreResult = {
   matchedCues: MatchedSemanticCue[];
 };
 
-/** Scores one entry's semantic_cues against the already-embedded (or
- * fallback) transcript chunks, using the max + mean(top-N) formula parsed
- * from the catalog's own matching_configuration. */
+/** Scores one entry's semantic_cues against the transcript chunks using the
+ * deterministic similarity engine and the max + mean(top-N) formula parsed from
+ * the catalog's own matching_configuration. */
 export async function scoreSemanticMatch(
   entry: CatalogEntry,
   bundle: EmbeddingBundle,
@@ -204,32 +111,7 @@ export async function scoreSemanticMatch(
     return { score: 0, matchedCues: [] };
   }
 
-  let similarities: number[];
-
-  if (bundle.mode === "openai_embeddings" && bundle.chunkEmbeddings) {
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
-    const model = process.env.OPENAI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
-    let cueEmbeddings: number[][] = [];
-    try {
-      if (apiKey) cueEmbeddings = await getCueEmbeddings(entry.semanticCues, apiKey, model);
-    } catch {
-      cueEmbeddings = [];
-    }
-
-    if (cueEmbeddings.length === entry.semanticCues.length) {
-      similarities = entry.semanticCues.map((_, cueIndex) => {
-        let best = 0;
-        for (const chunkEmbedding of bundle.chunkEmbeddings!) {
-          best = Math.max(best, cosineSimilarity(chunkEmbedding, cueEmbeddings[cueIndex]));
-        }
-        return best;
-      });
-    } else {
-      similarities = entry.semanticCues.map((cue) => Math.max(...bundle.chunkTexts.map((chunk) => deterministicSimilarity(chunk, cue))));
-    }
-  } else {
-    similarities = entry.semanticCues.map((cue) => Math.max(...bundle.chunkTexts.map((chunk) => deterministicSimilarity(chunk, cue))));
-  }
+  const similarities = entry.semanticCues.map((cue) => Math.max(...bundle.chunkTexts.map((chunk) => deterministicSimilarity(chunk, cue))));
 
   const matchedCues: MatchedSemanticCue[] = entry.semanticCues
     .map((cue, index) => ({ cue, similarity: Math.round(similarities[index] * 1000) / 1000 }))

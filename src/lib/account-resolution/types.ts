@@ -50,7 +50,7 @@ export type AccountResolutionInputs = {
   outlookEventSubject: string | null;
   customerParticipantEmailDomains: string[];
   transcriptDialogueText: string[];
-  openAiAccountCandidates: Array<{ name: string; domain: string | null; confidence: number; evidence_ids: string[] }>;
+  aiAccountCandidates: Array<{ name: string; domain: string | null; confidence: number; evidence_ids: string[] }>;
   /** Product/vendor names (from the loaded taxonomy / source catalog)
    * that must never be treated as an account — passed in so the
    * organization-entity parser stays data-driven, not hard-coded. */

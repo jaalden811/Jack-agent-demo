@@ -15,6 +15,9 @@ export type CircuitConfig = {
   tokenUrl: string | null;
   inferenceUrl: string | null;
   model: string | null;
+  /** App Key required by the inference contract (sent in the body `user`
+   * field). Secret — read from env, never hard-coded/committed. */
+  appKey: string | null;
   scope: string | null;
   audience: string | null;
   timeoutMs: number;
@@ -23,6 +26,15 @@ export type CircuitConfig = {
   tokenRefreshSkewSeconds: number;
   promptVersion: string;
   schemaVersion: string;
+  /** The wire contract in contract.ts is confirmed against the Circuit
+   * notebook. Until this is explicitly true, NO live token or inference
+   * request is sent — the client returns CIRCUIT_CONTRACT_UNCONFIRMED so
+   * the provisional (assumed) request/response shapes can never run
+   * silently in production. */
+  contractConfirmed: boolean;
+  /** Human-set identifier of the confirmed contract, surfaced in safe
+   * diagnostics (never a secret). */
+  contractVersion: string | null;
 };
 
 function str(value: string | undefined): string | null {
@@ -46,6 +58,7 @@ export function getCircuitConfig(): CircuitConfig {
     tokenUrl: str(env.CIRCUIT_TOKEN_URL),
     inferenceUrl: str(env.CIRCUIT_INFERENCE_URL),
     model: str(env.CIRCUIT_MODEL),
+    appKey: str(env.CIRCUIT_APP_KEY),
     scope: str(env.CIRCUIT_SCOPE),
     audience: str(env.CIRCUIT_AUDIENCE),
     timeoutMs: num(env.CIRCUIT_TIMEOUT_MS, 45_000),
@@ -53,21 +66,30 @@ export function getCircuitConfig(): CircuitConfig {
     tokenFallbackTtlSeconds: num(env.CIRCUIT_TOKEN_FALLBACK_TTL_SECONDS, 3_000),
     tokenRefreshSkewSeconds: num(env.CIRCUIT_TOKEN_REFRESH_SKEW_SECONDS, 60),
     promptVersion: str(env.CIRCUIT_PROMPT_VERSION) ?? "signal-to-action-circuit-v1",
-    schemaVersion: str(env.CIRCUIT_SCHEMA_VERSION) ?? "1.0"
+    schemaVersion: str(env.CIRCUIT_SCHEMA_VERSION) ?? "1.0",
+    contractConfirmed: (str(env.CIRCUIT_CONTRACT_CONFIRMED) ?? "false").toLowerCase() === "true",
+    contractVersion: str(env.CIRCUIT_CONTRACT_VERSION)
   };
 }
 
-/** Circuit is "configured" when the credentials + endpoints needed to
- * request a token and run inference are present. The active provider must
- * also be Circuit. Model is validated separately (CIRCUIT_MODEL_REQUIRED)
- * so a missing model surfaces a precise error rather than "not
- * configured". */
+/** True only when a human has confirmed contract.ts matches the Circuit
+ * notebook (CIRCUIT_CONTRACT_CONFIRMED=true). Gates every live call. */
+export function isCircuitContractConfirmed(config: CircuitConfig = getCircuitConfig()): boolean {
+  return config.contractConfirmed;
+}
+
+/** Token minting needs only the client credentials + token URL (the token
+ * contract is confirmed). This lets authentication be tested even before
+ * the inference endpoint is known. */
+export function isCircuitTokenConfigured(config: CircuitConfig = getCircuitConfig()): boolean {
+  return config.provider === "circuit" && Boolean(config.clientId) && Boolean(config.clientSecret) && Boolean(config.tokenUrl);
+}
+
+/** Circuit is fully "configured" for inference when token config, the
+ * inference endpoint, AND the App Key (required by the confirmed inference
+ * contract) are present. The active provider must also be Circuit. Model
+ * is validated separately (CIRCUIT_MODEL_REQUIRED) so a missing model
+ * surfaces a precise error rather than "not configured". */
 export function isCircuitConfigured(config: CircuitConfig = getCircuitConfig()): boolean {
-  return (
-    config.provider === "circuit" &&
-    Boolean(config.clientId) &&
-    Boolean(config.clientSecret) &&
-    Boolean(config.tokenUrl) &&
-    Boolean(config.inferenceUrl)
-  );
+  return isCircuitTokenConfigured(config) && Boolean(config.inferenceUrl) && Boolean(config.appKey);
 }

@@ -239,11 +239,21 @@ export function SetupDrawer({
     setMessage(response.ok ? `Auto-send after analysis ${enabled ? "enabled" : "disabled"}.` : `Could not update auto-send: ${data.error}`);
   }
 
-  function testOpenAi() {
-    setBusy("test-openai");
-    onRefresh();
-    setMessage("OpenAI re-tested — see the result below.");
-    setBusy(null);
+  async function testCircuit() {
+    setBusy("test-circuit");
+    try {
+      const auth = await fetch("/api/circuit/test-auth", { method: "POST" }).then((r) => r.json()).catch(() => null);
+      const inference = await fetch("/api/circuit/test-inference", { method: "POST" }).then((r) => r.json()).catch(() => null);
+      onRefresh();
+      const parts: string[] = [];
+      if (auth) parts.push(`authentication ${auth.ok ? "ok" : auth.error_code ?? "failed"}`);
+      if (inference) parts.push(`inference ${inference.ok ? "ok" : inference.error_code ?? "failed"}`);
+      setMessage(parts.length > 0 ? `Circuit tested — ${parts.join(", ")}.` : "Circuit re-tested — see the result below.");
+    } catch {
+      setMessage("Circuit test could not run.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   function testSearch() {
@@ -626,76 +636,37 @@ export function SetupDrawer({
         <div className="setup-step">
           <div className="provider-grid">
             <div className="provider-check">
-              <strong>OpenAI</strong>
+              <strong>AI provider (Circuit)</strong>
               <div className="provider-line">
-                <span>API key configured:</span>
-                <span className={agentStatus?.openai.configured ? "provider-yes" : "provider-no"}>{agentStatus?.openai.configured ? "Yes" : "No"}</span>
+                <span>Credentials configured:</span>
+                <span className={agentStatus?.ai_provider.configured ? "provider-yes" : "provider-no"}>{agentStatus?.ai_provider.configured ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Embedding model:</span>
-                <span>{agentStatus?.openai.embedding_model ?? "—"}</span>
+                <span>Inference contract confirmed:</span>
+                <span className={agentStatus?.ai_provider.contract_confirmed ? "provider-yes" : "provider-no"}>{agentStatus?.ai_provider.contract_confirmed ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Embeddings operational:</span>
-                <span className={agentStatus?.openai.embeddings.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.embeddings.usable ? "Yes" : "No"}</span>
+                <span>Model:</span>
+                <span>{agentStatus?.ai_provider.model ?? "—"}</span>
               </div>
               <div className="provider-line">
-                <span>Synthesis model:</span>
-                <span>{agentStatus?.openai.synthesis_model ?? "—"}</span>
+                <span>Operational:</span>
+                <span className={agentStatus?.ai_provider.operational ? "provider-yes" : "provider-no"}>{agentStatus?.ai_provider.operational ? "Yes" : "No"}</span>
               </div>
               <div className="provider-line">
-                <span>Synthesis operational:</span>
-                <span className={agentStatus?.openai.synthesis.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.synthesis.usable ? "Yes" : "No"}</span>
+                <span>Provider state:</span>
+                <span className={agentStatus?.ai_provider.operational ? "provider-yes" : "provider-no"}>{agentStatus?.ai_provider.state ?? "—"}</span>
               </div>
-              <div className="provider-line">
-                <span>Last embedding test:</span>
-                <span>
-                  {agentStatus?.openai.embeddings.last_check ?? "—"} — {agentStatus?.openai.embeddings.message ?? "—"}
-                </span>
+              <div className="provider-line" style={{ fontSize: "0.78rem" }}>
+                <span className="muted">Status:</span>
+                <span className="muted">{agentStatus?.ai_provider.message ?? "—"}</span>
               </div>
-              <div className="provider-line">
-                <span>Last synthesis test:</span>
-                <span>
-                  {agentStatus?.openai.synthesis.last_check ?? "—"} — {agentStatus?.openai.synthesis.message ?? "—"}
-                </span>
-              </div>
-              <div className="provider-line">
-                <span>Authentication:</span>
-                <span className={agentStatus?.openai.authentication.usable ? "provider-yes" : "provider-no"}>{agentStatus?.openai.authentication.message ?? "—"}</span>
-              </div>
-              {agentStatus?.openai.provider_state && (
-                <>
-                  <div className="provider-line">
-                    <span>Provider state:</span>
-                    <span className={agentStatus.openai.provider_state.operational ? "provider-yes" : "provider-no"}>{agentStatus.openai.provider_state.state}</span>
-                  </div>
-                  <div className="provider-line" style={{ fontSize: "0.78rem" }}>
-                    <span className="muted">Required action:</span>
-                    <span className="muted">{agentStatus.openai.provider_state.required_action}</span>
-                  </div>
-                </>
-              )}
-              {[agentStatus?.openai.authentication.diagnostic, agentStatus?.openai.embeddings.diagnostic, agentStatus?.openai.synthesis.diagnostic]
-                .filter((d) => d && !d.operational)
-                .map((d) =>
-                  d ? (
-                    <div className="provider-line" key={d.operation} style={{ fontSize: "0.78rem" }}>
-                      <span className="muted">{d.operation} diagnostic:</span>
-                      <span className="muted">
-                        {d.safe_classification ?? "unclassified"} · HTTP {d.http_status ?? "—"} · {d.error_code ?? d.error_type ?? "—"} · request_id {d.request_id ?? "n/a"} · {d.retryable ? "retryable" : "not retryable"}
-                      </span>
-                    </div>
-                  ) : null
-                )}
+              <p className="muted" style={{ fontSize: "0.78rem", marginTop: 6 }}>
+                Circuit is an optional enhancement; semantic retrieval and the full analysis are deterministic and remain authoritative without it.
+              </p>
               <div className="actions">
-                <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
-                  {busy === "test-openai" ? "Testing…" : "Test authentication"}
-                </button>
-                <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
-                  {busy === "test-openai" ? "Testing…" : "Test embeddings"}
-                </button>
-                <button type="button" className="button secondary" onClick={testOpenAi} disabled={busy === "test-openai"}>
-                  {busy === "test-openai" ? "Testing…" : "Test synthesis"}
+                <button type="button" className="button secondary" onClick={testCircuit} disabled={busy === "test-circuit"}>
+                  {busy === "test-circuit" ? "Testing…" : "Test Circuit (auth + inference)"}
                 </button>
               </div>
             </div>

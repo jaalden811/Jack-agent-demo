@@ -2,25 +2,37 @@ import type { CircuitConfig } from "@/lib/circuit/config";
 
 /**
  * THE CIRCUIT WIRE CONTRACT — the single place that encodes Circuit's
- * exact request/response shapes. This is deliberately isolated so it can
- * be confirmed against the attached Circuit notebook / sanitized cURL
- * WITHOUT touching the token manager, client, provider abstraction, or
- * any call site.
+ * exact request/response shapes. Isolated so it can be confirmed against
+ * the Circuit contract WITHOUT touching the token manager, client,
+ * provider abstraction, or any call site.
  *
- * Defaults implement:
- *   - Token: standard OAuth2 client-credentials grant (RFC 6749) —
- *     form-encoded body with grant_type/client_id/client_secret (+ scope,
- *     audience when configured); response { access_token, token_type,
- *     expires_in }.
- *   - Inference: an OpenAI-compatible chat-completions gateway — Bearer
- *     token, body { model, messages: [...] }, response
- *     choices[0].message.content.
+ * TOKEN — CONFIRMED against the Cisco Circuit cURL (id.cisco.com Okta):
+ *   POST {CIRCUIT_TOKEN_URL}
+ *   Authorization: Basic base64(client_id:client_secret)
+ *   Content-Type: application/x-www-form-urlencoded
+ *   body: grant_type=client_credentials  (client id/secret are NOT in the
+ *   body — they are the Basic-auth header). Response is the standard Okta
+ *   OAuth2 JSON { access_token, token_type, expires_in, scope }; the
+ *   access_token is a JWT with exp.
  *
- * If the Circuit notebook specifies different field names or paths, adjust
- * ONLY this file. No App Key is sent (the current contract does not use
- * one); do not add an App Key here unless the current notebook cURL
- * includes a required App Key field/header.
+ * INFERENCE — CONFIRMED against the Cisco Circuit inference cURL:
+ *   POST {CIRCUIT_INFERENCE_URL}  (OpenAI/Azure-compatible; the model is a
+ *     deployment in the path — a "{model}" placeholder is substituted with
+ *     CIRCUIT_MODEL, or the URL is used as-is when it has no placeholder).
+ *   Header: api-key: <access-token>   (NOT Authorization: Bearer)
+ *   Content-Type / Accept: application/json
+ *   Body: { messages: [{role,content}...], user: "{\"appkey\":\"<APP_KEY>\"}",
+ *           stop: ["<|im_end|>"] }
+ *   Response: OpenAI/Azure chat completion — choices[0].message.content.
+ *
+ * The App Key IS required by this contract and is passed as a JSON string
+ * in the body `user` field (read from CIRCUIT_APP_KEY — never hard-coded).
+ * The access token (minted via the confirmed token contract) is the
+ * `api-key` header value.
  */
+
+/** The confirmed stop sequence for this gateway/model. */
+const CIRCUIT_STOP_SEQUENCES = ["<|im_end|>"];
 
 export type HttpRequestSpec = {
   url: string;
@@ -35,16 +47,23 @@ export function buildTokenRequest(config: CircuitConfig): HttpRequestSpec {
   if (!config.tokenUrl || !config.clientId || !config.clientSecret) {
     throw new Error("Circuit token request requires tokenUrl, clientId, and clientSecret.");
   }
+  // CONFIRMED contract: HTTP Basic auth (base64 of client_id:client_secret)
+  // in the Authorization header; the body carries ONLY grant_type (plus
+  // scope/audience when explicitly configured — the reference cURL sends
+  // neither, so they are omitted unless set).
+  const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64");
   const form = new URLSearchParams();
   form.set("grant_type", "client_credentials");
-  form.set("client_id", config.clientId);
-  form.set("client_secret", config.clientSecret);
   if (config.scope) form.set("scope", config.scope);
   if (config.audience) form.set("audience", config.audience);
   return {
     url: config.tokenUrl,
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json"
+    },
     body: form.toString()
   };
 }
@@ -67,6 +86,13 @@ export function parseTokenResponse(body: unknown): ParsedToken {
 
 // ─── Inference request/response ────────────────────────────────────────
 
+/** Resolves the deployment URL: substitutes a "{model}" (or "{deployment}")
+ * placeholder with the configured model, else returns the URL unchanged. */
+export function resolveInferenceUrl(inferenceUrl: string, model: string | null): string {
+  if (!model) return inferenceUrl;
+  return inferenceUrl.replace(/\{model\}/g, model).replace(/\{deployment\}/g, model);
+}
+
 export function buildInferenceRequest(params: {
   config: CircuitConfig;
   accessToken: string;
@@ -78,16 +104,24 @@ export function buildInferenceRequest(params: {
 }): HttpRequestSpec {
   const { config, accessToken, model, prompt, system, temperature, maxOutputTokens } = params;
   if (!config.inferenceUrl) throw new Error("Circuit inference request requires inferenceUrl.");
+  if (!config.appKey) throw new Error("Circuit inference request requires the App Key (CIRCUIT_APP_KEY).");
   const messages: Array<{ role: string; content: string }> = [];
   if (system) messages.push({ role: "system", content: system });
   messages.push({ role: "user", content: prompt });
-  const body: Record<string, unknown> = { model, messages };
+  // Confirmed body shape: messages + user(appkey JSON string) + stop.
+  // model is NOT in the body (it is the deployment in the URL path).
+  const body: Record<string, unknown> = {
+    messages,
+    user: JSON.stringify({ appkey: config.appKey }),
+    stop: CIRCUIT_STOP_SEQUENCES
+  };
   if (typeof temperature === "number") body.temperature = temperature;
   if (typeof maxOutputTokens === "number") body.max_tokens = maxOutputTokens;
   return {
-    url: config.inferenceUrl,
+    url: resolveInferenceUrl(config.inferenceUrl, model),
     method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
+    // Confirmed contract: the access token is the `api-key` header value.
+    headers: { "api-key": accessToken, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body)
   };
 }
@@ -99,10 +133,9 @@ export type ParsedInference = {
   usage: { input_tokens: number | null; output_tokens: number | null } | null;
 };
 
-/** Parses an inference response. Supports the OpenAI-compatible shape
- * (choices[0].message.content) and tolerates a couple of common aliases
- * (output_text, candidates[].content). Adjust here to match the notebook
- * if Circuit differs. */
+/** Parses the CONFIRMED OpenAI/Azure chat-completion response:
+ * choices[0].message.content (+ finish_reason), model, and usage
+ * (prompt/completion tokens). No heuristic probing of unrelated shapes. */
 export function parseInferenceResponse(body: unknown): ParsedInference {
   const empty: ParsedInference = { text: null, model: null, finish_reason: null, usage: null };
   if (!body || typeof body !== "object") return empty;
@@ -115,24 +148,15 @@ export function parseInferenceResponse(body: unknown): ParsedInference {
     const first = choices[0] as Record<string, unknown>;
     const message = first.message as Record<string, unknown> | undefined;
     if (message && typeof message.content === "string") text = message.content;
-    else if (typeof first.text === "string") text = first.text;
     if (typeof first.finish_reason === "string") finish = first.finish_reason;
-  }
-  if (text === null && typeof b.output_text === "string") text = b.output_text;
-  if (text === null && Array.isArray(b.candidates) && b.candidates.length > 0) {
-    const content = (b.candidates[0] as Record<string, unknown>).content as Record<string, unknown> | undefined;
-    const parts = content?.parts;
-    if (Array.isArray(parts) && parts.length > 0 && typeof (parts[0] as Record<string, unknown>).text === "string") {
-      text = (parts[0] as Record<string, unknown>).text as string;
-    }
   }
 
   const model = typeof b.model === "string" ? b.model : null;
   const usageRaw = b.usage as Record<string, unknown> | undefined;
   const usage = usageRaw
     ? {
-        input_tokens: typeof usageRaw.prompt_tokens === "number" ? usageRaw.prompt_tokens : typeof usageRaw.input_tokens === "number" ? usageRaw.input_tokens : null,
-        output_tokens: typeof usageRaw.completion_tokens === "number" ? usageRaw.completion_tokens : typeof usageRaw.output_tokens === "number" ? usageRaw.output_tokens : null
+        input_tokens: typeof usageRaw.prompt_tokens === "number" ? usageRaw.prompt_tokens : null,
+        output_tokens: typeof usageRaw.completion_tokens === "number" ? usageRaw.completion_tokens : null
       }
     : null;
 

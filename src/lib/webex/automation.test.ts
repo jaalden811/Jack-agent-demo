@@ -58,7 +58,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
       toPersonEmail: params.toPersonEmail
     }));
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     expect(sendWebexMessage).toHaveBeenCalledWith("webex-connected-user-token", expect.anything());
@@ -70,7 +70,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
     await connectWebex();
     vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "belrobin@cisco.com" });
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     expect(sendOutlookEmail).toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
   it("loads Bella (sales) and Jack (technical) recipient emails from the routing JSON, not environment variables", async () => {
     await connectWebex();
     vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     const salesDecision = peachtree.routing.find((item) => item.lane === "sales");
@@ -94,7 +94,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
     await connectWebex();
     vi.mocked(sendWebexMessage).mockRejectedValue(new Error("Webex API rejected the request"));
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     const webexResults = peachtree.delivery.filter((item) => item.channel === "webex");
@@ -108,7 +108,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
     vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
     vi.mocked(sendOutlookEmail).mockResolvedValue({ accepted: false, status_code: null, error: "Outlook is not connected", error_code: "token_exchange_failed", sent_at: null });
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     const webexResults = peachtree.delivery.filter((item) => item.channel === "webex");
@@ -124,7 +124,7 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
       return { id: "msg-technical-1", toPersonEmail: params.toPersonEmail };
     });
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     const salesWebex = peachtree.delivery.find((item) => item.lane === "sales" && item.channel === "webex");
@@ -138,7 +138,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
   it("persists a distinct delivery_key of <id>:lane:channel for every delivery result", async () => {
     await connectWebex();
     vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     for (const item of peachtree.delivery) {
@@ -154,7 +154,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
       return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
     });
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
 
     const first = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
     const firstDeliveredCount = first.delivery.filter((item) => item.delivered).length;
@@ -180,7 +180,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
       return { id: `msg-${webexCalls}`, toPersonEmail: params.toPersonEmail };
     });
 
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const first = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
     const salesWebexFirst = first.delivery.find((item) => item.lane === "sales" && item.channel === "webex");
     expect(salesWebexFirst?.delivered).toBe(false);
@@ -202,7 +202,7 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
   it("computeTranscriptId is stable for identical demo/pasted content and provides the dedupe anchor", async () => {
     await connectWebex();
     vi.mocked(sendWebexMessage).mockResolvedValue({ id: "msg-1", toPersonEmail: "x" });
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null);
 
     const audit = await readRecentWebexAudit(50);
@@ -215,11 +215,116 @@ describe("deliverPeachtreePipeline — per-channel idempotency and audit", () =>
 
 describe("computePeachtreePreview — no delivery attempted", () => {
   it("returns delivery entries with attempted:false and auto_send_enabled:false", async () => {
-    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
     const preview = await computePeachtreePreview(result);
     expect(preview.auto_send_enabled).toBe(false);
     expect(preview.delivery.every((item) => item.attempted === false)).toBe(true);
     expect(sendWebexMessage).not.toHaveBeenCalled();
     expect(sendOutlookEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("Circuit Stage D message synthesis in delivery", () => {
+  // A rich, quality-passing Stage D draft (distinct sales/technical, canonical
+  // account, opportunity thesis + MEDDPICC + ≥3 why-now + ≥3 next actions).
+  const salesWebex = [
+    "**Account:** Acme Retail",
+    "",
+    "**Opportunity thesis**",
+    "Acme Retail needs unified cross-domain network operations across campus, branch, and cloud.",
+    "",
+    "**MEDDPICC**",
+    "- Economic buyer: CIO Dana Whitfield",
+    "- Decision criteria: pilot metrics must be met",
+    "",
+    "**Why now**",
+    "- Board approved a $1.4M budget",
+    "- Architecture workshop requested this quarter",
+    "- Prepared to purchase this quarter",
+    "",
+    "**Bella next actions**",
+    "- Confirm the architecture workshop date",
+    "- Align on the pilot success metrics",
+    "- Prepare the commercial proposal"
+  ].join("\n");
+  const technicalWebex = [
+    "**Account:** Acme Retail",
+    "",
+    "**Current environment**",
+    "- Five disconnected dashboards across campus, branch, and cloud-managed sites",
+    "- A different single pane of glass per team",
+    "",
+    "**Jack next actions**",
+    "- Scope the architecture workshop agenda",
+    "- Map the current console inventory",
+    "- Define the POV technical success criteria"
+  ].join("\n");
+
+  function withStageD(result: Awaited<ReturnType<typeof runSignalAgent>>, sales: string, technical: string) {
+    result.ai_trace = {
+      provider: "circuit",
+      enhanced: true,
+      stages: [],
+      stage_a: null,
+      stage_b: null,
+      stage_c: null,
+      stage_d: {
+        sales_webex: sales,
+        technical_webex: technical,
+        sales_email: { subject: "Commercial action — Acme Retail", body: sales },
+        technical_email: { subject: "Technical action — Acme Retail", body: technical }
+      }
+    };
+    return result;
+  }
+
+  it("prefers Circuit Stage D drafts (synthesized_by_ai) over the deterministic builder when they pass the quality gate", async () => {
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} }),
+      salesWebex,
+      technicalWebex
+    );
+    const preview = await computePeachtreePreview(result);
+
+    const sales = preview.messages.find((m) => m.lane === "sales");
+    const technical = preview.messages.find((m) => m.lane === "technical");
+    // Stage D body is preserved (an attendance-mode header is prepended in 7b).
+    expect(sales?.markdown).toContain(salesWebex);
+    expect(sales?.synthesized_by_ai).toBe(true);
+    expect(technical?.markdown).toContain(technicalWebex);
+    expect(technical?.synthesized_by_ai).toBe(true);
+
+    // Emails also come from Stage D, HTML-escaped (defense-in-depth).
+    const salesEmail = preview.emails.find((e) => e.lane === "sales");
+    expect(salesEmail?.subject).toBe("Commercial action — Acme Retail");
+    expect(salesEmail?.text).toContain(salesWebex);
+  });
+
+  it("falls back to the deterministic builder when Stage D fails the quality gate (identical lanes)", async () => {
+    const identical = salesWebex; // identical sales/technical -> not materially different
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} }),
+      identical,
+      identical
+    );
+    const preview = await computePeachtreePreview(result);
+
+    const sales = preview.messages.find((m) => m.lane === "sales");
+    // Circuit draft rejected -> deterministic content, not synthesized_by_ai.
+    expect(sales?.synthesized_by_ai).toBe(false);
+    expect(sales?.markdown).not.toBe(identical);
+  });
+
+  it("HTML-escapes Stage D email bodies (no raw HTML injection)", async () => {
+    const injected = salesWebex + "\n\n<script>alert(1)</script>";
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} }),
+      injected,
+      technicalWebex
+    );
+    const preview = await computePeachtreePreview(result);
+    const salesEmail = preview.emails.find((e) => e.lane === "sales");
+    expect(salesEmail?.html).not.toContain("<script>");
+    expect(salesEmail?.html).toContain("&lt;script&gt;");
   });
 });

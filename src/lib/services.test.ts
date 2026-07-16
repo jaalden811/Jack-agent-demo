@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildDiscoveryQueries,
   buildDynamicDiscoveryQueries,
@@ -26,8 +26,6 @@ import {
 } from "@/lib/services";
 import type { KbChunk, ResearchInput, ResearchRun, RunDebugStats, SearchResult } from "@/lib/types";
 
-vi.mock("openai", () => ({ default: vi.fn() }));
-
 // Shared helper for test debug stats fixtures
 const makeDebugStats = (): RunDebugStats => ({
   selectedAccountBase: "healthcare_default", selectedOrganizationNames: [],
@@ -37,8 +35,8 @@ const makeDebugStats = (): RunDebugStats => ({
   rejectedAsPerson: 0, rejectedInvalidOrgName: 0, rejectedCount: 0, rejectionReasons: {},
   extractedOrgMentions: 0, verifiedOrganizations: 0, validOrgCount: 0,
   fallbackOrganizationsAdded: 0, pageFetchAttempts: 0, accountSignalsAttached: 0,
-  marketSignalsOnly: 0, finalGuardReplacements: 0, openAiSynthesisUsed: false,
-  openAiEntityExtractionRan: false, openAiRerankingRan: false,
+  marketSignalsOnly: 0, finalGuardReplacements: 0, aiSynthesisUsed: false,
+  aiEntityExtractionRan: false, aiRerankingRan: false,
   linkedInQueriesRun: 0, contactCandidatesFound: 0, dynamicOrgsDiscovered: 0
 });
 
@@ -565,14 +563,14 @@ describe("KB retrieval helpers", () => {
 
 // ─── synthesizeOrgFit ─────────────────────────────────────────────────────────
 describe("synthesizeOrgFit", () => {
-  it("returns deterministic fallback when OPENAI_API_KEY is not configured", async () => {
+  it("returns deterministic fallback when the AI provider is not configured", async () => {
     const cap = await productCapabilityMapper(input, []);
     const debugStats = makeDebugStats();
     const result = await synthesizeOrgFit("Mayo Clinic", [], cap, input, debugStats);
     expect(result.fitReason).toContain("Mayo Clinic");
     expect(result.ciscoFitSummary).toBeTruthy();
     expect(result.nextStep).toContain("Mayo Clinic");
-    expect(debugStats.openAiSynthesisUsed).toBe(false);
+    expect(debugStats.aiSynthesisUsed).toBe(false);
   });
 
   it("synthesis is org-specific (different outputs for different orgs)", async () => {
@@ -612,8 +610,8 @@ describe("runResearch", () => {
     expect(names).not.toContain("Mayo Clinic");
   });
 
-  it("OpenAI reranking failure does NOT produce per-card 'failed' message", async () => {
-    // reRankAccounts with no API key should use deterministicRerank, not error messages
+  it("AI reranking unavailable does NOT produce per-card 'failed' message", async () => {
+    // reRankAccounts with no configured provider should use deterministicRerank, not error messages
     await productCapabilityMapper(input, []);
     const run = await runResearch(input, []);
     for (const account of run.accounts) {
@@ -704,11 +702,14 @@ describe("runResearch", () => {
     expect(run.warnings).toEqual(expect.arrayContaining([expect.stringContaining("Unverified fallback run")]));
   });
 
-  it("diagnostics labels empty-string OPENAI_API_KEY as missing", async () => {
-    process.env.OPENAI_API_KEY = "";
+  it("diagnostics report remote embeddings unavailable (deterministic local retrieval)", async () => {
     const { getProviderDiagnostics } = await import("@/lib/services");
     const diag = getProviderDiagnostics();
-    expect(diag.openAiEmbeddingsAvailable).toBe(false);
+    // Circuit exposes no embedding endpoint; KB retrieval is always local.
+    expect(diag.remoteEmbeddingsAvailable).toBe(false);
+    // The Circuit AI provider check is optional — its absence must not force fallback mode.
+    const aiCheck = diag.checks.find((c) => c.name === "AI provider (Circuit)");
+    expect(aiCheck?.required).toBe(false);
   });
 
   it("exports include all required columns", async () => {

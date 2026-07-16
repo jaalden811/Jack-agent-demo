@@ -13,17 +13,26 @@ not reappear as an active runtime provider path.
 - The attached Circuit notebook / sanitized cURL is the authoritative source of
   truth for the token request and the inference request/response shapes.
 - The exact wire mapping lives in ONE file: `src/lib/circuit/contract.ts`.
-  Confirm/adjust field names and response paths there against the notebook —
-  never scatter Circuit HTTP shapes across the codebase.
+  Confirm/adjust field names and response paths there against the notebook
+  (`CIRCUIT_CONTRACT.txt`) — never scatter Circuit HTTP shapes across the
+  codebase.
+- The current contract defaults are PROVISIONAL and gated: until
+  `CIRCUIT_CONTRACT_CONFIRMED=true`, the token manager and client return
+  `CIRCUIT_CONTRACT_UNCONFIRMED` and make NO network request. Never remove this
+  gate or let an unconfirmed/assumed payload run silently.
 - Token flow is OAuth2 client-credentials (client id + secret → short-lived
   access token). The access token is in-memory runtime state only.
 
 ## Never
 - Do not hard-code a Circuit endpoint or model name in TypeScript. Read
   `CIRCUIT_TOKEN_URL`, `CIRCUIT_INFERENCE_URL`, and `CIRCUIT_MODEL` from config.
-- Do not require or send an App Key (`CIRCUIT_APP_KEY`) unless the CURRENT
-  notebook cURL includes a required App Key field/header. Do not infer one from
-  an old screenshot.
+- The App Key IS required by the confirmed inference contract: it is read from
+  `CIRCUIT_APP_KEY` and sent as a JSON string in the inference body `user`
+  field. It must NEVER be sent on the token request, hard-coded, committed, or
+  shown in the UI. (The confirmed inference cURL is the source of truth.)
+- Inference auth is the `api-key: <access-token>` header, NOT
+  `Authorization: Bearer`. The model is a deployment in the URL path
+  (`{model}` substituted from `CIRCUIT_MODEL`), not a body field.
 - Do not persist, log, hash, or partially display the client secret or access
   token; never return them in API JSON.
 - Do not let Circuit override deterministic arithmetic, routing, evidence

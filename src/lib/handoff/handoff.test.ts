@@ -22,7 +22,7 @@ function fixture(name: string): string {
 }
 
 async function run(name: string): Promise<SecureNetworkingTriageResult> {
-  return runSignalAgent({ customTranscript: fixture(name), options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+  return runSignalAgent({ customTranscript: fixture(name), options: {} });
 }
 
 describe("Next Best Action (Section 2)", () => {

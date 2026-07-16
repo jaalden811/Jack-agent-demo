@@ -1,13 +1,16 @@
 # Circuit AI Integration
 
-Circuit is the single active generative-AI provider for this application. It
-replaces OpenAI as the reasoning/synthesis layer. Public search (SerpAPI) and
-the deterministic engine are unchanged.
+Circuit is the single active generative-AI provider for this application. It has
+replaced OpenAI as the reasoning/synthesis layer, and the `openai` package has
+been removed. Public search (SerpAPI) and the deterministic engine are unchanged.
 
-> Status: this document covers the **provider foundation** that is implemented
-> and tested (`src/lib/circuit/**`, `src/lib/ai-provider/**`). Wiring Circuit
-> into every former OpenAI call site and removing the `openai` dependency is a
-> subsequent, separately-verifiable step (see "Remaining migration" below).
+> Status: the **provider foundation** (`src/lib/circuit/**`,
+> `src/lib/ai-provider/**`), the **Stage A–D runners**, the **Signal-to-Action
+> additive enhancement**, the **Market + Buyer Intelligence cutover**
+> (`src/lib/services.ts`), and the **removal of the OpenAI runtime + `openai`
+> dependency** are implemented, tested, and live-verified. The remaining work is
+> the Setup/status UI conversion to Circuit diagnostics (Phase 11) — see
+> "Migration status" below.
 
 ## 1. What Circuit does
 Enriches evidence interpretation, qualification, action planning, specialist
@@ -54,13 +57,41 @@ canonical evidence bundle → master prompt → stage prompt
   → deterministic fallback on failure
 ```
 
-## 6. The wire contract (source of truth)
+## 6. The wire contract (source of truth) + confirmation gate
 The exact request/response field mapping lives ONLY in
-`src/lib/circuit/contract.ts`. The defaults implement a standard OAuth2
-client-credentials token grant and an OpenAI-compatible chat-completions
-inference shape. **Confirm these against the attached Circuit notebook /
-sanitized cURL** and adjust only that file if Circuit differs (e.g. a
-Gemini-style `contents`/`candidates` shape). No other file needs to change.
+`src/lib/circuit/contract.ts`.
+
+**Token — CONFIRMED and live-verified** against the Cisco Circuit cURL:
+`POST {CIRCUIT_TOKEN_URL}` (`https://id.cisco.com/oauth2/default/v1/token`) with
+`Authorization: Basic base64(client_id:client_secret)` and body
+`grant_type=client_credentials`; response is standard Okta OAuth2
+`{ access_token (JWT with exp), token_type, expires_in, scope }`. Because the
+token contract is confirmed, `POST /api/circuit/test-auth` mints a real token
+whenever the client id/secret/token URL are configured.
+
+**Inference — CONFIRMED + live-verified** against the Cisco Circuit cURL:
+`POST {CIRCUIT_INFERENCE_URL}` — OpenAI/Azure-compatible chat/completions where
+the model is a **deployment in the URL path**
+(`.../openai/deployments/{model}/chat/completions`; `{model}` is substituted
+with `CIRCUIT_MODEL`). Auth is the **`api-key: <access-token>`** header (the
+minted token — not `Authorization: Bearer`). Body:
+`{ messages:[{role,content}], user: "{\"appkey\":\"<APP_KEY>\"}", stop:["<|im_end|>"] }`
+(the model is **not** a body field). Response is standard OpenAI/Azure
+`choices[0].message.content`. Live smoke test returned
+`{ok:true, model:"google/gemini-3.1-flash-lite"}`.
+
+**App Key IS required** by the inference contract and is passed as a JSON string
+in the body `user` field (`CIRCUIT_APP_KEY`, secret, `.env.local` only). It is
+**never** sent on the token request. (This supersedes the earlier "no App Key"
+default — the current inference cURL is the source of truth and contains one.)
+
+The inference client stays gated by `CIRCUIT_CONTRACT_CONFIRMED` (set to `true`
+now that the contract is confirmed); when false it returns
+`CIRCUIT_CONTRACT_UNCONFIRMED` with no network call.
+
+`GET /api/circuit/status` reports `configured`, `credentialsConfigured`,
+`contractConfirmed`, `contractVersion`, `authenticationAccepted`, `state`,
+`lastErrorCause`, and `tokenState` (never secrets/token).
 
 ## 7. Error model
 `src/lib/circuit/errorNormalizer.ts` maps every failure to a stable
@@ -73,13 +104,56 @@ Never repeatedly retry 400/401/403/404.
 - `POST /api/circuit/test-inference` — tiny inference to verify the contract.
 - `POST /api/circuit/token/refresh` / `POST /api/circuit/token/clear`.
 
-## 9. Remaining migration (tracked, not yet done)
-1. Route the former OpenAI call sites (`src/lib/qualification/openai*.ts`,
-   `src/lib/services.ts`, `src/lib/openai/*`) through
-   `@/lib/ai-provider/registry` → Circuit, keeping deterministic fallback.
-2. Add Zod stage schemas (extraction / public evidence / qualification /
-   message) + the versioned master prompt loader.
-3. Replace OpenAI labels/config/UI with Circuit; run `npm uninstall openai`
-   once no active imports remain.
-4. Run live `test-auth` / `test-inference` once real Circuit credentials and
-   the confirmed contract are in `.env.local`.
+## 9. Migration status
+
+Done:
+- Circuit foundation (config, token manager, inference client, error
+  normalizer, diagnostics, provider registry) + versioned master prompt loader.
+- Zod stage schemas + shared stage runner for Stages A–D (extraction / public
+  evidence / qualification / message) with evidence-integrity validation and a
+  deterministic fallback for every stage.
+- Signal-to-Action pipeline runs Stages A→B→C→D additively (`ai_trace`),
+  live-verified against the real endpoint.
+- **Market + Buyer Intelligence (`src/lib/services.ts`) cut over to Circuit**:
+  org-name entity extraction, org-fit synthesis, and account reranking now route
+  through `@/lib/ai-provider/registry` → Circuit (no OpenAI SDK import remains in
+  this flow), each with a deterministic fallback. KB retrieval uses deterministic
+  local embeddings (Circuit has no embedding endpoint). Live-verified: synthesis
+  and reranking both executed on Circuit and produced org-specific output.
+- **Stage D wired into message delivery (Phase 7a)**: `applyAiMessageSynthesis`
+  prefers Circuit `ai_trace.stage_d` drafts over the legacy OpenAI synthesis and
+  the deterministic builder, but only when they pass the same delivery quality
+  gate (`@/lib/webex/messageQuality`); otherwise it falls back. Stage D is fed
+  the real deterministic opportunity brief and prompted for the exact gate
+  skeleton (no fabrication). Live-verified: the preview delivered Circuit Stage D
+  content (`synthesized_by_ai: true`).
+- **Attendance-aware message routing + modes (Phase 7b)**: the meeting
+  participation matrix (`@/lib/meeting-participation`) + team roster
+  (`@/lib/team-routing`) derive a per-recipient attendance status and message
+  MODE (action delta vs full/contextual handoff), frame each message, annotate
+  the delivery results, and order auto-sends by mode. Additive and
+  non-authoritative for recipient SELECTION — the Peachtree lane recipients are
+  unchanged; attendance only changes HOW each is addressed and the send order.
+  Live-verified: a rep who spoke → `ATTENDEE_ACTION_DELTA`, an absent owner →
+  `UNKNOWN_CONTEXTUAL_HANDOFF`.
+- **OpenAI runtime removed + `openai` uninstalled (Phase 9)**: every OpenAI
+  inference call in the analysis + delivery paths is gone (deterministic engine
+  + additive Circuit); the qualification/synthesis/message-synthesis modules and
+  the OpenAI client/status/error-normalizer modules are deleted; all `OPENAI_*`
+  config variables are removed; and the `openai` npm package is uninstalled. Full
+  suite, lint, typecheck, and build pass with no `openai` dependency.
+- **Setup/status UI → Circuit + identifiers retired (Phase 11)**: the status
+  route now exposes an `ai_provider` (Circuit) block built from the safe Circuit
+  diagnostics (@/lib/circuit/diagnostics — no secret, no network probe), and the
+  Setup drawer / TopBar / audit tab render it (with a "Test Circuit" auth +
+  inference action). The residual OpenAI-named identifiers were retired:
+  `SignalAgentStatus.openai` → `ai_provider`, `AiProcessingStatus.openai_configured`
+  → `ai_provider_configured`, the `useOpenAIEmbeddings`/`useOpenAISynthesis` run
+  options removed, and `SemanticMode` collapsed to `"deterministic"`. The OpenAI
+  semantic-matching toggle was removed from the UI (matching is deterministic).
+  Live-verified: the status block reports the real Circuit config
+  (configured/contract-confirmed/operational + model), no secret leaked.
+
+The OpenAI→Circuit migration is complete: Circuit is the sole generative-AI
+provider (optional, additive), the deterministic engine is authoritative, and no
+`openai` dependency or `OPENAI_*` configuration remains.

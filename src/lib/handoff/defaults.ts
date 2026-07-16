@@ -81,10 +81,12 @@ export function emptyActionAndHandoffFields(runId = "run"): {
   next_best_action: NextBestAction;
   specialist_handoffs: { sales: SpecialistHandoffPacket; technical: SpecialistHandoffPacket };
   question_index: QuestionIndex;
+  ai_trace: { provider: "circuit"; enhanced: boolean; stages: []; stage_a: null; stage_b: null; stage_c: null; stage_d: null };
 } {
   return {
     next_best_action: emptyNextBestAction(runId),
     specialist_handoffs: { sales: emptyHandoffPacket("sales", runId), technical: emptyHandoffPacket("technical", runId) },
-    question_index: emptyQuestionIndex()
+    question_index: emptyQuestionIndex(),
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null }
   };
 }

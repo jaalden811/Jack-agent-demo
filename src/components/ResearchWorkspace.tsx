@@ -77,9 +77,9 @@ function DebugPanel({ stats, marketSignals }: { stats: RunDebugStats; marketSign
           <span>Account signals attached</span><span>{stats.accountSignalsAttached}</span>
           <span>Market signals only</span><span>{stats.marketSignalsOnly}</span>
           <span>Final guard replacements</span><span>{stats.finalGuardReplacements}</span>
-          <span>OpenAI synthesis</span><span>{stats.openAiSynthesisUsed ? "yes" : "no"}</span>
-          <span>OpenAI entity extraction</span><span>{stats.openAiEntityExtractionRan ? "yes" : "no"}</span>
-          <span>OpenAI reranking</span><span>{stats.openAiRerankingRan ? "yes" : "no"}</span>
+          <span>Circuit synthesis</span><span>{stats.aiSynthesisUsed ? "yes" : "no"}</span>
+          <span>Circuit entity extraction</span><span>{stats.aiEntityExtractionRan ? "yes" : "no"}</span>
+          <span>Circuit reranking</span><span>{stats.aiRerankingRan ? "yes" : "no"}</span>
           <span>LinkedIn queries</span><span>{stats.linkedInQueriesRun}</span>
           <span>Contact candidates found</span><span>{stats.contactCandidatesFound}</span>
           <span>Dynamic orgs discovered</span><span>{stats.dynamicOrgsDiscovered}</span>
@@ -442,7 +442,7 @@ export default function ResearchWorkspace() {
 
           <div className="summary-grid">
             <div><strong>Search</strong><span>{run.liveSearchUsed ? "Live API-backed" : "Seed/demo fallback"}</span></div>
-            <div><strong>Embeddings</strong><span>{run.openAiEmbeddingsUsed ? "OpenAI" : "Development fallback"}</span></div>
+            <div><strong>Embeddings</strong><span>{run.remoteEmbeddingsUsed ? "Remote provider" : "Local deterministic"}</span></div>
             <div><strong>Extraction</strong><span>{run.firecrawlExtractionUsed ? "Firecrawl full-page" : "Snippet-only / server fetch"}</span></div>
             <div><strong>Contacts</strong><span>{run.contactEnrichmentUsed ? "Licensed provider" : "Role/persona only"}</span></div>
           </div>
