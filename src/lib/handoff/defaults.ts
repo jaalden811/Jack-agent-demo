@@ -1,5 +1,27 @@
 import type { NextBestAction } from "@/lib/action-intelligence/types";
 import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types";
+import type { AnalysisMode, CircuitRunDiagnostic, MessageSource } from "@/lib/signal-agent/types";
+
+/** Safe default run diagnostic — describes a deterministic-only run. */
+export function emptyCircuitRunDiagnostic(): CircuitRunDiagnostic {
+  return {
+    required: false,
+    configured: false,
+    contract_confirmed: false,
+    authenticated: null,
+    inference: null,
+    stages: {
+      stage_a: { status: "skipped", promoted: false, safe_error_code: null },
+      stage_b: { status: "skipped", promoted: false, safe_error_code: null },
+      stage_c: { status: "skipped", promoted: false, safe_error_code: null },
+      stage_d: { status: "skipped", promoted: false, safe_error_code: null }
+    },
+    repair_attempted: false,
+    fallback_used: false,
+    safe_error_code: null,
+    required_failure: null
+  };
+}
 
 /**
  * Minimal, valid defaults for the action/handoff fields. Used by tests and
@@ -82,11 +104,17 @@ export function emptyActionAndHandoffFields(runId = "run"): {
   specialist_handoffs: { sales: SpecialistHandoffPacket; technical: SpecialistHandoffPacket };
   question_index: QuestionIndex;
   ai_trace: { provider: "circuit"; enhanced: boolean; stages: []; stage_a: null; stage_b: null; stage_c: null; stage_d: null };
+  analysis_mode: AnalysisMode;
+  message_source: MessageSource;
+  circuit_run: CircuitRunDiagnostic;
 } {
   return {
     next_best_action: emptyNextBestAction(runId),
     specialist_handoffs: { sales: emptyHandoffPacket("sales", runId), technical: emptyHandoffPacket("technical", runId) },
     question_index: emptyQuestionIndex(),
-    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null }
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null },
+    analysis_mode: "deterministic_fallback",
+    message_source: "deterministic_fallback",
+    circuit_run: emptyCircuitRunDiagnostic()
   };
 }

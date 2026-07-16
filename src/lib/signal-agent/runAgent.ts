@@ -20,6 +20,7 @@ import { buildNextBestAction, type ActionOwners } from "@/lib/action-intelligenc
 import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
 import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
 import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
+import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -403,7 +404,28 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     next_best_action: {} as SecureNetworkingTriageResult["next_best_action"],
     specialist_handoffs: {} as SecureNetworkingTriageResult["specialist_handoffs"],
     question_index: { answered: [], open: [], declined_or_sensitive: [], contradictory: [] },
-    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null }
+    ai_trace: { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null },
+    // Set by promoteCircuitIntoCanonical() once ai_trace exists. Defaults
+    // describe a deterministic-only run (Circuit off/unavailable).
+    analysis_mode: "deterministic_fallback",
+    message_source: "deterministic_fallback",
+    circuit_run: {
+      required: false,
+      configured: false,
+      contract_confirmed: false,
+      authenticated: null,
+      inference: null,
+      stages: {
+        stage_a: { status: "skipped", promoted: false, safe_error_code: null },
+        stage_b: { status: "skipped", promoted: false, safe_error_code: null },
+        stage_c: { status: "skipped", promoted: false, safe_error_code: null },
+        stage_d: { status: "skipped", promoted: false, safe_error_code: null }
+      },
+      repair_attempted: false,
+      fallback_used: false,
+      safe_error_code: null,
+      required_failure: null
+    }
   };
 
   // Action-intelligence + specialist-handoff layer (the defining output):
@@ -418,10 +440,23 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
 
-  // Circuit AI-enhancement (additive; deterministic result is
-  // authoritative and complete without it). No-op when Circuit is
-  // unconfigured/unavailable — never throws, never changes scores.
+  // Circuit AI-enhancement: run Stage A→D, then PROMOTE each stage's
+  // validated output into the canonical fields (interpretation/message
+  // layer). Deterministic scores, routing owners, and evidence identity are
+  // never overwritten. No-op when Circuit is unconfigured/unavailable —
+  // never throws.
   result.ai_trace = await enhanceWithCircuit(result);
+  promoteCircuitIntoCanonical(result);
+
+  // When any Circuit stage was promoted, rebuild the do-not-re-ask index and
+  // handoff packets from the promoted MEDDPICC / next action so readiness
+  // stays honest about the (now Circuit-canonical) qualification gaps.
+  if (result.analysis_mode !== "deterministic_fallback") {
+    result.specialist_handoffs = {
+      sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
+      technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
+    };
+  }
 
   const auditOutcome = await appendAuditRecord(result);
   result.audit = { logged: auditOutcome.logged, path: AUDIT_LOG_RELATIVE_PATH, warning: auditOutcome.warning ?? effectiveBundle.warning };

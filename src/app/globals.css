@@ -1028,6 +1028,11 @@ button:disabled {
   color: var(--muted);
 }
 
+.topbar-pill.warn {
+  background: var(--tint-warning);
+  color: var(--warning);
+}
+
 /* ── Integrations panel ──────────────────────────────────────────────── */
 
 .provider-line {

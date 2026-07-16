@@ -227,6 +227,9 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
   const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
+  // Canonical message origin: Circuit Stage D drafts (when quality-valid) vs
+  // the deterministic message builder — surfaced in the run diagnostic.
+  result.message_source = synthesis.used ? "circuit_stage_d" : "deterministic_fallback";
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
 
   // Attendance-aware framing (Phase 7b): derive each recipient's meeting
@@ -280,6 +283,9 @@ export async function deliverPeachtreePipeline(
   const deterministicEmails = buildEmailsForRouting({ result, routing, runId, analysisLink });
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
+  // Canonical message origin: Circuit Stage D drafts (when quality-valid) vs
+  // the deterministic message builder — surfaced in the run diagnostic.
+  result.message_source = synthesis.used ? "circuit_stage_d" : "deterministic_fallback";
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
 
   // Attendance-aware framing + send ordering (Phase 7b). Recipients are

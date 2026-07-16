@@ -35,6 +35,11 @@ export type CircuitConfig = {
   /** Human-set identifier of the confirmed contract, surfaced in safe
    * diagnostics (never a secret). */
   contractVersion: string | null;
+  /** Server-only local-dev switch (CIRCUIT_REQUIRED). When true the Signal
+   * Agent run MUST call Circuit and PROMOTE its validated output into the
+   * canonical fields; a failed required stage is surfaced (analysis_mode
+   * deterministic_fallback + circuit_run_error) rather than silently hidden. */
+  required: boolean;
 };
 
 function str(value: string | undefined): string | null {
@@ -68,8 +73,17 @@ export function getCircuitConfig(): CircuitConfig {
     promptVersion: str(env.CIRCUIT_PROMPT_VERSION) ?? "signal-to-action-circuit-v1",
     schemaVersion: str(env.CIRCUIT_SCHEMA_VERSION) ?? "1.0",
     contractConfirmed: (str(env.CIRCUIT_CONTRACT_CONFIRMED) ?? "false").toLowerCase() === "true",
-    contractVersion: str(env.CIRCUIT_CONTRACT_VERSION)
+    contractVersion: str(env.CIRCUIT_CONTRACT_VERSION),
+    required: (str(env.CIRCUIT_REQUIRED) ?? "false").toLowerCase() === "true"
   };
+}
+
+/** Server-only: whether Circuit is REQUIRED for this run (CIRCUIT_REQUIRED
+ * env var). When required, the run promotes Circuit output into the
+ * canonical fields and surfaces stage failures instead of quietly labeling
+ * the result deterministic. */
+export function isCircuitRequired(config: CircuitConfig = getCircuitConfig()): boolean {
+  return config.required;
 }
 
 /** True only when a human has confirmed contract.ts matches the Circuit
