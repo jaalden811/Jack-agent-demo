@@ -25,6 +25,8 @@ import { buildPersonalizationBlock, buildPersonalizationContextForResult } from 
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
+import { planObjectiveSearch } from "@/lib/objective-search/queryPlanner";
+import { getBudgetState, recordQuerySpend } from "@/lib/objective-search/searchBudget";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -505,6 +507,36 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   } catch {
     result.personalization = null;
     result.opportunity_thread = null;
+  }
+
+  // Objective-aware research plan: what PUBLIC facts could change this
+  // recipient's action, given their goals + account + motion — plus the
+  // app-observed query budget. Execution remains on the existing SerpAPI
+  // flow; this is the goal-aware plan/trace + budget accounting.
+  try {
+    if (result.personalization && sellerProfileForRun) {
+      const budget = await getBudgetState();
+      const plan = planObjectiveSearch({
+        account: result.account_resolution?.name ?? null,
+        accountStatus: result.account_resolution?.status ?? "unresolved",
+        verdict: result.executive_summary.verdict,
+        objectiveIds: sellerProfileForRun.goals.map((g) => g.goal_id),
+        primaryMotion: result.matches[0]?.entry_id ?? "unknown",
+        transcriptThemes: result.matches.slice(0, 3).map((m) => m.pain_category).filter(Boolean),
+        budgetRemaining: budget.remaining
+      });
+      const executed = result.serpapi_signals?.queries?.length ?? 0;
+      result.personalization.search_plan = {
+        objective_ids: plan.objective_ids,
+        queries_planned: plan.queries_planned,
+        queries_executed: executed,
+        cache_hits: plan.cache_hits,
+        budget_remaining: plan.budget_remaining
+      };
+      await recordQuerySpend(executed);
+    }
+  } catch {
+    /* research planning is additive; never blocks a run */
   }
 
   const auditOutcome = await appendAuditRecord(result);
