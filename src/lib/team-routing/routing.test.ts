@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRoster, matchRosterMember, activeMembers, type Roster } from "@/lib/team-routing/roster";
+import { parseRoster, parseRosterCsv, matchRosterMember, activeMembers, type Roster } from "@/lib/team-routing/roster";
 import { buildParticipationMatrix } from "@/lib/meeting-participation/participation";
 import { routeActions, type RequiredRole } from "@/lib/team-routing/routing";
 
@@ -39,40 +39,66 @@ describe("roster parsing (Tests 10-12)", () => {
     expect(matchRosterMember({ name: "Alex Sales" }, roster)?.person_id).toBe("p1");
     expect(matchRosterMember({ name: "Nobody" }, roster)).toBeNull();
   });
+
+  it("parseRosterCsv imports CSV (multi-value cols ';'-separated), excludes inactive, validates like JSON", () => {
+    const csv = [
+      "person_id,name,emails,webex_email,title,role_family,lane,specialties,product_domains,accounts,territories,notification_channels,active",
+      "c1,Casey CSV,casey@vendor.com,casey@vendor.com,AE,commercial,sales,negotiation;discovery,observability;security,Globex;Initech,NA-East,webex;outlook,true",
+      "c2,Dana CSV,dana@vendor.com,,SE,technical,technical,architecture,security,,EMEA,webex,false",
+      "c3,Bad Email,not-an-email,,SE,technical,technical,,,,,,true"
+    ].join("\n");
+    const { members, issues } = parseRosterCsv(csv);
+    expect(members).toHaveLength(3);
+    const casey = members.find((m) => m.person_id === "c1")!;
+    expect(casey.specialties).toEqual(["negotiation", "discovery"]);
+    expect(casey.accounts).toEqual(["Globex", "Initech"]);
+    expect(casey.notification_channels).toEqual(["webex", "outlook"]);
+    expect(members.find((m) => m.person_id === "c2")!.active).toBe(false);
+    expect(activeMembers({ members }).map((m) => m.person_id)).toEqual(["c1", "c3"]);
+    expect(issues.some((i) => i.toLowerCase().includes("invalid email"))).toBe(true);
+  });
 });
 
-describe("participation matrix (Tests 14-17)", () => {
+describe("participation matrix — 6-state model (Tests 14-17)", () => {
   const transcriptParticipants = [
     { name: "Jordan", classification: "customer", turnCount: 5 },
     { name: "Maya", classification: "customer", turnCount: 0 }
   ];
 
-  it("Test 14: a transcript speaker is marked spoke / confirmed_present", () => {
+  it("Test 14: a transcript speaker is SPOKE (transcript proves speaking)", () => {
     const m = buildParticipationMatrix({ transcript_participants: transcriptParticipants }, roster);
     const jordan = m.participants.find((p) => p.display_name === "Jordan")!;
     expect(jordan.spoke).toBe(true);
-    expect(jordan.attendance_status).toBe("confirmed_present");
-    expect(jordan.presence_detail).toBe("speaker");
+    expect(jordan.attendance_status).toBe("SPOKE");
+    expect(jordan.sources).toContain("transcript_speaker");
   });
 
-  it("Test 15/16: a silent/invited person's presence is unknown without metadata", () => {
+  it("Test 15/16: silent/invited people are INVITED_NOT_CONFIRMED (invitation never proves attendance)", () => {
     const m = buildParticipationMatrix({ transcript_participants: transcriptParticipants, invited_names: ["Casey"] }, roster);
-    expect(m.participants.find((p) => p.display_name === "Maya")!.attendance_status).toBe("unknown");
-    expect(m.participants.find((p) => p.display_name === "Casey")!.attendance_status).toBe("invited_not_confirmed");
+    expect(m.participants.find((p) => p.display_name === "Maya")!.attendance_status).toBe("INVITED_NOT_CONFIRMED");
+    expect(m.participants.find((p) => p.display_name === "Casey")!.attendance_status).toBe("INVITED_NOT_CONFIRMED");
     expect(m.attendance_data_complete).toBe(false);
   });
 
-  it("Test 17: a manual correction wins over transcript inference", () => {
-    const m = buildParticipationMatrix({ transcript_participants: transcriptParticipants, corrections: [{ name: "Jordan", attendance_status: "confirmed_absent" }] }, roster);
+  it("Test 17: a manual correction outranks all other evidence", () => {
+    const m = buildParticipationMatrix({ transcript_participants: transcriptParticipants, corrections: [{ name: "Jordan", attendance_status: "CONFIRMED_ABSENT" }] }, roster);
     const jordan = m.participants.find((p) => p.display_name === "Jordan")!;
-    expect(jordan.attendance_status).toBe("confirmed_absent");
-    expect(jordan.presence_detail).toBe("manually_confirmed");
+    expect(jordan.attendance_status).toBe("CONFIRMED_ABSENT");
+    expect(jordan.sources).toContain("manual_correction");
   });
 
-  it("Webex attendance metadata outranks transcript inference", () => {
+  it("Webex metadata outranks transcript inference: attended + silent -> CONFIRMED_PRESENT_SILENT", () => {
     const m = buildParticipationMatrix({ transcript_participants: [{ name: "Maya", classification: "customer", turnCount: 0 }], webex_attendees: [{ name: "Maya", attended: true }] }, roster);
-    expect(m.participants[0].attendance_status).toBe("confirmed_present");
+    expect(m.participants[0].attendance_status).toBe("CONFIRMED_PRESENT_SILENT");
     expect(m.attendance_data_complete).toBe(true);
+  });
+
+  it("Webex attended + spoke -> CONFIRMED_PRESENT; Webex absent -> CONFIRMED_ABSENT", () => {
+    const present = buildParticipationMatrix({ transcript_participants: [{ name: "Jordan", classification: "customer", turnCount: 2 }], webex_attendees: [{ name: "Jordan", attended: true }] }, roster);
+    expect(present.participants[0].attendance_status).toBe("CONFIRMED_PRESENT");
+    const absent = buildParticipationMatrix({ transcript_participants: [{ name: "Jordan", classification: "customer", turnCount: 2 }], webex_attendees: [{ name: "Jordan", attended: false }] }, roster);
+    // Webex outranks the transcript speaker signal.
+    expect(absent.participants[0].attendance_status).toBe("CONFIRMED_ABSENT");
   });
 });
 

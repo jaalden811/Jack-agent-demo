@@ -1,16 +1,34 @@
 import { matchRosterMember, type Roster, loadRoster } from "@/lib/team-routing/roster";
 
 /**
- * Meeting participation matrix (Phase 5). A transcript proves who SPOKE;
- * it does not prove the full attendee list, and absence from the
- * transcript does not prove absence from the meeting. Confirmed attendance
- * comes only from stronger sources (manual correction > Webex attendance
- * metadata > transcript speaker > invitation roster). Circuit may
- * interpret roles but may not invent attendance.
+ * Meeting participation matrix (Phase 5). Evidence precedence, strongest first:
+ *   manual correction > Webex attendance metadata > transcript speaker > invitation/listing.
+ *
+ * Rules (never violated):
+ *  - a transcript proves who SPOKE, not the full attendee list;
+ *  - an invitation/listing does not prove attendance;
+ *  - absence from the transcript does not prove absence from the meeting;
+ *  - a manual correction outranks all other evidence;
+ *  - Webex metadata outranks transcript inference;
+ *  - with no usable evidence, attendance stays UNKNOWN.
+ *
+ * Circuit may interpret roles but may NEVER invent attendance.
  */
 
-export type AttendanceStatus = "confirmed_present" | "confirmed_absent" | "invited_not_confirmed" | "unknown";
-export type PresenceDetail = "speaker" | "silent_attendee" | "invited_only" | "manually_confirmed" | "unknown";
+export type AttendanceState =
+  /** Transcript shows this person spoke (proves speaking; strong presence signal). */
+  | "SPOKE"
+  /** Webex/manual confirms present AND they spoke. */
+  | "CONFIRMED_PRESENT"
+  /** Webex/manual confirms present but they did not speak. */
+  | "CONFIRMED_PRESENT_SILENT"
+  /** On the invitation/participant list; attendance not confirmed. */
+  | "INVITED_NOT_CONFIRMED"
+  /** Webex/manual confirms absent. */
+  | "CONFIRMED_ABSENT"
+  /** No usable evidence either way. */
+  | "UNKNOWN";
+
 export type InternalExternal = "internal" | "customer" | "partner" | "unknown";
 
 export type ParticipationEntry = {
@@ -21,8 +39,8 @@ export type ParticipationEntry = {
   internal_external: InternalExternal;
   roster_match: "confirmed" | "probable" | "ambiguous" | "none";
   spoke: boolean;
-  attendance_status: AttendanceStatus;
-  presence_detail: PresenceDetail;
+  attendance_status: AttendanceState;
+  /** Ranked evidence sources that produced attendance_status (strongest first). */
   sources: string[];
   confidence: number;
   evidence_ids: string[];
@@ -36,10 +54,28 @@ export type ParticipationMatrix = {
 };
 
 export type TranscriptParticipant = { name: string; title?: string | null; classification: string; turnCount: number };
-export type AttendanceCorrection = { name?: string | null; email?: string | null; attendance_status: AttendanceStatus };
+export type AttendanceCorrection = { name?: string | null; email?: string | null; attendance_status: AttendanceState };
 export type WebexAttendee = { name?: string | null; email?: string | null; attended: boolean };
 
 const SIDE_MAP: Record<string, InternalExternal> = { customer: "customer", vendor: "internal", internal: "internal", partner: "partner", unknown: "unknown" };
+
+type Resolution = { state: AttendanceState; source: string; confidence: number };
+
+/**
+ * Resolves a single person's attendance state by the fixed precedence order.
+ * `listed` means the person appears on the transcript participant/invitation
+ * list (an invitation-level signal that never, by itself, proves attendance).
+ */
+function resolveAttendance(params: { spoke: boolean; listed: boolean; webex?: WebexAttendee; correction?: AttendanceCorrection }): Resolution {
+  if (params.correction) return { state: params.correction.attendance_status, source: "manual_correction", confidence: 1 };
+  if (params.webex) {
+    if (params.webex.attended) return { state: params.spoke ? "CONFIRMED_PRESENT" : "CONFIRMED_PRESENT_SILENT", source: "webex_attendance", confidence: 0.9 };
+    return { state: "CONFIRMED_ABSENT", source: "webex_attendance", confidence: 0.9 };
+  }
+  if (params.spoke) return { state: "SPOKE", source: "transcript_speaker", confidence: 0.8 };
+  if (params.listed) return { state: "INVITED_NOT_CONFIRMED", source: "invitation_listing", confidence: 0.4 };
+  return { state: "UNKNOWN", source: "no_evidence", confidence: 0.3 };
+}
 
 export function buildParticipationMatrix(
   params: {
@@ -66,30 +102,9 @@ export function buildParticipationMatrix(
     const rosterMember = matchRosterMember({ name: p.name }, roster);
     const email = rosterMember?.webex_email ?? rosterMember?.emails[0] ?? null;
 
-    let attendance: AttendanceStatus;
-    let detail: PresenceDetail;
-    const sources: string[] = [];
-
-    const correction = correctionFor(p.name, email);
-    const webexRecord = webexFor(p.name, email);
-    if (correction) {
-      attendance = correction.attendance_status;
-      detail = "manually_confirmed";
-      sources.push("manual_correction");
-    } else if (webexRecord) {
-      attendance = webexRecord.attended ? "confirmed_present" : "confirmed_absent";
-      detail = webexRecord.attended ? (spoke ? "speaker" : "silent_attendee") : "unknown";
-      sources.push("webex_attendance");
-    } else if (spoke) {
-      attendance = "confirmed_present";
-      detail = "speaker";
-      sources.push("transcript_speaker");
-    } else {
-      // Named but never spoke, no metadata: presence is genuinely unknown.
-      attendance = "unknown";
-      detail = "unknown";
-      sources.push("transcript_participant");
-    }
+    // Every transcript participant is at least "listed" (appeared on the
+    // meeting's participant list) — an invitation-level signal.
+    const { state, source, confidence } = resolveAttendance({ spoke, listed: true, webex: webexFor(p.name, email), correction: correctionFor(p.name, email) });
 
     entries.push({
       person_id: rosterMember?.person_id ?? null,
@@ -99,37 +114,36 @@ export function buildParticipationMatrix(
       internal_external: SIDE_MAP[p.classification] ?? "unknown",
       roster_match: rosterMember ? "confirmed" : "none",
       spoke,
-      attendance_status: attendance,
-      presence_detail: detail,
-      sources,
-      confidence: correction ? 1 : webexRecord ? 0.9 : spoke ? 0.8 : 0.3,
+      attendance_status: state,
+      sources: [source],
+      confidence,
       evidence_ids: []
     });
   }
 
-  // Invited-but-not-in-transcript names (roster/invitation only).
+  // Invited-but-not-in-transcript names (invitation/roster only — never proves attendance).
   for (const invited of params.invited_names ?? []) {
     if (entries.some((e) => e.display_name.toLowerCase() === invited.toLowerCase())) continue;
     const rosterMember = matchRosterMember({ name: invited }, roster);
-    const correction = correctionFor(invited, rosterMember?.emails[0] ?? null);
+    const email = rosterMember?.webex_email ?? rosterMember?.emails[0] ?? null;
+    const { state, source, confidence } = resolveAttendance({ spoke: false, listed: true, webex: webexFor(invited, email), correction: correctionFor(invited, email) });
     entries.push({
       person_id: rosterMember?.person_id ?? null,
       display_name: invited,
-      email: rosterMember?.webex_email ?? rosterMember?.emails[0] ?? null,
+      email,
       organization: rosterMember ? "internal" : null,
       internal_external: rosterMember ? "internal" : "unknown",
       roster_match: rosterMember ? "confirmed" : "none",
       spoke: false,
-      attendance_status: correction?.attendance_status ?? "invited_not_confirmed",
-      presence_detail: correction ? "manually_confirmed" : "invited_only",
-      sources: correction ? ["manual_correction"] : ["invitation_roster"],
-      confidence: correction ? 1 : 0.4,
+      attendance_status: state,
+      sources: [source],
+      confidence,
       evidence_ids: []
     });
   }
 
   const attendanceComplete = webex.length > 0 || corrections.length > 0;
-  if (!attendanceComplete) issues.push("attendance metadata unavailable — transcript proves speakers only; silent/absent attendees are unknown");
+  if (!attendanceComplete) issues.push("attendance metadata unavailable — transcript proves speakers only; silent/absent attendees stay INVITED_NOT_CONFIRMED / UNKNOWN");
 
   return { meeting_id: params.meeting_id ?? null, participants: entries, attendance_data_complete: attendanceComplete, issues };
 }

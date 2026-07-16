@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { parse as parseCsv } from "csv-parse/sync";
 
 /**
  * Team roster (Phase 4). Loaded from configuration — no person is
@@ -104,6 +105,34 @@ export function parseRoster(input: unknown): { members: RosterMember[]; issues: 
     });
   }
   return { members, issues };
+}
+
+/** Multi-value CSV columns accept ';'- or '|'-separated values. */
+const CSV_ARRAY_FIELDS = ["emails", "specialties", "product_domains", "accounts", "territories", "notification_channels"] as const;
+
+/**
+ * Parses a roster from CSV text (a header row is required) into validated
+ * members, then delegates to parseRoster for duplicate detection + email
+ * validation — the same guarantees as the JSON importer. Symmetric with
+ * parseRoster so upload/preview accepts either JSON or CSV.
+ */
+export function parseRosterCsv(csvText: string): { members: RosterMember[]; issues: string[] } {
+  let rows: Array<Record<string, string>>;
+  try {
+    rows = parseCsv(csvText, { columns: true, skip_empty_lines: true, trim: true, relax_column_count: true }) as Array<Record<string, string>>;
+  } catch (error) {
+    return { members: [], issues: [`CSV parse error: ${error instanceof Error ? error.message : "unknown error"}`] };
+  }
+  const normalized = rows.map((row) => {
+    const out: Record<string, unknown> = { ...row };
+    for (const field of CSV_ARRAY_FIELDS) {
+      const raw = row[field];
+      out[field] = typeof raw === "string" && raw.length > 0 ? raw.split(/[;|]/).map((s) => s.trim()).filter(Boolean) : [];
+    }
+    if ("active" in row) out.active = String(row.active).trim().toLowerCase() !== "false";
+    return out;
+  });
+  return parseRoster({ members: normalized });
 }
 
 export function activeMembers(roster: Roster = loadRoster()): RosterMember[] {

@@ -64,9 +64,13 @@ function scoreCandidate(member: RosterMember, role: RequiredRole): { score: numb
 }
 
 export function attendanceModeFor(status: string, lane: RosterLane): MessageMode {
+  // Attendance changes the message STYLE, never whether expertise is needed.
   if (lane === "leadership") return "LEADER_SUMMARY";
-  if (status === "confirmed_present") return "ATTENDEE_ACTION_DELTA";
-  if (status === "confirmed_absent") return "ABSENT_FULL_HANDOFF";
+  // Present in the meeting (spoke or confirmed present) -> a concise action delta.
+  if (status === "SPOKE" || status === "CONFIRMED_PRESENT" || status === "CONFIRMED_PRESENT_SILENT") return "ATTENDEE_ACTION_DELTA";
+  // Confirmed absent -> a full handoff.
+  if (status === "CONFIRMED_ABSENT") return "ABSENT_FULL_HANDOFF";
+  // Invited-not-confirmed / unknown -> a contextual handoff (attendance not proven).
   return "UNKNOWN_CONTEXTUAL_HANDOFF";
 }
 
@@ -101,7 +105,7 @@ export function routeActions(params: { requiredRoles: RequiredRole[]; participat
       unfilled_roles.push({ required_role: role.required_role, lane: role.lane, reason: "best match resolved to a customer participant — excluded", fallback_queue: best.member.fallback_queue });
       continue;
     }
-    const attendanceStatus = entry?.attendance_status ?? "unknown";
+    const attendanceStatus = entry?.attendance_status ?? "UNKNOWN";
     const spoke = entry?.spoke ?? false;
 
     routing_decisions.push({

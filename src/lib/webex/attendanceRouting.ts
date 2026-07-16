@@ -81,7 +81,7 @@ export function laneAttendanceFor(routing: LaneRoutingDecision[], matrix: Partic
       p.display_name.toLowerCase() === decision.recipient_name.toLowerCase() ||
       (member && p.display_name.toLowerCase() === member.name.toLowerCase())
     );
-    const attendance_status = entry?.attendance_status ?? "unknown";
+    const attendance_status = entry?.attendance_status ?? "UNKNOWN";
     const spoke = entry?.spoke ?? false;
     const rosterLane = member?.lane ?? decision.lane;
     byLane.set(decision.lane, { lane: decision.lane, attendance_status, spoke, message_mode: attendanceModeFor(attendance_status, rosterLane) });
