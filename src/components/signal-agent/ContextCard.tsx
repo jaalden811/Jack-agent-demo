@@ -16,16 +16,12 @@ export function ContextCard({
   accountOverrideText,
   onAccountOverrideTextChange,
   enrichPublicSignals,
-  onToggleEnrich,
-  useOpenAI,
-  onToggleOpenAI
+  onToggleEnrich
 }: {
   accountOverrideText: string;
   onAccountOverrideTextChange: (value: string) => void;
   enrichPublicSignals: boolean;
   onToggleEnrich: (value: boolean) => void;
-  useOpenAI: boolean;
-  onToggleOpenAI: (value: boolean) => void;
 }) {
   const [csvError, setCsvError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -83,11 +79,6 @@ export function ContextCard({
       <label className="checkbox-row" htmlFor="enrich-signals">
         <input id="enrich-signals" type="checkbox" checked={enrichPublicSignals} onChange={(event) => onToggleEnrich(event.target.checked)} />
         <span>Enrich with public account and stakeholder signals (SerpAPI; optional, never blocks analysis)</span>
-      </label>
-
-      <label className="checkbox-row" htmlFor="use-openai-context">
-        <input id="use-openai-context" type="checkbox" checked={useOpenAI} onChange={(event) => onToggleOpenAI(event.target.checked)} />
-        <span>Use OpenAI semantic matching if configured (falls back to deterministic matching automatically)</span>
       </label>
     </section>
   );

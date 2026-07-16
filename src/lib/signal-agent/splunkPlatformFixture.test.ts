@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 async function runFixture() {
-  return runSignalAgent({ customTranscript: FIXTURE_TEXT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false, useQualification: true } });
+  return runSignalAgent({ customTranscript: FIXTURE_TEXT, options: { useQualification: true } });
 }
 
 describe("Splunk platform rationalization fixture — parser regression (items 1-4)", () => {
@@ -194,7 +194,7 @@ describe("Splunk platform rationalization fixture — deterministic robustness (
   it("27. deterministic mode passes without OpenAI (analysis_mode is deterministic)", async () => {
     const result = await runFixture();
     expect(result.providers.analysis_mode).toBe("deterministic");
-    expect(result.ai_processing.openai_configured).toBe(false);
+    expect(result.ai_processing.ai_provider_configured).toBe(false);
   });
 
   it("28. OpenAI unavailability does not change the deterministic primary mapping", async () => {

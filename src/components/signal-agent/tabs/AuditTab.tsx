@@ -13,12 +13,12 @@ export function AuditTab({ result, status }: { result: SecureNetworkingTriageRes
         </div>
         <div>
           <span className="muted">Semantic mode</span>
-          <p>{result.providers.semantic_mode === "openai_embeddings" ? "OpenAI embeddings" : "Deterministic fallback"}</p>
+          <p>Deterministic engine</p>
         </div>
         <div>
           <span className="muted">Provider status</span>
           <p>
-            OpenAI: {status?.openai.configured ? "configured" : "not configured"} · Search: {status?.search.configured ? "configured" : "not configured"}
+            Circuit: {status?.ai_provider.configured ? (status?.ai_provider.operational ? "operational" : "configured") : "not configured"} · Search: {status?.search.configured ? "configured" : "not configured"}
           </p>
         </div>
         <div>

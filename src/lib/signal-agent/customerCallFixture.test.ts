@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 
 async function runFixture() {
-  return runSignalAgent({ transcriptId: "cross_domain_data_platform", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+  return runSignalAgent({ transcriptId: "cross_domain_data_platform", options: {} });
 }
 
 describe("Customer-call fixture — end-to-end analysis", () => {
@@ -171,9 +171,9 @@ describe("Customer-call fixture — qualification layer (Section 15 regression)"
     expect(result.public_enrichment.configured).toBe(false);
   });
 
-  it("reports ai_processing.openai_configured:false and a fallback_reason in deterministic mode", async () => {
+  it("reports ai_processing.ai_provider_configured:false and a fallback_reason in deterministic mode", async () => {
     const result = await runFixture();
-    expect(result.ai_processing.openai_configured).toBe(false);
+    expect(result.ai_processing.ai_provider_configured).toBe(false);
     expect(result.ai_processing.qualification_synthesis_used).toBe(false);
   });
 

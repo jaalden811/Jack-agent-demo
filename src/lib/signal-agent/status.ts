@@ -1,44 +1,34 @@
 import { getConfig } from "@/lib/config";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { readRecentAuditRecords, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
-import type { OpenAiCapabilityStatus, OpenAiStatus, ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
+import { getCircuitDiagnostics } from "@/lib/circuit/diagnostics";
+import type { AiProviderStatus, ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
 
 /**
  * Server-side operational status for the Signal-to-Action app. Reuses
- * @/lib/config's getConfig() — the same helper the /api/providers/diagnostics
- * route uses — as the single source of truth for what is configured.
+ * @/lib/config's getConfig() as the single source of truth for what is
+ * configured.
  *
- * OpenAI has been removed as a provider: the generative AI provider is Circuit
- * (an additive enhancement layer) and semantic retrieval is deterministic. The
- * `openai` status block is retained as a static "removed" report for backward
- * compatibility of the status wire shape; the Setup/status UI is converted to
- * Circuit diagnostics separately (Phase 11).
+ * The generative AI provider is Circuit (an optional additive enhancement
+ * layer); semantic retrieval is deterministic (no embedding provider). The
+ * `ai_provider` status block is built from the safe Circuit diagnostics
+ * (@/lib/circuit/diagnostics) — never a secret, and no network probe.
  */
 
-/** Static OpenAI status: OpenAI is no longer a provider. No key is read and no
- * network probe is made. */
-function buildOpenAiStatus(): OpenAiStatus {
-  const removed: OpenAiCapabilityStatus = {
-    usable: false,
-    message: "OpenAI has been removed; the AI provider is Circuit (deterministic engine + additive Circuit enhancement).",
-    error: null,
-    last_check: null
-  };
+function buildAiProviderStatus(): AiProviderStatus {
+  const d = getCircuitDiagnostics();
   return {
-    configured: false,
-    embedding_model: "deterministic-local",
-    synthesis_model: "circuit",
-    authentication: removed,
-    embeddings: removed,
-    synthesis: removed,
-    provider_state: {
-      state: "missing",
-      configured: false,
-      authenticated: false,
-      operational: false,
-      requires_key_replacement: false,
-      required_action: "None — OpenAI has been removed; Circuit is the AI provider."
-    }
+    provider: "circuit",
+    configured: d.configured,
+    contract_confirmed: d.contractConfirmed,
+    operational: d.operational,
+    state: d.state,
+    model: d.model,
+    message:
+      d.safeError ??
+      (d.operational
+        ? "Circuit is configured and operational."
+        : "Circuit is an optional enhancement; the deterministic engine is authoritative.")
   };
 }
 
@@ -85,7 +75,7 @@ export async function getSignalAgentStatus(): Promise<SignalAgentStatus> {
   const config = getConfig();
   const catalog = getCatalog();
 
-  const openai = buildOpenAiStatus();
+  const ai_provider = buildAiProviderStatus();
 
   const search: ProviderStatusEntry = !config.SEARCH_API_KEY
     ? {
@@ -115,7 +105,7 @@ export async function getSignalAgentStatus(): Promise<SignalAgentStatus> {
   const auditSummary = await readRecentAuditRecords(1);
 
   return {
-    openai,
+    ai_provider,
     search,
     firecrawl,
     contact_enrichment: contactEnrichment,

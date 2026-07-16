@@ -15,7 +15,7 @@ import { TranscriptParseIncompleteError } from "@/lib/signal-agent/types";
  * correct category family winning based on its own taxonomy evidence).
  */
 
-const OFF = { useOpenAIEmbeddings: false, useOpenAISynthesis: false };
+const OFF = {};
 
 beforeEach(() => {
   delete process.env.OPENAI_API_KEY;

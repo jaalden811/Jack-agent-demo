@@ -1,23 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { GET } from "@/app/api/signal-agent/status/route";
 
-// OpenAI has been removed as a provider. The status route reports a static
-// "removed" OpenAI block (the AI provider is Circuit; semantic retrieval is
-// deterministic) and never probes a network provider for it.
+// The AI provider is Circuit (an optional enhancement). The status route reports
+// a safe, config-derived Circuit block (no secret, no network probe); semantic
+// retrieval is deterministic.
 describe("GET /api/signal-agent/status", () => {
-  it("reports OpenAI as removed/not configured (static, no probe)", async () => {
+  it("reports the Circuit AI-provider block (safe, config-derived)", async () => {
     const response = await GET();
     expect(response.status).toBe(200);
     const json = await response.json();
 
-    expect(json.openai.configured).toBe(false);
-    expect(json.openai.authentication.usable).toBe(false);
-    expect(json.openai.embeddings.usable).toBe(false);
-    expect(json.openai.synthesis.usable).toBe(false);
-    // Deterministic/Circuit — never an OpenAI model.
-    expect(json.openai.embedding_model).toBe("deterministic-local");
-    expect(json.openai.synthesis_model).toBe("circuit");
-    expect(json.openai.provider_state.state).toBe("missing");
+    expect(json.ai_provider.provider).toBe("circuit");
+    // Not configured in this env → optional/non-fatal, never operational.
+    expect(json.ai_provider.configured).toBe(false);
+    expect(json.ai_provider.operational).toBe(false);
+    expect(typeof json.ai_provider.state).toBe("string");
+    expect(typeof json.ai_provider.message).toBe("string");
   });
 
   it("reports the taxonomy as loaded from the Cisco mapping JSON", async () => {

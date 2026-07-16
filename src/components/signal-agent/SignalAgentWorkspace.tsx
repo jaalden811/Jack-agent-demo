@@ -31,7 +31,6 @@ export function SignalAgentWorkspace() {
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const [useOpenAI, setUseOpenAI] = useState(true);
   const [enrichPublicSignals, setEnrichPublicSignals] = useState(false);
   const [enrichPublicSignalsTouched, setEnrichPublicSignalsTouched] = useState(false);
   const [accountOverrideText, setAccountOverrideText] = useState("");
@@ -64,7 +63,7 @@ export function SignalAgentWorkspace() {
   }
 
   function fetchAgentStatus(): Promise<void> {
-    return fetch(`/api/signal-agent/status?useOpenAI=${useOpenAI}`)
+    return fetch(`/api/signal-agent/status`)
       .then((response) => response.json())
       .then((data: SignalAgentStatus) => setAgentStatus(data))
       .catch(() => undefined);
@@ -150,9 +149,7 @@ export function SignalAgentWorkspace() {
           ...payload,
           accountOverride: parseAccountOverride(),
           options: {
-            useOpenAIEmbeddings: useOpenAI,
-            useOpenAISynthesis: useOpenAI,
-            useQualification: useOpenAI,
+            useQualification: true,
             enrichPublicSignals
           }
         })
@@ -214,8 +211,6 @@ export function SignalAgentWorkspace() {
             onAccountOverrideTextChange={setAccountOverrideText}
             enrichPublicSignals={enrichPublicSignals}
             onToggleEnrich={handleToggleEnrich}
-            useOpenAI={useOpenAI}
-            onToggleOpenAI={setUseOpenAI}
           />
           <ReferencePackPanel catalog={catalog} reportLoaded={agentStatus?.reference_report.loaded ?? false} onReload={loadCatalog} />
         </div>

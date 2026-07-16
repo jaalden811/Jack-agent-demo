@@ -91,7 +91,7 @@ export type EmbeddingBundle = {
  * embedding call is made; the deterministic engine is always used. */
 export async function embedTranscript(transcript: IngestedTranscript): Promise<EmbeddingBundle> {
   const chunkTexts = selectRelevantChunks(transcript).map((chunk) => chunk.text);
-  return { mode: "fallback", chunkTexts, chunkEmbeddings: null, warning: null };
+  return { mode: "deterministic", chunkTexts, chunkEmbeddings: null, warning: null };
 }
 
 export type SemanticScoreResult = {

@@ -46,9 +46,9 @@ export function buildDefaultPublicEnrichment(fallbackReason: string | null = nul
   };
 }
 
-export function buildDefaultAiProcessing(openaiConfigured: boolean, embeddingModel: string, synthesisModel: string, fallbackReason: string | null = null): AiProcessingStatus {
+export function buildDefaultAiProcessing(aiProviderConfigured: boolean, embeddingModel: string, synthesisModel: string, fallbackReason: string | null = null): AiProcessingStatus {
   return {
-    openai_configured: openaiConfigured,
+    ai_provider_configured: aiProviderConfigured,
     transcript_extraction_used: false,
     public_evidence_classification_used: false,
     qualification_synthesis_used: false,

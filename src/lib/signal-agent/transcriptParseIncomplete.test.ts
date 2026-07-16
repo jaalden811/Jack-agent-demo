@@ -27,19 +27,19 @@ describe("TRANSCRIPT_PARSE_INCOMPLETE guard", () => {
     // floor (MIN_SENTENCE_CHARS) so almost nothing survives splitting.
     const shortFragment = "Hi. Ok. No. Go. Hm. ";
     const longButSparse = shortFragment.repeat(400); // > 5000 chars, but each "sentence" is far under MIN_SENTENCE_CHARS
-    await expect(runSignalAgent({ customTranscript: longButSparse, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } })).rejects.toThrow(
+    await expect(runSignalAgent({ customTranscript: longButSparse, options: {} })).rejects.toThrow(
       TranscriptParseIncompleteError
     );
   });
 
   it("never rejects a genuinely short transcript (under the character floor)", async () => {
-    const result = await runSignalAgent({ customTranscript: "We have too many consoles and need a unified view.", options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: "We have too many consoles and need a unified view.", options: {} });
     expect(result.executive_summary).toBeTruthy();
   });
 
   it("never rejects a real, substantial transcript with normal sentence density", async () => {
     const text = readFileSync("signal-agent-poc/data/transcripts/splunk_platform_rationalization.txt", "utf8");
-    const result = await runSignalAgent({ customTranscript: text, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } });
+    const result = await runSignalAgent({ customTranscript: text, options: {} });
     expect(result.transcript_diagnostics.sentences_parsed).toBeGreaterThan(100);
   });
 
@@ -49,7 +49,7 @@ describe("TRANSCRIPT_PARSE_INCOMPLETE guard", () => {
     const request = new Request("http://localhost/api/signal-agent/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customTranscript: shortFragment.repeat(400), options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } })
+      body: JSON.stringify({ customTranscript: shortFragment.repeat(400), options: {} })
     });
     const response = await POST(request);
     expect(response.status).toBe(422);

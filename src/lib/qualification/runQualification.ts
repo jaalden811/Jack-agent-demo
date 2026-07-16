@@ -1,3 +1,4 @@
+import { getCircuitConfig, isCircuitConfigured } from "@/lib/circuit/config";
 import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
 import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
 import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
@@ -189,7 +190,7 @@ export async function runQualificationPipeline(params: {
   const aiProcessing: AiProcessingStatus = {
     // The qualification pipeline is deterministic; Circuit enhancement is
     // additive on result.ai_trace and never feeds this authoritative path.
-    openai_configured: false,
+    ai_provider_configured: isCircuitConfigured(getCircuitConfig()),
     transcript_extraction_used: extraction.used,
     public_evidence_classification_used: usedPublicClassification,
     qualification_synthesis_used: extraction.used,

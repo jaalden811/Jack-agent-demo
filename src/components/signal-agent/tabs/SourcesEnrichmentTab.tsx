@@ -18,12 +18,12 @@ export function SourcesEnrichmentTab({ result }: { result: SecureNetworkingTriag
 
   return (
     <div className="tab-content">
-      <h3>OpenAI qualification pipeline</h3>
+      <h3>AI provider (Circuit) qualification pipeline</h3>
       <div className="detail-grid">
         <div>
-          <span className="muted">Configured</span>
+          <span className="muted">Circuit configured</span>
           <p>
-            <StatusPill ok={ai.openai_configured} label={ai.openai_configured ? "Yes" : "No"} />
+            <StatusPill ok={ai.ai_provider_configured} label={ai.ai_provider_configured ? "Yes" : "No"} />
           </p>
         </div>
         <div>

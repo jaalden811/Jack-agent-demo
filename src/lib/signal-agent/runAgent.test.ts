@@ -10,7 +10,7 @@ beforeEach(() => {
   clearAccountsCache();
 });
 
-const OFF = { useOpenAIEmbeddings: false, useOpenAISynthesis: false };
+const OFF = {};
 
 describe("runSignalAgent — HIGH_INTENT demo (collaboration)", () => {
   it("returns HIGH_INTENT or REVIEW with a non-null solution and specialist", async () => {
@@ -19,7 +19,7 @@ describe("runSignalAgent — HIGH_INTENT demo (collaboration)", () => {
     expect(["HIGH_INTENT", "REVIEW"]).toContain(result.executive_summary.verdict);
     expect(result.matches[0].recommended_solutions.length).toBeGreaterThan(0);
     expect(result.recommended_specialists.length).toBeGreaterThan(0);
-    expect(result.providers.semantic_mode).toBe("fallback");
+    expect(result.providers.semantic_mode).toBe("deterministic");
     expect(result.audit.path).toContain("signal_log.jsonl");
   });
 });

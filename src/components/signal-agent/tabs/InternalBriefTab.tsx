@@ -46,12 +46,12 @@ export function InternalBriefTab({ result }: { result: SecureNetworkingTriageRes
 
       {result.providers.synthesis_used ? (
         <p className="muted" style={{ marginTop: 12 }}>
-          This brief was drafted with OpenAI synthesis, grounded only in the transcript and the taxonomy categories already matched
+          This brief was drafted with Circuit synthesis, grounded only in the transcript and the taxonomy categories already matched
           above.
         </p>
       ) : (
         <p className="muted" style={{ marginTop: 12 }}>
-          This brief was drafted deterministically{result.providers.fallback_reason ? ` (${result.providers.fallback_reason})` : ""}.
+          This brief was drafted deterministically{result.providers.fallback_reason ? ` (${result.providers.fallback_reason})` : ""}. Circuit enhancement, when configured, is attached additively to the analysis trace.
         </p>
       )}
     </div>

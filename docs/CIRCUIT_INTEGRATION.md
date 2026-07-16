@@ -140,14 +140,20 @@ Done:
   inference call in the analysis + delivery paths is gone (deterministic engine
   + additive Circuit); the qualification/synthesis/message-synthesis modules and
   the OpenAI client/status/error-normalizer modules are deleted; all `OPENAI_*`
-  config variables are removed; and the `openai` npm package is uninstalled. The
-  status route reports a static "OpenAI removed" block pending the Phase 11 UI
-  conversion. Full suite, lint, typecheck, and build pass with no `openai`
-  dependency.
+  config variables are removed; and the `openai` npm package is uninstalled. Full
+  suite, lint, typecheck, and build pass with no `openai` dependency.
+- **Setup/status UI → Circuit + identifiers retired (Phase 11)**: the status
+  route now exposes an `ai_provider` (Circuit) block built from the safe Circuit
+  diagnostics (@/lib/circuit/diagnostics — no secret, no network probe), and the
+  Setup drawer / TopBar / audit tab render it (with a "Test Circuit" auth +
+  inference action). The residual OpenAI-named identifiers were retired:
+  `SignalAgentStatus.openai` → `ai_provider`, `AiProcessingStatus.openai_configured`
+  → `ai_provider_configured`, the `useOpenAIEmbeddings`/`useOpenAISynthesis` run
+  options removed, and `SemanticMode` collapsed to `"deterministic"`. The OpenAI
+  semantic-matching toggle was removed from the UI (matching is deterministic).
+  Live-verified: the status block reports the real Circuit config
+  (configured/contract-confirmed/operational + model), no secret leaked.
 
-Remaining (tracked, not yet done):
-1. Point the Setup/status UI at Circuit provider diagnostics (Phase 11), and
-   retire the residual OpenAI-named identifiers kept for wire-shape stability
-   (the `openai` status block, `AiProcessingStatus.openai_configured`, the
-   `useOpenAIEmbeddings`/`useOpenAISynthesis` run options, and the
-   `SemanticMode` "openai_embeddings" value — all currently inert).
+The OpenAI→Circuit migration is complete: Circuit is the sole generative-AI
+provider (optional, additive), the deterministic engine is authoritative, and no
+`openai` dependency or `OPENAI_*` configuration remains.
