@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { normalizeSellerProfile } from "@/lib/personalization/profileSchema";
 import { readSellerProfile, resolveActiveSellerProfile, saveSellerProfile } from "@/lib/personalization/profileStore";
+import { recordProductEvent } from "@/lib/analytics/analyticsStore";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,10 +28,12 @@ export async function PUT(request: Request) {
     const existingId = body && typeof body === "object" && "profile_id" in body ? String((body as Record<string, unknown>).profile_id) : null;
     const existing = existingId ? await readSellerProfile(existingId) : null;
     const profile = normalizeSellerProfile(body, existing);
+    const prior = existing ?? (await readSellerProfile(profile.profile_id));
     const result = await saveSellerProfile(profile);
     if (!result.persisted) {
       return NextResponse.json({ error: "Could not persist profile", detail: result.warning }, { status: 500 });
     }
+    await recordProductEvent({ type: prior ? "profile_updated" : "profile_created", profile_id: profile.profile_id, metadata: { completeness: profile.profile_completeness } });
     return NextResponse.json({ profile }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof ZodError) {

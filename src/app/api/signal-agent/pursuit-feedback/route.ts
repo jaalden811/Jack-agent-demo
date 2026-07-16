@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { recordPursuitFeedback, readPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
 import { VALID_PURSUIT_DECISIONS, type PursuitDecision } from "@/lib/opportunity-feedback/types";
+import { recordProductEvent } from "@/lib/analytics/analyticsStore";
+import type { ProductEventType } from "@/lib/analytics/types";
+
+const DECISION_EVENT: Record<PursuitDecision, ProductEventType> = {
+  pursue: "pursue_selected",
+  need_more_information: "need_more_information_selected",
+  not_now: "not_now_selected",
+  pass: "pass_selected"
+};
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -45,6 +54,12 @@ export async function POST(request: Request) {
   });
 
   if (!result.persisted) return NextResponse.json({ error: "Could not persist feedback", detail: result.warning }, { status: 500 });
+
+  // Observable product-value events (never a CRM write).
+  const d = decision as PursuitDecision;
+  await recordProductEvent({ type: DECISION_EVENT[d], run_id: runId, account, profile_id: clampString(body.profile_id, 120), metadata: { opportunity_motion_id: motion } });
+  if (d === "pursue") await recordProductEvent({ type: "action_accepted", run_id: runId, account, profile_id: clampString(body.profile_id, 120), metadata: {} });
+
   return NextResponse.json({ ok: true, feedback: result.feedback }, { headers: { "Cache-Control": "no-store" } });
 }
 

@@ -28,6 +28,7 @@ import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore"
 import { planObjectiveSearch } from "@/lib/objective-search/queryPlanner";
 import { getBudgetState, recordQuerySpend } from "@/lib/objective-search/searchBudget";
 import { SUGGESTED_QUESTIONS } from "@/lib/run-assistant/types";
+import { recordProductEvent } from "@/lib/analytics/analyticsStore";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -538,6 +539,22 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     }
   } catch {
     /* research planning is additive; never blocks a run */
+  }
+
+  // Observable product-value event: was an alert generated or suppressed?
+  try {
+    if (result.personalization) {
+      const nd = result.personalization.notification_decision;
+      await recordProductEvent({
+        type: nd.decision === "suppress" ? "alert_suppressed" : "alert_generated",
+        run_id: result.run_id,
+        account: result.account_resolution?.name ?? result.executive_summary.account ?? null,
+        profile_id: result.personalization.profile_id,
+        metadata: { decision: nd.decision, reason_codes: nd.reason_codes, personal_relevance: result.personalization.personal_relevance.score, objective_ids: result.personalization.search_plan.objective_ids }
+      });
+    }
+  } catch {
+    /* analytics is best-effort */
   }
 
   const auditOutcome = await appendAuditRecord(result);

@@ -6,6 +6,7 @@ import type { WebexDiagnostics, WebexScopeTestResult, WebexStatus } from "@/lib/
 import type { OutlookStatus } from "@/lib/outlook/types";
 import { Modal } from "@/components/signal-agent/Modal";
 import { SellerProfileWizard } from "@/components/signal-agent/SellerProfileWizard";
+import { AnalyticsView } from "@/components/signal-agent/AnalyticsView";
 
 type RoutingConfigResponse = {
   path: string;
@@ -26,7 +27,7 @@ type WebhookStatus = {
   lastEventTranscriptId: string | null;
 };
 
-type SetupStep = "webex" | "outlook" | "routing" | "automation" | "providers" | "profile";
+type SetupStep = "webex" | "outlook" | "routing" | "automation" | "providers" | "profile" | "analytics";
 
 const STEP_LABELS: Record<SetupStep, string> = {
   webex: "1. Webex",
@@ -34,7 +35,8 @@ const STEP_LABELS: Record<SetupStep, string> = {
   routing: "3. Routing",
   automation: "4. Automation",
   providers: "AI providers",
-  profile: "Seller profile"
+  profile: "Seller profile",
+  analytics: "Analytics"
 };
 
 function copyToClipboard(value: string): Promise<boolean> {
@@ -721,6 +723,8 @@ export function SetupDrawer({
       {step === "profile" && (
         <SellerProfileWizard onSaved={() => setMessage("Seller profile saved. Personalization and alert relevance are now active.")} />
       )}
+
+      {step === "analytics" && <AnalyticsView />}
     </Modal>
   );
 }

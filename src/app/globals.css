@@ -1081,7 +1081,10 @@ button:disabled {
 .run-assistant .assistant-log { max-height: 320px; overflow-y: auto; }
 @media (prefers-reduced-motion: reduce) {
   .personalized-details details { transition: none; }
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+.summary-metric { display: flex; flex-direction: column; gap: 2px; }
+.summary-metric strong { font-size: 1.1rem; }
 
 /* ── Integrations panel ──────────────────────────────────────────────── */
 

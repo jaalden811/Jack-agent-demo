@@ -3,6 +3,7 @@ import { z } from "zod";
 import { answerRunQuestion } from "@/lib/run-assistant/assistantService";
 import { recordExchange, readExchanges } from "@/lib/run-assistant/assistantStore";
 import type { RunAssistantContext } from "@/lib/run-assistant/types";
+import { recordProductEvent } from "@/lib/analytics/analyticsStore";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -51,6 +52,8 @@ export async function POST(request: Request) {
 
   const answer = answerRunQuestion(question, run_context as RunAssistantContext, { research });
   const exchange = await recordExchange(run_id, question, answer);
+  await recordProductEvent({ type: "assistant_question_asked", run_id, metadata: { research } });
+  if (research) await recordProductEvent({ type: "public_research_requested", run_id, metadata: {} });
   return NextResponse.json({ exchange }, { headers: { "Cache-Control": "no-store" } });
 }
 
