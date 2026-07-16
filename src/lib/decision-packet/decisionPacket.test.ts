@@ -64,4 +64,35 @@ describe("Decision Packet (additive analytical layer)", () => {
     expect(result.opportunity_scoring.deal_maturity).toBe("SOLUTION_DISCOVERY");
     expect(result.account_resolution.name).toBe("CONTOSO");
   });
+
+  it("extracts the requested workshop structure (scenarios, data sources, timing, procurement gating)", async () => {
+    const result = await run();
+    const wp = result.decision_packet!.workshop_plan;
+    expect(wp.requested).toBe(true);
+    expect(wp.format).toBe("Scenario-based working session");
+    expect(wp.candidate_scenarios.length).toBeGreaterThanOrEqual(2);
+    expect(wp.data_sources.length).toBeGreaterThanOrEqual(1);
+    expect(wp.timing).not.toBeNull();
+    // Customer said procurement does not need to join at this stage.
+    expect(wp.procurement_needed).toBe(false);
+  });
+});
+
+describe("Workshop plan — required participants", () => {
+  const OFF2 = { enrichPublicSignals: false } as const;
+  const TRANSCRIPT = [
+    "Account: Northwind Engineering Group",
+    "00:00 — Dana: What would a good next step look like?",
+    "00:10 — Sam: In our environment a major incident can idle hundreds of specialists. I'd like a working session around two or three scenarios. Architecture, service management, and someone from enterprise risk should join, and we need security architecture, not only operations."
+  ].join("\n");
+
+  it("captures required participants stated in a participation-request context", async () => {
+    const result = await runSignalAgent({ customTranscript: TRANSCRIPT, options: OFF2 });
+    const wp = result.decision_packet!.workshop_plan;
+    expect(wp.requested).toBe(true);
+    const participants = wp.required_participants.map((p) => p.toLowerCase());
+    expect(participants).toContain("service management");
+    expect(participants).toContain("enterprise risk");
+    expect(participants).toContain("security architecture");
+  });
 });

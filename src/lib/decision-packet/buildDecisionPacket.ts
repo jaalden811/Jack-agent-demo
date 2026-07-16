@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
+import { buildWorkshopPlan } from "@/lib/decision-packet/workshopPlan";
 import type { DecisionCriterion, DecisionPacket, ImpactEntry, ObjectionEntry, ObjectionType } from "@/lib/decision-packet/types";
 
 /**
@@ -148,6 +149,7 @@ export function buildDecisionPacket(params: {
   const decision_criteria = extractDecisionCriteria(chunks, taxonomy);
   const objections = extractObjections(params.result, chunks, taxonomy);
   const business_impact = extractBusinessImpact(params.result, params.transcript);
+  const workshop_plan = buildWorkshopPlan(params.result, chunks);
 
   const limitations = [...taxonomy.limitations];
   // Transparency note: when the qualification status under-reads the number of
@@ -166,6 +168,7 @@ export function buildDecisionPacket(params: {
     business_impact,
     decision_criteria,
     objections,
+    workshop_plan,
     evidence_quality: {
       criteria_count: decision_criteria.length,
       objection_count: objections.length,

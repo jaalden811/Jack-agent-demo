@@ -100,6 +100,56 @@ export function DecisionPacketTab({ result }: { result: SecureNetworkingTriageRe
         ))
       )}
 
+      {packet.workshop_plan.requested && (
+        <>
+          <h3>Requested workshop plan</h3>
+          <div className="dp-summary">
+            {packet.workshop_plan.format ? <span className="chip chip-info">{packet.workshop_plan.format}</span> : null}
+            {packet.workshop_plan.procurement_needed === false ? <span className="chip chip-muted">procurement not needed yet</span> : null}
+            {packet.workshop_plan.timing ? <span className="summary-metric muted">Timing: {packet.workshop_plan.timing}</span> : null}
+          </div>
+          {packet.workshop_plan.candidate_scenarios.length > 0 && (
+            <details className="dp-group" open>
+              <summary>
+                Candidate scenarios <span className="muted">({packet.workshop_plan.candidate_scenarios.length})</span>
+              </summary>
+              <ul className="compact-list">
+                {packet.workshop_plan.candidate_scenarios.map((s) => (
+                  <li key={s.scenario_id}>
+                    {s.statement}
+                    {s.data_sources.length > 0 ? (
+                      <span className="muted"> — data: {s.data_sources.join(", ")}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {(packet.workshop_plan.data_sources.length > 0 ||
+            packet.workshop_plan.required_participants.length > 0 ||
+            packet.workshop_plan.data_constraints.length > 0) && (
+            <details className="dp-group">
+              <summary>Data sources, participants &amp; constraints</summary>
+              {packet.workshop_plan.data_sources.length > 0 && (
+                <p>
+                  <strong>Data sources:</strong> {packet.workshop_plan.data_sources.join(", ")}
+                </p>
+              )}
+              {packet.workshop_plan.required_participants.length > 0 && (
+                <p>
+                  <strong>Required participants:</strong> {packet.workshop_plan.required_participants.join(", ")}
+                </p>
+              )}
+              {packet.workshop_plan.data_constraints.length > 0 && (
+                <p>
+                  <strong>Data constraints:</strong> {packet.workshop_plan.data_constraints.join(", ")}
+                </p>
+              )}
+            </details>
+          )}
+        </>
+      )}
+
       <h3>Objections &amp; how to address them</h3>
       {objectionGroups.length === 0 ? (
         <p className="muted">No typed objections were detected in this transcript.</p>

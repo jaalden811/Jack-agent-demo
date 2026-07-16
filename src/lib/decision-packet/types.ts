@@ -37,10 +37,32 @@ export type ImpactEntry = {
   confidence: number;
 };
 
+export type WorkshopScenario = {
+  scenario_id: string;
+  statement: string;
+  speaker: string | null;
+  data_sources: string[];
+  evidence_ids: string[];
+};
+
+export type WorkshopPlan = {
+  requested: boolean;
+  format: string | null;
+  candidate_scenarios: WorkshopScenario[];
+  data_sources: string[];
+  required_participants: string[];
+  data_constraints: string[];
+  timing: string | null;
+  /** true when procurement must engage, false when the customer said it need
+   * not join yet, null when procurement was not addressed. */
+  procurement_needed: boolean | null;
+};
+
 export type DecisionPacket = {
   business_impact: ImpactEntry[];
   decision_criteria: DecisionCriterion[];
   objections: ObjectionEntry[];
+  workshop_plan: WorkshopPlan;
   evidence_quality: {
     criteria_count: number;
     objection_count: number;

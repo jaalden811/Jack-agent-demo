@@ -1,0 +1,39 @@
+{
+  "description": "Generic lexicons for extracting the customer's REQUESTED workshop / working-session structure — candidate scenarios (with the data sources named inside each), the data sources to include, required participants, data constraints, timing, and whether procurement is needed yet. Linguistic shapes/theme terms only — never a company, product, speaker, or specific transcript. Logic lives in src/lib/decision-packet/workshopPlan.ts; this file is editable without code changes.",
+  "version": "1.0",
+  "scenario_cues": [
+    "scenario", "use case", "one should be", "one should involve", "one could be",
+    "recreate the", "the identity case", "the operational case", "for the identity",
+    "for the operational", "for the security", "degraded", "suspicious identity",
+    "regional visibility", "reliability scenario", "investigation scenario", "the bar is"
+  ],
+  "data_source_terms": [
+    "cloud metrics", "application traces", "app traces", "authentication logs", "auth logs",
+    "network experience", "network telemetry", "network activity", "infrastructure metrics",
+    "infrastructure health", "servicenow change", "change records", "change events", "change event",
+    "device posture", "recent access", "vulnerability context", "endpoint data", "identity data",
+    "application logs", "security signals", "telemetry", "traces"
+  ],
+  "participant_request_cues": [
+    "who else should participate", "who should participate", "who else should", "should join",
+    "should participate", "someone from", "should be in the room", "not only operations",
+    "should attend", "who should attend", "bring in", "include"
+  ],
+  "participant_role_terms": [
+    "architecture", "service management", "enterprise risk", "security architecture",
+    "application owner", "operations", "network team", "cloud team", "finance",
+    "vendor management", "procurement", "reliability", "infrastructure", "security team"
+  ],
+  "data_constraint_cues": [
+    "synthetic", "representative data", "limited data", "data access", "data location",
+    "data-location", "data residency", "sovereignty", "credible", "not blocked on data"
+  ],
+  "timing_cues": [
+    "planning cycle", "planning boundary", "next quarter", "late next quarter",
+    "before the next", "next planning", "this quarter", "practical boundary"
+  ],
+  "procurement_not_required_cues": [
+    "procurement does not need to join", "procurement not required", "procurement does not need",
+    "no need for procurement", "procurement does not", "procurement is not"
+  ]
+}
