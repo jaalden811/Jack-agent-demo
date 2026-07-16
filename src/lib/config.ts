@@ -8,22 +8,9 @@ const trimmedString = z
   .transform((v) => (v === "" ? undefined : v));
 
 const envSchema = z.object({
-  OPENAI_API_KEY: trimmedString,
-  // Embeddings (semantic transcript matching, via the OpenAI embeddings
-  // endpoint) and synthesis (executive-brief generation, via the
-  // Responses API) are separate capabilities with separate models — an
-  // embedding-only model such as text-embedding-3-small can never
-  // perform synthesis. OPENAI_MODEL is kept only as a backward-compatible
-  // alias when it unambiguously means "synthesis model" (see below).
-  OPENAI_EMBEDDING_MODEL: z.string().optional().default("text-embedding-3-small"),
-  OPENAI_SYNTHESIS_MODEL: trimmedString,
-  OPENAI_MODEL: trimmedString,
-  OPENAI_QUALIFICATION_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
-  OPENAI_MESSAGE_SYNTHESIS_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
-  OPENAI_PUBLIC_EVIDENCE_CLASSIFICATION_ENABLED: z.string().optional().default("true").transform((v) => v.trim().toLowerCase() !== "false"),
-  OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().optional().default(45_000),
-  OPENAI_MAX_RETRIES: z.coerce.number().optional().default(2),
-  OPENAI_STORE_RESPONSES: z.string().optional().default("false").transform((v) => v.trim().toLowerCase() === "true"),
+  // OpenAI has been removed. The generative AI provider is Circuit (see
+  // @/lib/circuit/config) and semantic transcript matching is deterministic
+  // (no embedding provider). No OPENAI_* variable is read anywhere.
   SEARCH_API_KEY: trimmedString,
   SEARCH_PROVIDER: z.enum(["tavily", "brave", "exa", "serpapi"]).optional().default("tavily"),
 
@@ -102,12 +89,6 @@ const envSchema = z.object({
 // separately requests this full set — see @/lib/webex/scopePolicy.
 const DEFAULT_WEBEX_SCOPES = "spark:people_read spark:messages_write meeting:schedules_read meeting:transcripts_read";
 
-// Documented default synthesis model — a small, fast chat-completion
-// model appropriate for grounded, structured JSON synthesis. Only used
-// when neither OPENAI_SYNTHESIS_MODEL nor the legacy OPENAI_MODEL alias
-// is configured.
-const DEFAULT_SYNTHESIS_MODEL = "gpt-4o-mini";
-
 export function getConfig() {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
@@ -117,12 +98,7 @@ export function getConfig() {
   return {
     ...parsed.data,
     WEBEX_SCOPES: parsed.data.WEBEX_SCOPES ?? DEFAULT_WEBEX_SCOPES,
-    // OPENAI_MODEL is accepted as a backward-compatible alias only for
-    // synthesis — its historical meaning in this codebase was always
-    // "the chat/completions model", never the embedding model.
-    OPENAI_SYNTHESIS_MODEL: parsed.data.OPENAI_SYNTHESIS_MODEL ?? parsed.data.OPENAI_MODEL ?? DEFAULT_SYNTHESIS_MODEL,
     hasSearch: Boolean(parsed.data.SEARCH_API_KEY),
-    hasEmbeddings: Boolean(parsed.data.OPENAI_API_KEY),
     hasFirecrawl: Boolean(parsed.data.FIRECRAWL_API_KEY),
     hasSupabase: Boolean(parsed.data.SUPABASE_URL && parsed.data.SUPABASE_SERVICE_ROLE_KEY),
     hasContactEnrichment: Boolean(

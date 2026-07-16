@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildDiscoveryQueries,
   buildDynamicDiscoveryQueries,
@@ -25,8 +25,6 @@ import {
   synthesizeOrgFit
 } from "@/lib/services";
 import type { KbChunk, ResearchInput, ResearchRun, RunDebugStats, SearchResult } from "@/lib/types";
-
-vi.mock("openai", () => ({ default: vi.fn() }));
 
 // Shared helper for test debug stats fixtures
 const makeDebugStats = (): RunDebugStats => ({

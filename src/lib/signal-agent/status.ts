@@ -1,76 +1,45 @@
 import { getConfig } from "@/lib/config";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { readRecentAuditRecords, AUDIT_LOG_RELATIVE_PATH } from "@/lib/signal-agent/auditLog";
-import { checkOpenAiAuthentication, checkOpenAiEmbeddings, checkOpenAiSynthesis } from "@/lib/signal-agent/openaiStatus";
-import { deriveOpenAiProviderState, type OpenAiSafeClassification } from "@/lib/openai/errorNormalizer";
 import type { OpenAiCapabilityStatus, OpenAiStatus, ProviderStatusEntry, SignalAgentStatus } from "@/lib/signal-agent/types";
 
 /**
- * Server-side operational status for the Signal-to-Solution Triage app.
- * Reuses @/lib/config's getConfig() — the same helper the existing
- * /api/providers/diagnostics route uses — as the single source of truth
- * for what is configured, so this route can never diverge from the
- * homepage's provider diagnostics about what OPENAI_API_KEY/SEARCH_API_KEY
- * actually contain.
+ * Server-side operational status for the Signal-to-Action app. Reuses
+ * @/lib/config's getConfig() — the same helper the /api/providers/diagnostics
+ * route uses — as the single source of truth for what is configured.
  *
- * "configured" = the environment variable is present.
- * "usable" = a live, short-timeout probe against the actual provider
- * succeeded just now. If configured but not usable, `message` states the
- * specific reason (never just "fallback").
+ * OpenAI has been removed as a provider: the generative AI provider is Circuit
+ * (an additive enhancement layer) and semantic retrieval is deterministic. The
+ * `openai` status block is retained as a static "removed" report for backward
+ * compatibility of the status wire shape; the Setup/status UI is converted to
+ * Circuit diagnostics separately (Phase 11).
  */
 
-const NOT_CHECKED: OpenAiCapabilityStatus = { usable: false, message: "not checked", error: null, last_check: null };
-
-async function buildOpenAiStatus(options: { useOpenAI?: boolean }): Promise<OpenAiStatus> {
-  const config = getConfig();
-  const base: OpenAiStatus = {
-    configured: Boolean(config.OPENAI_API_KEY),
-    embedding_model: config.OPENAI_EMBEDDING_MODEL,
-    synthesis_model: config.OPENAI_SYNTHESIS_MODEL,
-    authentication: NOT_CHECKED,
-    embeddings: NOT_CHECKED,
-    synthesis: NOT_CHECKED,
-    provider_state: deriveOpenAiProviderState({ configured: Boolean(config.OPENAI_API_KEY), authenticationOk: false, authenticationClassification: null, operationalOk: false, worstClassification: null })
+/** Static OpenAI status: OpenAI is no longer a provider. No key is read and no
+ * network probe is made. */
+function buildOpenAiStatus(): OpenAiStatus {
+  const removed: OpenAiCapabilityStatus = {
+    usable: false,
+    message: "OpenAI has been removed; the AI provider is Circuit (deterministic engine + additive Circuit enhancement).",
+    error: null,
+    last_check: null
   };
-
-  if (!config.OPENAI_API_KEY) {
-    const notConfigured: OpenAiCapabilityStatus = { usable: false, message: "no configured key", error: null, last_check: new Date().toISOString() };
-    return { ...base, authentication: notConfigured, embeddings: notConfigured, synthesis: notConfigured };
-  }
-
-  if (options.useOpenAI === false) {
-    const disabled: OpenAiCapabilityStatus = { usable: false, message: "disabled by user", error: null, last_check: new Date().toISOString() };
-    return { ...base, authentication: disabled, embeddings: disabled, synthesis: disabled };
-  }
-
-  // Each capability is checked with its own API call so one failing
-  // (e.g. an embedding-only key rejected for synthesis) never masks or
-  // is masked by the other.
-  const [authentication, embeddings, synthesis] = await Promise.all([
-    checkOpenAiAuthentication(config.OPENAI_API_KEY),
-    checkOpenAiEmbeddings(config.OPENAI_API_KEY, config.OPENAI_EMBEDDING_MODEL),
-    checkOpenAiSynthesis(config.OPENAI_API_KEY, config.OPENAI_SYNTHESIS_MODEL)
-  ]);
-
-  // `diagnostic` carries the full Section-8 structured shape
-  // (http_status/error_type/error_code/request_id/retryable/safe_message)
-  // — everything else on these objects stays backward-compatible.
-  const authClassification = (authentication.diagnostic?.safe_classification as OpenAiSafeClassification | undefined) ?? null;
-  // "Operational" for the product's purposes means synthesis works
-  // (the capability that generates messages); embeddings enhances
-  // retrieval but is not required for a useful result.
-  const operationalOk = synthesis.usable;
-  const failing = [authentication.diagnostic, embeddings.diagnostic, synthesis.diagnostic].filter((d) => d && !d.operational && d.safe_classification);
-  const worstClassification = (failing[0]?.safe_classification as OpenAiSafeClassification | undefined) ?? null;
-  const provider_state = deriveOpenAiProviderState({
-    configured: true,
-    authenticationOk: authentication.usable,
-    authenticationClassification: authClassification,
-    operationalOk,
-    worstClassification
-  });
-
-  return { ...base, authentication, embeddings, synthesis, provider_state };
+  return {
+    configured: false,
+    embedding_model: "deterministic-local",
+    synthesis_model: "circuit",
+    authentication: removed,
+    embeddings: removed,
+    synthesis: removed,
+    provider_state: {
+      state: "missing",
+      configured: false,
+      authenticated: false,
+      operational: false,
+      requires_key_replacement: false,
+      required_action: "None — OpenAI has been removed; Circuit is the AI provider."
+    }
+  };
 }
 
 async function probeSearch(apiKey: string, provider: string): Promise<ProviderStatusEntry> {
@@ -112,11 +81,11 @@ async function probeSearch(apiKey: string, provider: string): Promise<ProviderSt
   }
 }
 
-export async function getSignalAgentStatus(options: { useOpenAI?: boolean } = {}): Promise<SignalAgentStatus> {
+export async function getSignalAgentStatus(): Promise<SignalAgentStatus> {
   const config = getConfig();
   const catalog = getCatalog();
 
-  const openai = await buildOpenAiStatus(options);
+  const openai = buildOpenAiStatus();
 
   const search: ProviderStatusEntry = !config.SEARCH_API_KEY
     ? {

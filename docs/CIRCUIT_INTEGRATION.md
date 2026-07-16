@@ -1,16 +1,16 @@
 # Circuit AI Integration
 
-Circuit is the single active generative-AI provider for this application. It
-replaces OpenAI as the reasoning/synthesis layer. Public search (SerpAPI) and
-the deterministic engine are unchanged.
+Circuit is the single active generative-AI provider for this application. It has
+replaced OpenAI as the reasoning/synthesis layer, and the `openai` package has
+been removed. Public search (SerpAPI) and the deterministic engine are unchanged.
 
 > Status: the **provider foundation** (`src/lib/circuit/**`,
 > `src/lib/ai-provider/**`), the **Stage A–D runners**, the **Signal-to-Action
-> additive enhancement**, and the **Market + Buyer Intelligence cutover**
-> (`src/lib/services.ts`) are implemented, tested, and live-verified. Wiring the
-> remaining Signal-to-Action OpenAI call sites through the registry and removing
-> the `openai` dependency are subsequent, separately-verifiable steps (see
-> "Migration status" below).
+> additive enhancement**, the **Market + Buyer Intelligence cutover**
+> (`src/lib/services.ts`), and the **removal of the OpenAI runtime + `openai`
+> dependency** are implemented, tested, and live-verified. The remaining work is
+> the Setup/status UI conversion to Circuit diagnostics (Phase 11) — see
+> "Migration status" below.
 
 ## 1. What Circuit does
 Enriches evidence interpretation, qualification, action planning, specialist
@@ -136,12 +136,18 @@ Done:
   unchanged; attendance only changes HOW each is addressed and the send order.
   Live-verified: a rep who spoke → `ATTENDEE_ACTION_DELTA`, an absent owner →
   `UNKNOWN_CONTEXTUAL_HANDOFF`.
+- **OpenAI runtime removed + `openai` uninstalled (Phase 9)**: every OpenAI
+  inference call in the analysis + delivery paths is gone (deterministic engine
+  + additive Circuit); the qualification/synthesis/message-synthesis modules and
+  the OpenAI client/status/error-normalizer modules are deleted; all `OPENAI_*`
+  config variables are removed; and the `openai` npm package is uninstalled. The
+  status route reports a static "OpenAI removed" block pending the Phase 11 UI
+  conversion. Full suite, lint, typecheck, and build pass with no `openai`
+  dependency.
 
 Remaining (tracked, not yet done):
-1. Route the remaining Signal-to-Action OpenAI call sites
-   (`src/lib/qualification/openai*.ts`, `src/lib/openai/*`,
-   `src/lib/signal-agent/openaiSynthesis.ts`) through the provider registry or
-   remove them in favor of the Circuit stages + deterministic engine.
-3. Remove OpenAI runtime/labels/config/UI and run `npm uninstall openai` once no
-   active imports remain (rename residual `openai`/`OPENAI_*` identifiers).
-4. Point the Setup/status UI at Circuit provider diagnostics.
+1. Point the Setup/status UI at Circuit provider diagnostics (Phase 11), and
+   retire the residual OpenAI-named identifiers kept for wire-shape stability
+   (the `openai` status block, `AiProcessingStatus.openai_configured`, the
+   `useOpenAIEmbeddings`/`useOpenAISynthesis` run options, and the
+   `SemanticMode` "openai_embeddings" value — all currently inert).
