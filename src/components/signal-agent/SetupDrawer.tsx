@@ -85,14 +85,16 @@ export function SetupDrawer({
   onClose,
   status,
   agentStatus,
-  onRefresh
+  onRefresh,
+  initialStep = "webex"
 }: {
   onClose: () => void;
   status: WebexStatus | null;
   agentStatus: SignalAgentStatus | null;
   onRefresh: () => void;
+  initialStep?: SetupStep;
 }) {
-  const [step, setStep] = useState<SetupStep>("webex");
+  const [step, setStep] = useState<SetupStep>(initialStep);
   const [diagnostics, setDiagnostics] = useState<WebexDiagnostics | null>(null);
   const [outlookStatus, setOutlookStatus] = useState<OutlookStatus | null>(null);
   const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null);

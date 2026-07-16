@@ -1035,6 +1035,7 @@ button:disabled {
 
 /* ── Personalized opportunity card + wizard ─────────────────────────────── */
 .personalized-card { border: 1px solid var(--accent, #3b82f6); }
+.first-run-menu { border: 1px solid var(--accent, #3b82f6); }
 .personalized-primary { margin: 10px 0; display: grid; gap: 4px; }
 .personalized-primary p { margin: 2px 0; }
 .personalized-details { margin-top: 12px; display: grid; gap: 6px; }

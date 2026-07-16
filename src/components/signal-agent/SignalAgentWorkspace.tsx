@@ -14,6 +14,7 @@ import { SummaryCard } from "@/components/signal-agent/SummaryCard";
 import { CircuitRunDiagnostic } from "@/components/signal-agent/CircuitRunDiagnostic";
 import { PersonalizedOpportunityCard } from "@/components/signal-agent/PersonalizedOpportunityCard";
 import { RunAssistantPanel } from "@/components/signal-agent/RunAssistantPanel";
+import { FirstRunMenu } from "@/components/signal-agent/FirstRunMenu";
 import { ActionCenter } from "@/components/signal-agent/ActionCenter";
 import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
@@ -199,6 +200,8 @@ export function SignalAgentWorkspace() {
 
       {catalogError && <div className="warning">{catalogError}</div>}
       {runError && <div className="warning">{runError}</div>}
+
+      <FirstRunMenu onConfigured={() => void fetchAgentStatus()} />
 
       <div className="workspace-columns">
         <div className="workspace-column">
