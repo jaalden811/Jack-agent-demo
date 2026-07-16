@@ -1033,6 +1033,42 @@ button:disabled {
   color: var(--warning);
 }
 
+/* ── Personalized opportunity card + wizard ─────────────────────────────── */
+.personalized-card { border: 1px solid var(--accent, #3b82f6); }
+.personalized-primary { margin: 10px 0; display: grid; gap: 4px; }
+.personalized-primary p { margin: 2px 0; }
+.personalized-details { margin-top: 12px; display: grid; gap: 6px; }
+.personalized-details details {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.personalized-details summary { cursor: pointer; font-weight: 600; }
+.personalized-details details[open] summary { margin-bottom: 6px; }
+.pursuit-control { margin: 10px 0; }
+.button.is-selected { outline: 2px solid var(--success); }
+.seller-wizard .wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.seller-wizard .wizard-grid label { display: flex; flex-direction: column; font-size: 0.82rem; gap: 3px; }
+.seller-wizard .wizard-grid input,
+.seller-wizard .wizard-grid select {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-2);
+  border-radius: 6px;
+  color: inherit;
+  padding: 6px 8px;
+}
+.seller-wizard .wizard-fieldset { border: 1px solid var(--surface-2); border-radius: 8px; margin: 10px 0; padding: 8px 12px; }
+.seller-wizard .wizard-fieldset legend { font-weight: 600; font-size: 0.85rem; padding: 0 6px; }
+.seller-wizard .chip label { cursor: pointer; }
+@media (max-width: 720px) {
+  .seller-wizard .wizard-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Integrations panel ──────────────────────────────────────────────── */
 
 .provider-line {
