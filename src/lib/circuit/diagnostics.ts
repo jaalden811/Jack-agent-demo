@@ -1,4 +1,4 @@
-import { getCircuitConfig, isCircuitConfigured, isCircuitContractConfirmed, isCircuitTokenConfigured, missingCircuitConfigKeys } from "@/lib/circuit/config";
+import { getCircuitConfig, isCircuitConfigured, isCircuitContractConfirmed, isCircuitTokenConfigured } from "@/lib/circuit/config";
 import { getCircuitAccessToken, getCircuitTokenState, getLastCircuitTokenError } from "@/lib/circuit/tokenManager";
 import { circuitGenerate } from "@/lib/circuit/client";
 import { circuitErrorCause } from "@/lib/circuit/errorNormalizer";
@@ -43,7 +43,6 @@ export function getCircuitDiagnostics(): CircuitDiagnostics {
   const authenticationAccepted = state === "valid" ? true : lastError ? false : null;
 
   const providerState = deriveProviderState({ credentialsConfigured, contractConfirmed, tokenState: state, lastErrorCause });
-  const missingConfig = missingCircuitConfigKeys(config);
 
   return {
     aiProvider: "circuit",
@@ -51,7 +50,6 @@ export function getCircuitDiagnostics(): CircuitDiagnostics {
     credentialsConfigured,
     contractConfirmed,
     contractVersion: config.contractVersion,
-    missingConfig,
     authenticationAccepted,
     authenticated: state === "valid",
     // Operational requires configuration AND a confirmed contract — an
@@ -67,13 +65,7 @@ export function getCircuitDiagnostics(): CircuitDiagnostics {
     schemaVersion: config.schemaVersion,
     lastAuthenticationTest: null,
     lastInferenceTest: null,
-    safeError: lastError
-      ? lastError.message
-      : missingConfig.length > 0
-        ? `Circuit not fully configured — set these environment variables in your local env file, then restart the dev server: ${missingConfig.join(", ")}`
-        : !contractConfirmed
-          ? "Circuit inference contract is not confirmed (token auth works)."
-          : null
+    safeError: lastError ? lastError.message : !credentialsConfigured ? "Circuit credentials are not configured." : !contractConfirmed ? "Circuit inference contract is not confirmed (token auth works)." : null
   };
 }
 

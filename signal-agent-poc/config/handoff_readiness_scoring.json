@@ -18,13 +18,5 @@
     "delivery_target": 0.02
   },
   "thresholds": { "ready": 75, "ready_with_gaps": 50 },
-  "blocking_dimensions": ["next_action_clarity", "owner_assignment", "problem_clarity"],
-  "qualification_gap_penalty": {
-    "purpose": "Bounded reduction so the readiness score visibly reflects unresolved qualification gaps (a well-formed packet on a poorly-qualified deal is 'ready_with_gaps', not 97). Never drops an actionable packet below the ready_with_gaps floor by itself.",
-    "status_weights": { "MISSING": 1.0, "CONFLICTING": 0.8, "HYPOTHESIS": 0.6, "DISTRIBUTED": 0.5, "PARTIAL": 0.3, "CONFIRMED": 0 },
-    "per_meddpicc_gap": 4,
-    "open_question_weight": 1.5,
-    "open_question_cap": 4,
-    "max": 22
-  }
+  "blocking_dimensions": ["next_action_clarity", "owner_assignment", "problem_clarity"]
 }

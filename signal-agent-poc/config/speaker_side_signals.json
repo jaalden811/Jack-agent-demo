@@ -13,18 +13,7 @@
     { "pattern": "\\b(in|for|at) the next (session|workshop|meeting) we(?:'| wi)?ll\\b", "weight": 1.5 },
     { "pattern": "\\bwe(?:'d| would) (recommend|suggest|propose|position)\\b", "weight": 2 },
     { "pattern": "\\b(happy|glad) to (share|walk through|put together|bring)\\b", "weight": 1.5 },
-    { "pattern": "\\b(where does|how does) [\\w\\s]+ fit\\b", "weight": 1 },
-    { "pattern": "\\b(frame|framing) what prompted\\b", "weight": 2 },
-    { "pattern": "\\bwhat prompted (it|this|the review|the meeting|the conversation)\\b", "weight": 2 },
-    { "pattern": "\\bare you (able to |currently )?(quantif|measur)\\w*\\b", "weight": 1.5 },
-    { "pattern": "\\b(which|who|what|is there)[\\w\\s,'-]{0,40}(executive )?sponsor(ship)?\\b\\??", "weight": 1.5 },
-    { "pattern": "\\bare you (considering|planning|looking at|exploring)[\\w\\s]{0,25}(replac|migrat|consolidat|rip and replace)\\w*\\b", "weight": 2.5 },
-    { "pattern": "\\bwhat would make (a|the|it|this)[\\w\\s]{0,25}(next step|worthwhile|valuable|useful|successful)\\b", "weight": 2.5 },
-    { "pattern": "\\bwho (else )?(should|needs to|would|will|must)[\\w\\s]{0,20}(participate|join|attend|be involved|be in the room)\\b", "weight": 2 },
-    { "pattern": "\\b(is there|what(?:'s| is)|do you have)[\\w\\s]{0,15}(target )?(date|timeline|timeframe|deadline)\\b", "weight": 1.5 },
-    { "pattern": "\\bwhat would (the|an|your)[\\w\\s]{0,25}(executive|leadership|board|cfo|cio|ciso)[\\w\\s]{0,25}(need to see|want|expect|look for)\\b", "weight": 2 },
-    { "pattern": "\\b(how does|what does)[\\w\\s]+affect your (thinking|decision|approach|strategy|plan)\\b", "weight": 1.5 },
-    { "pattern": "\\bis the priority[\\w\\s]+or[\\w\\s]+\\??", "weight": 1.5 }
+    { "pattern": "\\b(where does|how does) [\\w\\s]+ fit\\b", "weight": 1 }
   ],
   "customer_indicators": [
     { "pattern": "\\bour (environment|team|org|organization|company|infrastructure|stack|estate|business|systems?)\\b", "weight": 2 },

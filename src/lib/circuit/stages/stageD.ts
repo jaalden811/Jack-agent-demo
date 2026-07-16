@@ -2,7 +2,6 @@ import { z } from "zod";
 import { runStage } from "@/lib/circuit/stages/stageRunner";
 import { invalidUrls } from "@/lib/circuit/stages/evidenceValidator";
 import type { StageDefinition, StageResult } from "@/lib/circuit/stages/types";
-import type { PersonalizationContext } from "@/lib/personalization/types";
 
 /**
  * Stage D — recipient-specific message synthesis (Phase 6). Circuit drafts
@@ -64,9 +63,6 @@ export type StageDInput = {
   channel_byte_budget: number;
   allowed_urls: string[];
   brief: StageDBrief;
-  /** Safe recipient personalization context — used ONLY for salience/tone;
-   * never invents goal/quota impact and never exposes private compensation. */
-  personalization_context?: PersonalizationContext | null;
   deterministic: StageDOutput;
 };
 
@@ -141,7 +137,6 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
       channel_byte_budget: input.channel_byte_budget,
       allowed_public_source_urls: input.allowed_urls,
       material: input.brief,
-      personalization_context: input.personalization_context ?? null,
       required_sales_skeleton: SALES_SKELETON,
       required_technical_skeleton: TECHNICAL_SKELETON,
       task:
@@ -150,7 +145,6 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
         "technical_webex is the technical owner's message and MUST use exactly these headings in order: '**Account:**', \"**Why you're receiving this**\", '**Customer problem & environment**', '**Customer already told us — do not re-ask**', '**Still unknown**', '**Recommended next actions (you own)**', '**Expected output**', '**Collaborator**', '**Timing**'. " +
         "Under bulleted sections write ONE bullet per provided material item; use material.sales_lane / material.technical_lane for that lane's role_label, why_selected, actions, remaining_questions, expected_output, collaborator, and material.timing for timing. " +
         "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs, and do NOT add a bullet not backed by the material. If a lane's material is too thin, include only what is provided (the system falls back to the deterministic message). " +
-        "If personalization_context is present, use it ONLY to tune salience and tone for the recipient (goals/lane/preferred tone) — never invent goal/quota impact, never expose private compensation, and never add facts not in `material`. " +
         "Use the canonical account name '" + (input.account ?? "the account") + "' in the '**Account:**' line of BOTH messages. " +
         "Use complete sentences and valid Markdown. Do NOT invent URLs (only use allowed_public_source_urls, at most three). Do NOT use truncation ellipses. sales_webex and technical_webex MUST be materially different and each stay within " +
         input.channel_byte_budget + " bytes. " +

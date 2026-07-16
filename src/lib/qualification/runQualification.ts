@@ -54,10 +54,6 @@ export async function runQualificationPipeline(params: {
   verdict: "HIGH_INTENT" | "REVIEW" | "NOISE";
   lifecycleStageGuess: "LAND" | "ADOPT" | "EXPAND" | "RENEW";
   enrichPublicSignals: boolean;
-  /** When true, the objective-aware planner drives live SerpAPI enrichment in
-   * runAgent, so the legacy generic opportunity-fit execution is skipped here
-   * (no duplicate queries). */
-  objectivePlannerHandlesEnrichment?: boolean;
   useQualification: boolean;
   userEnteredAccount?: string | null;
   /** Real generic next-step evidence (workshops, pilots, PoV/PoC,
@@ -219,11 +215,7 @@ export async function runQualificationPipeline(params: {
     detectedTechnologies,
     namedCompetitors,
     mentionsUrgency,
-    enrichmentEnabled: params.enrichPublicSignals,
-    // When the objective-aware planner will drive live SerpAPI execution
-    // (a seller profile is active), skip the legacy generic opportunity-fit
-    // execution so there are no duplicate independent queries.
-    objectivePlannerHandlesEnrichment: params.objectivePlannerHandlesEnrichment ?? false
+    enrichmentEnabled: params.enrichPublicSignals
   });
 
   // "executive" and "finance_vendor_management" (procurement/vendor

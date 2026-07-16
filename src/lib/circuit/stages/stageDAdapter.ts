@@ -3,7 +3,6 @@ import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDInput, StageDOutput, StageDBrief, StageDLane } from "@/lib/circuit/stages/stageD";
-import type { PersonalizationContext } from "@/lib/personalization/types";
 
 /**
  * Builds a Stage D input (+ deterministic-fallback messages) from a run result
@@ -41,7 +40,7 @@ function resolveTiming(result: SecureNetworkingTriageResult, stageC: StageCOutpu
   return "Timing not explicitly stated — confirm the customer's decision/renewal timeline.";
 }
 
-export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: StageCOutput, opts?: { byteBudget?: number; personalizationContext?: PersonalizationContext | null }): StageDInput {
+export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: StageCOutput, opts?: { byteBudget?: number }): StageDInput {
   const account = getCanonicalAccount(result);
   const accountLabel = account.name ?? "the account";
   const allowedUrls = (result.serpapi_signals?.signals ?? []).filter((s) => s.narrative_eligible).map((s) => s.source_url);
@@ -148,7 +147,6 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     channel_byte_budget: opts?.byteBudget ?? DEFAULT_WEBEX_BYTE_BUDGET,
     allowed_urls: allowedUrls,
     brief,
-    personalization_context: opts?.personalizationContext ?? null,
     deterministic
   };
 }

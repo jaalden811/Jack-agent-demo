@@ -15,19 +15,22 @@ import type { PublicSignal } from "@/lib/signal-agent/types";
  * any other internal fact.
  */
 
-/**
- * MIGRATION (objective-aware search): live execution of this legacy generic
- * public-signal query is DISABLED BY DEFAULT. Public opportunity evidence is
- * now controlled solely by the objective-aware planner + execution controller
- * (@/lib/objective-search) feeding result.serpapi_signals → Stage B → the
- * canonical search trace. This function no longer issues an independent
- * duplicate query via the second search-provider client; the reusable client
- * code (@/lib/services.createSearchProviderClient) is preserved for the
- * market-research app. Kept as a no-op stub so the wire shape is unchanged.
- */
 export async function fetchPublicSignals(accountName: string | null, enabled: boolean): Promise<PublicSignal[]> {
-  void accountName;
-  void enabled;
-  void createSearchProviderClient;
-  return [];
+  if (!enabled || !accountName) return [];
+
+  const client = createSearchProviderClient();
+  if (!client) return [];
+
+  try {
+    const results = await client.search({ query: `"${accountName}" network OR security OR IT infrastructure news`, maxResults: 5 });
+    return results.slice(0, 5).map((result) => ({
+      title: result.title,
+      url: result.url,
+      snippet: result.snippet ?? "",
+      relevance: "Public search result for the stated account name — not CRM data, not verified against internal systems."
+    }));
+  } catch {
+    // Search is optional and must never block transcript analysis.
+    return [];
+  }
 }

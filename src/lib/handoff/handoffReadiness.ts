@@ -10,35 +10,11 @@ import type { HandoffReadiness, ReadinessComponent, ReadinessStatus, SpecialistH
  * signal-agent-poc/config/handoff_readiness_scoring.json.
  */
 
-type QualificationGapPenaltyConfig = {
-  status_weights: Record<string, number>;
-  per_meddpicc_gap: number;
-  open_question_weight: number;
-  open_question_cap: number;
-  max: number;
-};
-
 type ReadinessConfig = {
   weights: Record<string, number>;
   thresholds: { ready: number; ready_with_gaps: number };
   blocking_dimensions: string[];
-  qualification_gap_penalty?: QualificationGapPenaltyConfig;
 };
-
-/** Bounded reduction reflecting unresolved MEDDPICC + open-question gaps, so
- * the readiness score is honest about a poorly-qualified deal without
- * dropping a genuinely actionable packet below the ready_with_gaps floor. */
-function qualificationGapPenalty(packet: SpecialistHandoffPacket, config: ReadinessConfig): number {
-  const cfg = config.qualification_gap_penalty;
-  if (!cfg) return 0;
-  let meddGap = 0;
-  for (const dim of Object.values(packet.meddpicc_summary ?? {})) {
-    meddGap += cfg.status_weights[(dim?.status ?? "").toUpperCase()] ?? 0;
-  }
-  const openQ = Math.min(packet.remaining_questions?.length ?? 0, cfg.open_question_cap);
-  const raw = meddGap * cfg.per_meddpicc_gap + openQ * cfg.open_question_weight;
-  return Math.min(cfg.max, raw);
-}
 
 let cached: ReadinessConfig | null = null;
 export function clearHandoffReadinessConfigCache(): void {
@@ -135,18 +111,7 @@ export function computeHandoffReadiness(packet: SpecialistHandoffPacket): Handof
     }
   }
 
-  // Reflect unresolved qualification gaps in the score — bounded so an
-  // actionable packet is never pushed below the ready_with_gaps floor by the
-  // penalty alone (readiness remains "can the specialist act", but a
-  // poorly-qualified deal reads as ready_with_gaps, not a near-perfect score).
-  const penalty = qualificationGapPenalty(packet, config);
-  const floor = config.thresholds.ready_with_gaps;
-  const adjusted = penalty > 0 && total > floor ? Math.max(floor, total - penalty) : total;
-  const rounded = Math.round(adjusted);
-  if (penalty > 0) {
-    components.push({ dimension: "qualification_gaps", score: Math.round((1 - penalty / (config.qualification_gap_penalty?.max || 1)) * 100) / 100, weight: 0, contribution: Math.round(-penalty * 100) / 100, detail: `-${Math.round(penalty)} for unresolved MEDDPICC / open questions` });
-  }
-
+  const rounded = Math.round(total);
   let status: ReadinessStatus;
   if (blocking_gaps.length > 0) status = "blocked";
   else if (rounded >= config.thresholds.ready) status = "ready";

@@ -5,8 +5,6 @@ import type { SignalAgentStatus } from "@/lib/signal-agent/types";
 import type { WebexDiagnostics, WebexScopeTestResult, WebexStatus } from "@/lib/webex/types";
 import type { OutlookStatus } from "@/lib/outlook/types";
 import { Modal } from "@/components/signal-agent/Modal";
-import { SellerProfileWizard } from "@/components/signal-agent/SellerProfileWizard";
-import { AnalyticsView } from "@/components/signal-agent/AnalyticsView";
 
 type RoutingConfigResponse = {
   path: string;
@@ -27,16 +25,14 @@ type WebhookStatus = {
   lastEventTranscriptId: string | null;
 };
 
-type SetupStep = "webex" | "outlook" | "routing" | "automation" | "providers" | "profile" | "analytics";
+type SetupStep = "webex" | "outlook" | "routing" | "automation" | "providers";
 
 const STEP_LABELS: Record<SetupStep, string> = {
   webex: "1. Webex",
   outlook: "2. Outlook",
   routing: "3. Routing",
   automation: "4. Automation",
-  providers: "AI providers",
-  profile: "Seller profile",
-  analytics: "Analytics"
+  providers: "AI providers"
 };
 
 function copyToClipboard(value: string): Promise<boolean> {
@@ -665,12 +661,6 @@ export function SetupDrawer({
                 <span className="muted">Status:</span>
                 <span className="muted">{agentStatus?.ai_provider.message ?? "—"}</span>
               </div>
-              {agentStatus?.ai_provider.missing_config && agentStatus.ai_provider.missing_config.length > 0 && (
-                <div className="provider-line" style={{ fontSize: "0.78rem" }}>
-                  <span className="muted">Missing env vars:</span>
-                  <span className="provider-no" style={{ textAlign: "right" }}>{agentStatus.ai_provider.missing_config.join(", ")}</span>
-                </div>
-              )}
               <p className="muted" style={{ fontSize: "0.78rem", marginTop: 6 }}>
                 Circuit is an optional enhancement; semantic retrieval and the full analysis are deterministic and remain authoritative without it.
               </p>
@@ -719,12 +709,6 @@ export function SetupDrawer({
           </div>
         </div>
       )}
-
-      {step === "profile" && (
-        <SellerProfileWizard onSaved={() => setMessage("Seller profile saved. Personalization and alert relevance are now active.")} />
-      )}
-
-      {step === "analytics" && <AnalyticsView />}
     </Modal>
   );
 }

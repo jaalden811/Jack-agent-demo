@@ -8,7 +8,6 @@ import type { StageAOutput } from "@/lib/circuit/stages/stageA";
 import type { StageBOutput } from "@/lib/circuit/stages/stageB";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDOutput } from "@/lib/circuit/stages/stageD";
-import type { PersonalizationBlock } from "@/lib/personalization/types";
 import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
@@ -26,49 +25,6 @@ export type CircuitStageTraceSummary = {
 /** The AI-enhancement trace attached to every run. When Circuit is
  * unconfigured/unavailable this is { provider: "circuit", enhanced: false
  * } and the deterministic result stands unchanged. */
-/** Which interpretation layer produced the canonical fields this run. */
-export type AnalysisMode = "circuit" | "circuit_partial" | "deterministic_fallback";
-/** Origin of the final recipient messages. */
-export type MessageSource = "circuit_stage_d" | "deterministic_fallback";
-
-/** Safe per-run Circuit diagnostic — surfaced in the run diagnostic panel.
- * Contains NO secrets (never a token, client secret, app key, or URL). */
-export type CircuitRunDiagnostic = {
-  /** Circuit is required for this run (CIRCUIT_REQUIRED=true). */
-  required: boolean;
-  /** Fully configured for inference (token creds + endpoint + app key). */
-  configured: boolean;
-  /** Wire contract confirmed (gates any live call). */
-  contract_confirmed: boolean;
-  /** Auth token was obtained during this run (null when no stage ran). */
-  authenticated: boolean | null;
-  /** At least one inference call succeeded this run (null when none ran). */
-  inference: boolean | null;
-  /** Per-stage outcome: ok | fallback | fail | skipped. */
-  stages: Record<"stage_a" | "stage_b" | "stage_c" | "stage_d", CircuitStageDiagnostic>;
-  /** A one-shot JSON/schema repair was attempted on any stage. */
-  repair_attempted: boolean;
-  /** Any stage fell back to the deterministic path. */
-  fallback_used: boolean;
-  /** First safe error code seen (CIRCUIT_* taxonomy), or null. */
-  safe_error_code: string | null;
-  /** Env-var NAMES still required for Circuit to be operational (never a
-   * value/secret) — empty when fully configured. Lets the run diagnostic
-   * tell the operator exactly what to set when analysis fell back because
-   * Circuit was not configured. */
-  missing_config: string[];
-  /** Set when Circuit was required but a required stage did not produce a
-   * promotable result — the exact stage + safe code the run failed on. */
-  required_failure: { stage: string; code: string } | null;
-};
-
-export type CircuitStageDiagnostic = {
-  status: "ok" | "fallback" | "fail" | "skipped";
-  /** Whether this stage's validated output was promoted into canonical. */
-  promoted: boolean;
-  safe_error_code: string | null;
-};
-
 export type AiTrace = {
   provider: "circuit";
   enhanced: boolean;
@@ -496,10 +452,6 @@ export type AiProviderStatus = {
   model: string | null;
   /** Safe, human-readable status/next-action message (never a secret). */
   message: string;
-  /** Env-var NAMES still required for Circuit to be operational (never a
-   * value/secret) — empty when fully configured. Surfaced in the setup
-   * panel so the operator knows exactly which env vars to add. */
-  missing_config: string[];
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of
@@ -699,49 +651,11 @@ export type SecureNetworkingTriageResult = {
   /** Circuit AI-enhancement trace (additive; deterministic path is
    * authoritative and complete without it). */
   ai_trace: AiTrace;
-  /** Which interpretation layer actually produced the canonical fields:
-   * `circuit` when every required stage passed and its validated output was
-   * promoted; `circuit_partial` when some stages were promoted and others
-   * fell back; `deterministic_fallback` when Circuit did not run (or a
-   * required stage failed and nothing was promoted). Distinct from
-   * `providers.analysis_mode`, which only covers embeddings/legacy synthesis. */
-  analysis_mode: AnalysisMode;
-  /** Origin of the final recipient messages: `circuit_stage_d` when the
-   * quality-valid Stage D draft is used, else `deterministic_fallback`.
-   * Set once messages are built (delivery path); `deterministic_fallback`
-   * until then. */
-  message_source: MessageSource;
-  /** Safe, per-run Circuit diagnostic (never secrets): configuration,
-   * auth/inference reachability, per-stage status, repair/fallback flags,
-   * and a safe error code — so a silent deterministic fallback is always
-   * visible at the run level. */
-  circuit_run: CircuitRunDiagnostic;
   /** Meeting participation matrix (who spoke / attended, matched to the
    * team roster) used for attendance-aware message routing. Optional and
    * additive — computed in the delivery path; null when not yet computed.
    * A transcript proves speakers only; absence is never inferred. */
   meeting_participation?: ParticipationMatrix | null;
-  /** Additive personalization block (seller-goal-aware relevance, goal
-   * impact, notification decision, and a concise opportunity teaser).
-   * Purely a function of this result + the seller profile — it NEVER changes
-   * the deterministic opportunity scores, routing, or evidence identity.
-   * Optional: absent on legacy/unpersonalized runs. */
-  personalization?: PersonalizationBlock | null;
-  /** Local opportunity-thread summary: how this account+motion has evolved
-   * across runs (what changed, prior pursuit decision) so repeat unchanged
-   * opportunities don't create alert fatigue. Additive/optional. */
-  opportunity_thread?: {
-    thread_id: string;
-    previous_run_count: number;
-    material_changes: string[];
-    previous_decision: string | null;
-  } | null;
-  /** Latest pursuit-feedback state for this run (Pursue/Need more/Not now/
-   * Pass) + resulting action status. Additive/optional. */
-  feedback?: { latest_decision: string | null; action_status: string } | null;
-  /** Run-scoped assistant availability + suggested grounded questions.
-   * Additive/optional. */
-  assistant?: { available: boolean; suggested_questions: string[] } | null;
 };
 
 export type GenericDiagnostics = {

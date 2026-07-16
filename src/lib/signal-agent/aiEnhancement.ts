@@ -9,7 +9,6 @@ import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
 import { runStageD } from "@/lib/circuit/stages/stageD";
 import type { StageTrace } from "@/lib/circuit/stages/types";
 import type { AiTrace, CircuitStageTraceSummary, SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
-import type { PersonalizationContext } from "@/lib/personalization/types";
 
 /**
  * Circuit AI-enhancement layer for the Signal-to-Action pipeline (Phases
@@ -45,12 +44,11 @@ function summary(trace: StageTrace): CircuitStageTraceSummary {
   };
 }
 
-export async function enhanceWithCircuit(result: SecureNetworkingTriageResult, opts?: { personalizationContext?: PersonalizationContext | null }): Promise<AiTrace> {
+export async function enhanceWithCircuit(result: SecureNetworkingTriageResult): Promise<AiTrace> {
   // Gate: only run when Circuit is fully configured AND the wire contract
   // is confirmed. Otherwise the deterministic result is authoritative.
   if (!isCircuitConfigured() || !isCircuitContractConfirmed()) return NONE;
 
-  const pctx = opts?.personalizationContext ?? null;
   try {
     const stageA = await runStageA(buildStageAInput(result));
 
@@ -60,15 +58,13 @@ export async function enhanceWithCircuit(result: SecureNetworkingTriageResult, o
     const hasPublicSources = (result.serpapi_signals?.signals ?? []).length > 0;
     const stageB = hasPublicSources ? await runStageB(buildStageBInput(result)) : null;
 
-    // Stage C/D receive the safe recipient personalization context (goals/
-    // lane/relevance) for salience + wording only — never scores/facts.
-    const stageC = await runStageC(buildStageCInput(result, stageA.output, stageB?.output, pctx));
+    const stageC = await runStageC(buildStageCInput(result, stageA.output, stageB?.output));
 
     // Stage D — recipient-specific message drafts, built from the (always
     // populated) Stage C output. If Circuit fails here it falls back to the
     // deterministic Stage D messages; the delivery layer independently
     // re-validates before ever preferring these over the message builder.
-    const stageD = await runStageD(buildStageDInput(result, stageC.output, { personalizationContext: pctx }));
+    const stageD = await runStageD(buildStageDInput(result, stageC.output));
 
     return {
       provider: "circuit",
