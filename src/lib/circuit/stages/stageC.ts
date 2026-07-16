@@ -126,7 +126,11 @@ const stageCDefinition: StageDefinition<StageCInput, StageCOutput> = {
       deterministic_evidence: input.evidence,
       taxonomy_candidates: input.taxonomy_candidates,
       task:
-        "STAGE C — qualification, authority, action, and handoff synthesis. Explain (do NOT change) the supplied existing_scores and deal_maturity. Produce evidence-backed output. Every evidence_ids array must reference ONLY the supplied deterministic_evidence ids (use [] when none). Reject vague actions like 'follow up'. commercial_handoff and technical_handoff MUST differ materially. Do NOT invent evidence, people, or scores. Return ONE JSON object with EXACTLY these keys and item shapes: " +
+        "STAGE C — qualification, authority, action, and handoff synthesis. Explain (do NOT change) the supplied existing_scores and deal_maturity. Produce evidence-backed output. " +
+        "MEDDPICC RULES: qualify from CUSTOMER evidence only. A seller's question NEVER confirms a dimension — do not treat a seller asking about renewal, budget, replacement, competition, or the economic buyer as evidence those exist. Use MISSING when only the seller raised it; DISTRIBUTED when authority is spread with no single named buyer; HYPOTHESIS for a plausible-but-unconfirmed read; PARTIAL when some customer evidence exists but it is incomplete; CONFIRMED only with clear customer evidence. " +
+        "NEXT BEST ACTION: derive it from what the CUSTOMER actually requested or agreed. A customer's cautionary/skeptical statement about a vendor capability (accuracy, maintainability, cost, data access, sovereignty) is a risk/objection — it is NOT the agreed next step, the due basis, or a why-now event. timing_basis must reflect a real customer-stated timing driver. " +
+        "do_not_reask MUST list the specific topics the customer already answered (so the specialist does not re-ask them). remaining_questions MUST list the genuinely unresolved questions. Both must be non-empty when the transcript supports them. " +
+        "Every evidence_ids array must reference ONLY the supplied deterministic_evidence ids (use [] when none). Reject vague actions like 'follow up'. commercial_handoff and technical_handoff MUST differ materially. Do NOT invent evidence, people, or scores. Return ONE JSON object with EXACTLY these keys and item shapes: " +
         JSON.stringify({
           facts: [{ statement: "string", evidence_ids: ["string"] }],
           inferences: [{ statement: "string", evidence_ids: ["string"] }],
