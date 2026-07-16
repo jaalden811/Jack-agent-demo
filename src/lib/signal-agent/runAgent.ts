@@ -313,7 +313,13 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // it will drive enrichment, the legacy generic opportunity-fit execution is
   // skipped (no duplicate queries). Reused for personalization below.
   const sellerProfileForRun = await resolveActiveSellerProfile().catch(() => null);
-  const objectivePlannerHandlesEnrichment = Boolean(sellerProfileForRun) && enrichPublicSignals;
+  // The objective-aware planner is the CANONICAL controller for ALL live
+  // SerpAPI enrichment (with or without a seller profile) — so the legacy
+  // generic opportunity-fit execution is always skipped when enrichment is on.
+  // Without a profile the planner uses a theme-targeted default objective
+  // (conversation themes, never generic earnings queries), and it suppresses
+  // consistently on NOISE / unresolved account.
+  const objectivePlannerHandlesEnrichment = enrichPublicSignals;
 
   const qualification = await runQualificationPipeline({
     transcript,
@@ -481,14 +487,21 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // trace. Public evidence is context/narrative-only (never scoring-eligible),
   // so the deterministic opportunity score is unchanged.
   let objectiveSearchTrace: SearchTrace | null = null;
-  if (sellerProfileForRun && enrichPublicSignals) {
+  if (enrichPublicSignals) {
     try {
+      // Seller goals when a profile exists; otherwise a theme-targeted default
+      // objective so profile-less runs still get conversation-relevant research
+      // through the same planner + budget + cache path (never generic queries).
+      const objectiveIds =
+        sellerProfileForRun && sellerProfileForRun.goals.length > 0
+          ? sellerProfileForRun.goals.map((g) => g.goal_id)
+          : ["general_account_research"];
       const enrichment = await runObjectiveEnrichment({
         account: result.account_resolution?.name ?? result.executive_summary.account ?? null,
         accountDomain: result.account_resolution?.domain ?? null,
         accountStatus: result.account_resolution?.status ?? "unresolved",
         verdict: result.executive_summary.verdict,
-        objectiveIds: sellerProfileForRun.goals.map((g) => g.goal_id),
+        objectiveIds,
         primaryMotion: result.matches[0]?.entry_id ?? "unknown",
         transcriptThemes: result.matches.slice(0, 3).map((m) => m.pain_category).filter(Boolean),
         transcriptSignals: genericSignals.map((s) => s.text)

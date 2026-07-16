@@ -1,3 +1,4 @@
+import { getConfig } from "@/lib/config";
 import { buildExecutableQueries } from "@/lib/objective-search/queryPlanner";
 import { cachedRawKeys } from "@/lib/objective-search/rawCache";
 import { executeObjectiveSearch, type SearchProvider } from "@/lib/objective-search/searchController";
@@ -114,6 +115,16 @@ export async function runObjectiveEnrichment(input: ObjectiveEnrichmentInput): P
   const weak = accepted.filter((s) => s.evidence_class === "weak_signal").length;
   const anyError = trace.items.some((i) => i.safe_error_code);
 
+  // Honest reason when nothing ran: distinguish "SerpAPI is not configured"
+  // from "all objective queries suppressed" (budget/cache/policy).
+  const nothingRan = trace.queries_executed === 0 && trace.raw_cache_hits === 0;
+  const providerNotConfigured = input.providerReadyOverride !== true && !getConfig().hasSerpApi;
+  const notRunReason = nothingRan
+    ? providerNotConfigured
+      ? "SerpAPI is not configured"
+      : "all objective queries suppressed"
+    : null;
+
   const traces: SerpApiSignalQueryTrace[] = trace.items.map((i) => ({
     query_id: i.query_id,
     purpose: i.purpose as QueryPurpose,
@@ -128,8 +139,8 @@ export async function runObjectiveEnrichment(input: ObjectiveEnrichmentInput): P
 
   return {
     serpapi_signals: {
-      status: trace.queries_executed === 0 && trace.raw_cache_hits === 0 ? "not_run" : anyError && accepted.length === 0 ? "failed" : anyError ? "partial" : "completed",
-      reason: trace.queries_executed === 0 && trace.raw_cache_hits === 0 ? "all objective queries suppressed" : null,
+      status: nothingRan ? "not_run" : anyError && accepted.length === 0 ? "failed" : anyError ? "partial" : "completed",
+      reason: notRunReason,
       queries: traces,
       signals: accepted,
       strong_signal_count: strong,

@@ -61,6 +61,19 @@
       "message_fields_affected": ["why_now", "goal_alignment"],
       "relevance_dimensions_affected": ["goal_alignment"],
       "active": true
+    },
+    {
+      "objective_id": "general_account_research",
+      "applicable_taxonomy_categories": [],
+      "required_account_resolution": "probable",
+      "note": "Default objective used when no seller profile/goals exist. Targets the CONVERSATION themes (the matched pain category) — never generic earnings/investor queries — so profile-less runs still get theme-relevant public research through the same planner + budget + cache path.",
+      "query_intents": [
+        { "intent_id": "strategic_priorities", "purpose": "Public strategic/transformation priorities relevant to the conversation themes.", "template": "{account} {transcript_theme} strategy priorities", "required_inputs": ["account"], "optional_inputs": ["transcript_theme"], "accepted_signal_types": ["public_strategic_objectives", "public_transformation_programs"], "max_queries": 1 },
+        { "intent_id": "public_cloud_initiatives", "purpose": "Public initiatives/programs tied to the conversation themes.", "template": "{account} {transcript_theme} modernization initiative", "required_inputs": ["account"], "optional_inputs": ["transcript_theme"], "accepted_signal_types": ["public_cloud_initiatives", "public_transformation_programs", "public_ai_initiatives"], "max_queries": 1 }
+      ],
+      "message_fields_affected": ["why_now", "strategic_alignment"],
+      "relevance_dimensions_affected": ["account_ownership"],
+      "active": true
     }
   ]
 }
