@@ -8,11 +8,10 @@ import { deliverMessages } from "@/lib/webex/delivery";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
-import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
 import { buildMeetingParticipation, laneAttendanceFor, applyAttendanceFraming, orderLanesByAttendance, annotateDeliveryAttendance } from "@/lib/webex/attendanceRouting";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
-import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
+import type { AnalysisLink } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
 
 /**
@@ -94,21 +93,10 @@ function channelKey(lane: WebexLane, channel: "webex" | "email"): string {
 }
 
 // Webex accepts up to 7,439 bytes of markdown. The deterministic brief
-// composes against a ~6,400-byte budget; these ceilings give AI synthesis
+// composes against a ~6,400-byte budget; these ceilings give Circuit Stage D
 // headroom while staying within the provider limit (Phase 13).
 const WEBEX_HARD_CHAR_CEILING = 7000;
 const WEBEX_HARD_BYTE_CEILING = 7439;
-const SYNTHESIS_CHAR_LIMIT = 6400;
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 /** Converts a Stage D email body (Markdown-ish plain text) into safe HTML for
  * Outlook. HTML entities are escaped FIRST (XSS-safe), then `**bold**` markers
@@ -156,27 +144,23 @@ function applyCircuitStageD(params: {
 
 /** Message synthesis for delivery. Precedence: (1) Circuit Stage D drafts
  * (ai_trace.stage_d) when the run was Circuit-enhanced and they pass the
- * delivery quality gate; (2) the legacy OpenAI synthesis (being retired) when
- * enabled/configured and it validates; (3) the already-built deterministic
- * messages/emails. Never blocks delivery on a synthesis failure. */
-async function applyAiMessageSynthesis(params: {
+ * delivery quality gate; (2) the already-built deterministic messages/emails.
+ * Circuit is the only generative provider; when it is unavailable or its drafts
+ * fail the gate, the deterministic builder output is delivered. Never blocks
+ * delivery on a synthesis failure. */
+function applyAiMessageSynthesis(params: {
   result: SecureNetworkingTriageResult;
   routing: ReturnType<typeof buildLaneRouting>;
   runId: string;
   analysisLink: AnalysisLink;
   messages: WebexMessagePreview[];
   emails: EmailMessagePreview[];
-}): Promise<{ messages: WebexMessagePreview[]; emails: EmailMessagePreview[]; used: boolean; fallback_reason: string | null }> {
+}): { messages: WebexMessagePreview[]; emails: EmailMessagePreview[]; used: boolean; fallback_reason: string | null } {
   const salesDecision = params.routing.find((d) => d.lane === "sales");
   const technicalDecision = params.routing.find((d) => d.lane === "technical");
   if (!salesDecision || !technicalDecision) {
     return { messages: params.messages, emails: params.emails, used: false, fallback_reason: "no sales/technical lane routed for this transcript" };
   }
-
-  const publicEvidenceSummaries = (params.result.public_enrichment?.accepted_evidence ?? [])
-    .filter((item) => item.url)
-    .slice(0, 3)
-    .map((item) => ({ title: item.title ?? "Source", url: item.url as string, summary: item.quote_or_snippet }));
 
   // Allowed URLs: the validated public analysis link plus any real
   // SerpAPI source URLs; anything else in an AI message is treated as
@@ -194,66 +178,15 @@ async function applyAiMessageSynthesis(params: {
     requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
   };
 
-  // Circuit Stage D is the primary AI message synthesizer. When the run was
+  // Circuit Stage D is the sole AI message synthesizer. When the run was
   // Circuit-enhanced and Stage D produced quality-valid distinct messages, use
-  // them and skip the legacy OpenAI path entirely.
+  // them; otherwise deliver the deterministic builder output.
   const circuit = applyCircuitStageD({ result: params.result, messages: params.messages, emails: params.emails, qualityContext });
   if (circuit) {
     return { messages: circuit.messages, emails: circuit.emails, used: true, fallback_reason: null };
   }
 
-  const synthesisArgs = {
-    result: params.result,
-    meddpicc: params.result.meddpicc,
-    accountResolution: params.result.account_resolution,
-    namedStakeholders: params.result.stakeholder_analysis.named_stakeholders,
-    salesRecipientName: salesDecision.recipient_name,
-    technicalRecipientName: technicalDecision.recipient_name,
-    analysisLink: params.analysisLink,
-    runId: params.runId,
-    webexCharLimit: SYNTHESIS_CHAR_LIMIT,
-    publicEvidenceSummaries,
-    enabled: true
-  };
-
-  // Section 15: try synthesis, validate; on validation failure retry ONCE
-  // with the failures fed back; if still invalid, fall through to the
-  // rich deterministic messages (recording the reason).
-  let lastFailureReason: string | null = null;
-  let synthesized: SynthesizedMessages | null = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const outcome = await synthesizeQualifiedMessages({ ...synthesisArgs, validationFeedback: attempt === 0 ? undefined : lastFailureReason ? lastFailureReason.split("; ") : undefined });
-    if (!outcome.used || !outcome.messages) {
-      lastFailureReason = outcome.fallback_reason;
-      break; // a provider/parse failure will not be fixed by a retry with feedback
-    }
-    const validation = validateMessageQuality({
-      salesMarkdown: outcome.messages.sales_webex_markdown,
-      technicalMarkdown: outcome.messages.technical_webex_markdown,
-      context: qualityContext
-    });
-    if (validation.valid) {
-      synthesized = outcome.messages;
-      break;
-    }
-    lastFailureReason = `message quality validation failed: ${validation.failures.join("; ")}`;
-  }
-
-  if (!synthesized) {
-    return { messages: params.messages, emails: params.emails, used: false, fallback_reason: lastFailureReason };
-  }
-  const messages = params.messages.map((message) =>
-    message.lane === "sales"
-      ? { ...message, markdown: synthesized.sales_webex_markdown, character_count: synthesized.sales_webex_markdown.length, synthesized_by_ai: true }
-      : { ...message, markdown: synthesized.technical_webex_markdown, character_count: synthesized.technical_webex_markdown.length, synthesized_by_ai: true }
-  );
-  const emails = params.emails.map((email) =>
-    email.lane === "sales"
-      ? { ...email, subject: synthesized.sales_email_subject, html: synthesized.sales_email_html, text: stripHtml(synthesized.sales_email_html), synthesized_by_ai: true }
-      : { ...email, subject: synthesized.technical_email_subject, html: synthesized.technical_email_html, text: stripHtml(synthesized.technical_email_html), synthesized_by_ai: true }
-  );
-
-  return { messages, emails, used: true, fallback_reason: null };
+  return { messages: params.messages, emails: params.emails, used: false, fallback_reason: "Circuit Stage D unavailable or did not pass the quality gate; deterministic messages used." };
 }
 
 function previewOnlyDelivery(

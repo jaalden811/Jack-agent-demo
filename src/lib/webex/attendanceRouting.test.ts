@@ -6,8 +6,9 @@ import {
   orderLanesByAttendance,
   annotateDeliveryAttendance
 } from "@/lib/webex/attendanceRouting";
+import type { LaneAttendance } from "@/lib/webex/attendanceRouting";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
-import type { ChannelDeliveryResult, EmailMessagePreview, LaneRoutingDecision, WebexMessagePreview } from "@/lib/webex/types";
+import type { ChannelDeliveryResult, EmailMessagePreview, LaneRoutingDecision, WebexLane, WebexMessagePreview } from "@/lib/webex/types";
 
 /**
  * Phase 7b: attendance-aware message routing. Recipient SELECTION is unchanged
@@ -66,9 +67,9 @@ describe("laneAttendanceFor", () => {
 
 describe("applyAttendanceFraming", () => {
   it("prepends a mode header and attaches attendance metadata without losing the body", () => {
-    const byLane = new Map([
-      ["sales", { lane: "sales" as const, attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" as const }],
-      ["technical", { lane: "technical" as const, attendance_status: "unknown", spoke: false, message_mode: "UNKNOWN_CONTEXTUAL_HANDOFF" as const }]
+    const byLane = new Map<WebexLane, LaneAttendance>([
+      ["sales", { lane: "sales", attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" }],
+      ["technical", { lane: "technical", attendance_status: "unknown", spoke: false, message_mode: "UNKNOWN_CONTEXTUAL_HANDOFF" }]
     ]);
     const { messages, emails } = applyAttendanceFraming(
       [webexPreview("sales", "SALES-BODY"), webexPreview("technical", "TECH-BODY")],
@@ -91,9 +92,9 @@ describe("applyAttendanceFraming", () => {
 
 describe("orderLanesByAttendance", () => {
   it("orders present-attendee deltas before contextual/absent handoffs", () => {
-    const byLane = new Map([
-      ["technical", { lane: "technical" as const, attendance_status: "unknown", spoke: false, message_mode: "UNKNOWN_CONTEXTUAL_HANDOFF" as const }],
-      ["sales", { lane: "sales" as const, attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" as const }]
+    const byLane = new Map<WebexLane, LaneAttendance>([
+      ["technical", { lane: "technical", attendance_status: "unknown", spoke: false, message_mode: "UNKNOWN_CONTEXTUAL_HANDOFF" }],
+      ["sales", { lane: "sales", attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" }]
     ]);
     const ordered = orderLanesByAttendance([webexPreview("technical", "T"), webexPreview("sales", "S")], byLane);
     expect(ordered.map((m) => m.lane)).toEqual(["sales", "technical"]);
@@ -102,7 +103,7 @@ describe("orderLanesByAttendance", () => {
 
 describe("annotateDeliveryAttendance", () => {
   it("attaches attendance_status + message_mode to delivery results by lane", () => {
-    const byLane = new Map([["sales", { lane: "sales" as const, attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" as const }]]);
+    const byLane = new Map<WebexLane, LaneAttendance>([["sales", { lane: "sales", attendance_status: "confirmed_present", spoke: true, message_mode: "ATTENDEE_ACTION_DELTA" }]]);
     const items: ChannelDeliveryResult[] = [
       { lane: "sales", channel: "webex", recipient_name: "Bella Robinson", recipient_email: null, applicable: true, attempted: true, delivered: true, message_id: "m", status_code: 200, error: null, error_code: null, sent_at: null, delivery_key: "k" }
     ];

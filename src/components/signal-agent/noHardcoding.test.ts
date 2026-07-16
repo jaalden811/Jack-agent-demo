@@ -25,7 +25,6 @@ const FORBIDDEN_LOGIC_IMPORTS = [
   "@/lib/signal-agent/intentExtraction",
   "@/lib/signal-agent/ruleEvaluation",
   "@/lib/signal-agent/commercialSignals",
-  "@/lib/signal-agent/openaiSynthesis",
   "@/lib/signal-agent/publicSignals",
   "@/lib/signal-agent/status",
   "@/lib/webex/client",
