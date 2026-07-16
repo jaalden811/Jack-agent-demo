@@ -8,6 +8,7 @@ import type { StageAOutput } from "@/lib/circuit/stages/stageA";
 import type { StageBOutput } from "@/lib/circuit/stages/stageB";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDOutput } from "@/lib/circuit/stages/stageD";
+import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
 export type CircuitStageTraceSummary = {
@@ -699,6 +700,11 @@ export type SecureNetworkingTriageResult = {
   /** Circuit AI-enhancement trace (additive; deterministic path is
    * authoritative and complete without it). */
   ai_trace: AiTrace;
+  /** Meeting participation matrix (who spoke / attended, matched to the
+   * team roster) used for attendance-aware message routing. Optional and
+   * additive — computed in the delivery path; null when not yet computed.
+   * A transcript proves speakers only; absence is never inferred. */
+  meeting_participation?: ParticipationMatrix | null;
 };
 
 export type GenericDiagnostics = {

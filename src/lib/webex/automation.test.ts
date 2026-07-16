@@ -288,15 +288,16 @@ describe("Circuit Stage D message synthesis in delivery", () => {
 
     const sales = preview.messages.find((m) => m.lane === "sales");
     const technical = preview.messages.find((m) => m.lane === "technical");
-    expect(sales?.markdown).toBe(salesWebex);
+    // Stage D body is preserved (an attendance-mode header is prepended in 7b).
+    expect(sales?.markdown).toContain(salesWebex);
     expect(sales?.synthesized_by_ai).toBe(true);
-    expect(technical?.markdown).toBe(technicalWebex);
+    expect(technical?.markdown).toContain(technicalWebex);
     expect(technical?.synthesized_by_ai).toBe(true);
 
     // Emails also come from Stage D, HTML-escaped (defense-in-depth).
     const salesEmail = preview.emails.find((e) => e.lane === "sales");
     expect(salesEmail?.subject).toBe("Commercial action — Acme Retail");
-    expect(salesEmail?.text).toBe(salesWebex);
+    expect(salesEmail?.text).toContain(salesWebex);
   });
 
   it("falls back to the deterministic builder when Stage D fails the quality gate (identical lanes)", async () => {

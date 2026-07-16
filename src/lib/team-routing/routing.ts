@@ -63,7 +63,7 @@ function scoreCandidate(member: RosterMember, role: RequiredRole): { score: numb
   return { score, reasons };
 }
 
-function attendanceModeFor(status: string, lane: RosterLane): MessageMode {
+export function attendanceModeFor(status: string, lane: RosterLane): MessageMode {
   if (lane === "leadership") return "LEADER_SUMMARY";
   if (status === "confirmed_present") return "ATTENDEE_ACTION_DELTA";
   if (status === "confirmed_absent") return "ABSENT_FULL_HANDOFF";

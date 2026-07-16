@@ -10,6 +10,7 @@ import { sendOutlookEmail } from "@/lib/outlook/send";
 import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
 import { synthesizeQualifiedMessages } from "@/lib/qualification/openaiMessageSynthesis";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
+import { buildMeetingParticipation, laneAttendanceFor, applyAttendanceFraming, orderLanesByAttendance, annotateDeliveryAttendance } from "@/lib/webex/attendanceRouting";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 import type { AnalysisLink, SynthesizedMessages } from "@/lib/qualification/types";
 import type { ChannelDeliveryResult, EmailMessagePreview, PeachtreePilotResult, WebexLane, WebexMessagePreview, WebexTranscriptSource } from "@/lib/webex/types";
@@ -295,17 +296,30 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
-  const previewDelivery = previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this.");
+
+  // Attendance-aware framing (Phase 7b): derive each recipient's meeting
+  // attendance + message mode and frame the messages accordingly. Recipients
+  // are unchanged (still the routed lanes); this only adapts HOW each is
+  // addressed and the ordering.
+  const participation = buildMeetingParticipation(result);
+  result.meeting_participation = participation;
+  const laneAttendance = laneAttendanceFor(routing, participation);
+  const framed = applyAttendanceFraming(synthesis.messages, synthesis.emails, laneAttendance);
+
+  const previewDelivery = annotateDeliveryAttendance(
+    previewOnlyDelivery(routing, runId, "Preview only. Enable auto-send, or use Analyze & Route, to deliver this."),
+    laneAttendance
+  );
   // Re-persist with the now-final analysis_link/messages so the shared
   // results page matches this preview exactly (same runId/token issued
   // above, just richer content).
-  await finalizeRunPersistence({ result, analysisLink, messages: synthesis.messages, delivery: previewDelivery });
+  await finalizeRunPersistence({ result, analysisLink, messages: framed.messages, delivery: previewDelivery });
 
   return {
     lifecycle,
     routing,
-    messages: synthesis.messages,
-    emails: synthesis.emails,
+    messages: framed.messages,
+    emails: framed.emails,
     delivery: previewDelivery,
     routing_config_version: config.metadata.version,
     auto_send_enabled: false
@@ -335,8 +349,17 @@ export async function deliverPeachtreePipeline(
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
-  const messages = synthesis.messages;
-  const emails = synthesis.emails;
+
+  // Attendance-aware framing + send ordering (Phase 7b). Recipients are
+  // unchanged (still the routed lanes); attendance only adapts HOW each is
+  // addressed and the order sends are attempted (present-attendee action
+  // deltas before full/contextual handoffs).
+  const participation = buildMeetingParticipation(result);
+  result.meeting_participation = participation;
+  const laneAttendance = laneAttendanceFor(routing, participation);
+  const framed = applyAttendanceFraming(synthesis.messages, synthesis.emails, laneAttendance);
+  const messages = orderLanesByAttendance(framed.messages, laneAttendance);
+  const emails = orderLanesByAttendance(framed.emails, laneAttendance);
 
   const alreadyProcessed = await getProcessedTranscript(transcriptId);
   const alreadySentKeys = new Set<string>(alreadyProcessed?.lanesSent ?? []);
@@ -415,7 +438,7 @@ export async function deliverPeachtreePipeline(
     });
   }
 
-  const delivery = [...skipped, ...webexResults, ...emailResults];
+  const delivery = annotateDeliveryAttendance([...skipped, ...webexResults, ...emailResults], laneAttendance);
   const newlySucceededKeys = [...webexResults, ...emailResults].filter((item) => item.delivered).map((item) => channelKey(item.lane, item.channel));
 
   await markTranscriptProcessed({

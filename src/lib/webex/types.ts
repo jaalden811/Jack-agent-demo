@@ -1,5 +1,6 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { WebexOAuthErrorCode, ScopeTestStatus } from "@/lib/webex/store";
+import type { MessageMode } from "@/lib/team-routing/routing";
 
 export type WebexLane = "sales" | "technical";
 export type DeliveryChannel = "webex" | "email";
@@ -111,11 +112,15 @@ export type WebexMessagePreview = {
   subject: string;
   markdown: string;
   character_count: number;
-  /** True when OpenAI Stage D produced this content from the structured
-   * qualification object; false when the deterministic template
-   * (@/lib/webex/messageBuilder) was used instead — e.g. OpenAI
-   * disabled/unconfigured/failed. Always safe to send either way. */
+  /** True when Circuit Stage D (or the retired OpenAI Stage D) produced this
+   * content from the structured qualification object; false when the
+   * deterministic template (@/lib/webex/messageBuilder) was used instead.
+   * Always safe to send either way. */
   synthesized_by_ai: boolean;
+  /** Attendance-aware routing (Phase 7b): the recipient's confirmed meeting
+   * attendance and the resulting message mode. Optional/additive. */
+  attendance_status?: string;
+  message_mode?: MessageMode;
 };
 
 export type EmailMessagePreview = {
@@ -126,6 +131,8 @@ export type EmailMessagePreview = {
   html: string;
   text: string;
   synthesized_by_ai: boolean;
+  attendance_status?: string;
+  message_mode?: MessageMode;
 };
 
 /** One delivery attempt/result for a single (lane, channel) pair. The
@@ -150,6 +157,10 @@ export type ChannelDeliveryResult = {
    * 400/404). Lets the UI show why a delivery failed and whether a retry
    * could ever succeed. Null when not attempted or delivered. */
   retryable?: boolean | null;
+  /** Attendance-aware routing (Phase 7b): the recipient's confirmed meeting
+   * attendance and the resulting message mode. Optional/additive. */
+  attendance_status?: string;
+  message_mode?: MessageMode;
 };
 
 /** Full routing + delivery result attached to a Signal Agent run for the
