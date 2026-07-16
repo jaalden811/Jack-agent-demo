@@ -16,6 +16,7 @@ import type {
   CircuitStageTraceSummary,
   SecureNetworkingTriageResult
 } from "@/lib/signal-agent/types";
+import { isObjectionOrSkepticism } from "@/lib/qualification/nextStepPolarity";
 
 /**
  * Promotes VALIDATED Circuit output into the canonical result fields the UI
@@ -82,10 +83,13 @@ function uniq(values: string[]): string[] {
 }
 
 /** Objection / gap lines that must never be presented as an urgency driver
- * ("why now"). Matched generically — not to any specific transcript. */
+ * ("why now"). Objection/skepticism detection is shared with next-step
+ * polarity (generic linguistic shapes in config); the remaining patterns
+ * cover generic missing-evidence gaps. Never tied to a specific transcript. */
 function looksLikeObjectionOrGap(line: string): boolean {
-  return /(become fiction|look impressive in a workshop|no quantified|not (?:been )?quantif|no (?:explicit )?(?:budget|timeline|renewal)|no baseline)/i.test(
-    line
+  return (
+    isObjectionOrSkepticism(line) ||
+    /\b(no quantified|not (?:been )?quantif\w*|no (?:explicit )?(?:budget|timeline|renewal)|no baseline)\b/i.test(line)
   );
 }
 

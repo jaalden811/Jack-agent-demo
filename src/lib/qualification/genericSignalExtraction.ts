@@ -1,6 +1,7 @@
 import type { IngestedTranscript } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { isInterrogative } from "@/lib/signal-agent/speechAct";
+import { isForwardNextStep } from "@/lib/qualification/nextStepPolarity";
 
 /**
  * Generic, domain-agnostic commercial/technical/ownership/next-step
@@ -112,8 +113,15 @@ export function extractGenericSignals(transcript: IngestedTranscript): GenericSi
     // discovery question, not a confirmed customer commercial fact, and
     // must not seed renewal/budget/procurement MEDDPICC evidence.
     const commercialInterrogative = isInterrogative(chunk.text);
+    // Polarity guard (Slice 1a): a sentence can match a next-step shape
+    // ("...in a workshop...", "...a pilot...") while actually being an
+    // objection, a skeptical recollection, or a rejection of that activity.
+    // Such a sentence must not seed a next-step commitment / agreed-next-step
+    // / why-now driver anywhere downstream.
+    const nextStepDisqualified = !isForwardNextStep(chunk.text);
     for (const rule of RULES) {
       if (rule.bucket === "commercial" && commercialInterrogative) continue;
+      if (rule.bucket === "next_steps" && nextStepDisqualified) continue;
       const matches = chunk.text.matchAll(rule.pattern);
       for (const match of matches) {
         const dedupeKey = `${rule.category}::${chunk.index}`;
