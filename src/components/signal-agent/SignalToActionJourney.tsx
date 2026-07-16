@@ -20,6 +20,16 @@ type JourneyStage = {
 
 function deriveStages(result: WebexAutomationRunResult): JourneyStage[] {
   const parser = result.transcript_diagnostics;
+  // Two distinct, legitimate counts: `sentences_parsed` is every speaker's
+  // sentence; `sentence_count` is the customer-attributed subset actually
+  // analyzed for signals. Show both so the numbers reconcile instead of
+  // appearing to contradict each other elsewhere in the UI.
+  const totalSentences = parser?.sentences_parsed ?? 0;
+  const analyzedSentences = result.transcript_meta?.sentence_count ?? totalSentences;
+  const sentenceDetail =
+    analyzedSentences < totalSentences
+      ? `${analyzedSentences} of ${totalSentences} sentences analyzed`
+      : `${totalSentences} sentences`;
   const verdict = result.executive_summary.verdict;
   const account = result.account_resolution;
   const scoring = result.opportunity_scoring;
@@ -33,7 +43,7 @@ function deriveStages(result: WebexAutomationRunResult): JourneyStage[] {
   const serpRan = result.serpapi_signals.status === "completed" || result.serpapi_signals.status === "partial";
 
   return [
-    { label: "Signal capture", status: "completed", detail: `${parser?.turns_parsed ?? 0} turns · ${parser?.sentences_parsed ?? 0} sentences` },
+    { label: "Signal capture", status: "completed", detail: `${parser?.turns_parsed ?? 0} turns · ${sentenceDetail}` },
     {
       label: "Intent evaluation",
       status: verdict === "NOISE" ? "skipped" : "completed",
