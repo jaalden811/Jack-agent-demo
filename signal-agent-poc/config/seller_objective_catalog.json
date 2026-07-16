@@ -1,0 +1,220 @@
+{
+  "metadata": {
+    "purpose": "Data-driven catalog of seller objectives/goals used to personalize opportunity ranking and message emphasis. References existing taxonomy entry ids from cisco_painpoint_solution_map.json (never duplicates the taxonomy). Editable outside React — components render this, they never hard-code objectives.",
+    "version": "1.0.0",
+    "taxonomy_source": "signal-agent-poc/config/cisco_painpoint_solution_map.json"
+  },
+  "measurement_metrics": [
+    "bookings",
+    "revenue",
+    "qualified_pipeline",
+    "new_logos",
+    "account_expansion",
+    "renewals",
+    "cross_sell",
+    "software_attach",
+    "services_attach",
+    "specialist_attach",
+    "strategic_account_penetration",
+    "opportunity_progression",
+    "proof_of_value_conversion",
+    "customer_retention",
+    "time_to_close",
+    "partner_sourced_pipeline"
+  ],
+  "objectives": [
+    {
+      "objective_id": "grow_strategic_accounts",
+      "label": "Grow strategic accounts",
+      "description": "Deepen penetration and expansion within named strategic/enterprise accounts.",
+      "applicable_role_families": ["sales", "leadership", "specialist"],
+      "measurement_types": ["strategic_account_penetration", "account_expansion", "revenue"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["account_importance", "strategic_value", "expansion"],
+      "research_signal_types": ["company_scale", "geographic_expansion", "public_strategic_objectives", "capital_investment"],
+      "default_weight": 1.0,
+      "active": true
+    },
+    {
+      "objective_id": "prioritize_large_enterprise",
+      "label": "Prioritize large enterprise opportunities",
+      "description": "Favor high-value, large-organization opportunities over smaller ones.",
+      "applicable_role_families": ["sales", "leadership"],
+      "measurement_types": ["revenue", "qualified_pipeline"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["account_importance", "opportunity_size", "strategic_value"],
+      "research_signal_types": ["company_scale", "revenue", "employee_count", "site_footprint"],
+      "default_weight": 0.9,
+      "active": true
+    },
+    {
+      "objective_id": "expand_security_portfolio",
+      "label": "Expand the security portfolio",
+      "description": "Grow security detection, identity, and platform motions.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["cross_sell", "software_attach", "specialist_attach"],
+      "compatible_taxonomy_categories": [
+        "soc_detection_response",
+        "siem_compliance",
+        "firewall_policy",
+        "identity_zero_trust",
+        "sase_remote_access",
+        "endpoint_security",
+        "network_detection_response",
+        "cloud_workload_app_security",
+        "ai_security",
+        "ot_security",
+        "phishing_email_dns"
+      ],
+      "message_emphasis": ["security_outcome", "risk", "compliance"],
+      "research_signal_types": ["public_security_initiatives", "regulatory_exposure", "public_incidents"],
+      "default_weight": 1.0,
+      "active": true
+    },
+    {
+      "objective_id": "expand_observability",
+      "label": "Expand observability",
+      "description": "Grow observability, AIOps, and digital-experience motions.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["cross_sell", "software_attach", "specialist_attach"],
+      "compatible_taxonomy_categories": [
+        "cloud_native_observability",
+        "hybrid_onprem_apm",
+        "service_health_aiops",
+        "digital_experience",
+        "extensible_observability"
+      ],
+      "message_emphasis": ["operational_outcome", "resilience", "business_impact"],
+      "research_signal_types": ["public_cloud_initiatives", "public_transformation_programs", "public_ai_initiatives"],
+      "default_weight": 1.0,
+      "active": true
+    },
+    {
+      "objective_id": "drive_networking_refresh",
+      "label": "Drive networking refresh",
+      "description": "Prioritize campus/branch/data-center network modernization.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["bookings", "revenue"],
+      "compatible_taxonomy_categories": [
+        "campus_network_assurance",
+        "wireless_refresh",
+        "enterprise_sdwan",
+        "cloud_managed_network",
+        "data_center_networking",
+        "internet_saas_assurance"
+      ],
+      "message_emphasis": ["modernization", "operational_outcome"],
+      "research_signal_types": ["public_network_modernization", "site_footprint", "capital_investment"],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "objective_id": "drive_renewals",
+      "label": "Drive renewals",
+      "description": "Protect and progress renewal-linked opportunities.",
+      "applicable_role_families": ["sales", "leadership"],
+      "measurement_types": ["renewals", "customer_retention"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["retention", "timing", "risk"],
+      "research_signal_types": ["public_deadlines", "public_leadership_priorities"],
+      "default_weight": 0.85,
+      "active": true
+    },
+    {
+      "objective_id": "identify_competitive_displacement",
+      "label": "Identify competitive displacement",
+      "description": "Surface opportunities to displace an incumbent tool/vendor.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["new_logos", "revenue"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["competitive_context", "differentiation"],
+      "research_signal_types": ["public_partner_announcements", "public_technology_footprint"],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "objective_id": "generate_new_logos",
+      "label": "Generate new logos",
+      "description": "Favor net-new accounts over existing-account expansion.",
+      "applicable_role_families": ["sales"],
+      "measurement_types": ["new_logos", "qualified_pipeline"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["account_importance", "opportunity_size"],
+      "research_signal_types": ["company_scale", "public_hiring_signals", "capital_investment"],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "objective_id": "increase_specialist_engagement",
+      "label": "Increase specialist engagement",
+      "description": "Pull the right technical specialist into qualified motions earlier.",
+      "applicable_role_families": ["specialist", "leadership"],
+      "measurement_types": ["specialist_attach", "proof_of_value_conversion"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["technical_fit", "workshop_scope"],
+      "research_signal_types": ["public_technology_footprint", "public_ai_initiatives"],
+      "default_weight": 0.6,
+      "active": true
+    },
+    {
+      "objective_id": "increase_software_adoption",
+      "label": "Increase software adoption",
+      "description": "Prioritize software attach and consumption growth.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["software_attach", "account_expansion"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["software_value", "expansion"],
+      "research_signal_types": ["public_cloud_initiatives", "public_ai_initiatives"],
+      "default_weight": 0.6,
+      "active": true
+    },
+    {
+      "objective_id": "improve_pipeline_velocity",
+      "label": "Improve pipeline velocity",
+      "description": "Favor opportunities that can progress quickly.",
+      "applicable_role_families": ["sales", "leadership"],
+      "measurement_types": ["opportunity_progression", "time_to_close"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["timing", "actionability"],
+      "research_signal_types": ["public_deadlines", "public_leadership_priorities"],
+      "default_weight": 0.6,
+      "active": true
+    },
+    {
+      "objective_id": "prioritize_funded_projects",
+      "label": "Prioritize funded projects",
+      "description": "Favor opportunities with credible funding/budget context.",
+      "applicable_role_families": ["sales", "leadership"],
+      "measurement_types": ["qualified_pipeline", "bookings"],
+      "compatible_taxonomy_categories": [],
+      "message_emphasis": ["timing", "business_impact"],
+      "research_signal_types": ["capital_investment", "public_transformation_programs", "public_deadlines"],
+      "default_weight": 0.75,
+      "active": true
+    },
+    {
+      "objective_id": "prioritize_ai_initiatives",
+      "label": "Prioritize AI initiatives",
+      "description": "Favor opportunities tied to AI infrastructure or AI security.",
+      "applicable_role_families": ["sales", "specialist"],
+      "measurement_types": ["software_attach", "qualified_pipeline"],
+      "compatible_taxonomy_categories": ["ai_infrastructure", "ai_security"],
+      "message_emphasis": ["ai_outcome", "modernization"],
+      "research_signal_types": ["public_ai_initiatives", "capital_investment"],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "objective_id": "prioritize_regulatory_security_urgency",
+      "label": "Prioritize regulatory / security urgency",
+      "description": "Favor opportunities driven by regulatory or security urgency.",
+      "applicable_role_families": ["sales", "specialist", "leadership"],
+      "measurement_types": ["qualified_pipeline", "customer_retention"],
+      "compatible_taxonomy_categories": ["siem_compliance", "ot_security", "identity_zero_trust"],
+      "message_emphasis": ["risk", "compliance", "timing"],
+      "research_signal_types": ["regulatory_exposure", "public_incidents", "public_deadlines"],
+      "default_weight": 0.75,
+      "active": true
+    }
+  ]
+}

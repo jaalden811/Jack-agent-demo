@@ -8,6 +8,7 @@ import type { StageAOutput } from "@/lib/circuit/stages/stageA";
 import type { StageBOutput } from "@/lib/circuit/stages/stageB";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDOutput } from "@/lib/circuit/stages/stageD";
+import type { PersonalizationBlock } from "@/lib/personalization/types";
 import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
@@ -720,6 +721,12 @@ export type SecureNetworkingTriageResult = {
    * additive — computed in the delivery path; null when not yet computed.
    * A transcript proves speakers only; absence is never inferred. */
   meeting_participation?: ParticipationMatrix | null;
+  /** Additive personalization block (seller-goal-aware relevance, goal
+   * impact, notification decision, and a concise opportunity teaser).
+   * Purely a function of this result + the seller profile — it NEVER changes
+   * the deterministic opportunity scores, routing, or evidence identity.
+   * Optional: absent on legacy/unpersonalized runs. */
+  personalization?: PersonalizationBlock | null;
 };
 
 export type GenericDiagnostics = {

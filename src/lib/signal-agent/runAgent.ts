@@ -21,6 +21,8 @@ import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
 import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
 import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
+import { buildPersonalizationBlock } from "@/lib/personalization/buildPersonalization";
+import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -457,6 +459,18 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
       technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
     };
+  }
+
+  // Additive personalization layer (seller-goal-aware relevance, goal impact,
+  // notification decision, concise teaser). Purely a function of the final
+  // result + the active seller profile — never changes deterministic scores,
+  // routing, or evidence identity. No-op-safe when no profile exists.
+  try {
+    const sellerProfile = await resolveActiveSellerProfile();
+    const verifiedOpportunityValue = account.openOpportunity && account.dealValue > 0 ? account.dealValue : null;
+    result.personalization = buildPersonalizationBlock({ result, profile: sellerProfile, verifiedOpportunityValue });
+  } catch {
+    result.personalization = null;
   }
 
   const auditOutcome = await appendAuditRecord(result);
