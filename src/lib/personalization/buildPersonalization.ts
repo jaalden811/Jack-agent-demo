@@ -1,4 +1,4 @@
-import { buildOpportunityTeaser } from "@/lib/notifications/personalizedTeaser";
+import { buildOpportunityTeaser, buildRecipientTeasers } from "@/lib/notifications/personalizedTeaser";
 import { decideNotification, type NotificationExtras } from "@/lib/notifications/notificationPolicy";
 import { buildPersonalizationContext, relevanceInputFromResult } from "@/lib/personalization/contextBuilder";
 import { computeGoalImpact, unavailableGoalImpact } from "@/lib/personalization/goalImpact";
@@ -73,6 +73,7 @@ export function buildPersonalizationBlock(params: {
     goal_impact: goalImpact,
     notification_decision: decideNotification({ result, relevance, profile, extras: params.extras }),
     opportunity_teaser: buildOpportunityTeaser({ result, profile, relevance, goalImpact, forOwner: true }),
+    recipient_teasers: buildRecipientTeasers({ result, profile, relevance, goalImpact }),
     search_plan: { objective_ids: profile.goals.map((g) => g.goal_id), queries_planned: 0, queries_executed: 0, cache_hits: 0, budget_remaining: 0 }
   };
 }

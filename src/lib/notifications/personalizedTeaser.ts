@@ -37,6 +37,75 @@ function goalAlignmentText(relevance: PersonalRelevance): string | null {
   return `Supports: ${aligned.slice(0, 2).join(", ")}.`;
 }
 
+export type RecipientLane = "sales" | "technical" | "leadership";
+
+/** Attendance-aware framing note derived from meeting participation (neutral
+ * when unknown). Generic — never a person's name. */
+function attendanceFrame(status: string | undefined): string {
+  switch ((status ?? "").toUpperCase()) {
+    case "SPOKE":
+    case "CONFIRMED_PRESENT":
+    case "CONFIRMED_PRESENT_SILENT":
+      return "You were on the call — this is an action delta, not a full re-brief.";
+    case "CONFIRMED_ABSENT":
+      return "You were not on the call — full synchronized handoff below.";
+    default:
+      return "Attendance unconfirmed — full context handoff below.";
+  }
+}
+
+/**
+ * Per-recipient teasers with lane-specific emphasis (S9). Sales emphasizes
+ * account importance/goal/commercial next step; technical emphasizes
+ * environment/architecture/workshop scope; leadership emphasizes pursuit
+ * recommendation/risk/decision. Owner-only goal impact (never leaked to other
+ * recipients). Sales and technical are materially different. No generic
+ * name-substituted reuse.
+ */
+export function buildRecipientTeasers(params: {
+  result: SecureNetworkingTriageResult;
+  profile: SellerProfile | null;
+  relevance: PersonalRelevance;
+  goalImpact: GoalImpact;
+  attendanceByLane?: Partial<Record<RecipientLane, string>>;
+}): Record<RecipientLane, OpportunityTeaser> {
+  const { result, profile, relevance, goalImpact } = params;
+  const base = buildOpportunityTeaser({ result, profile, relevance, goalImpact, forOwner: true });
+  const ownerLane = (profile?.lane ?? "sales") as RecipientLane;
+  const sales = result.specialist_handoffs?.sales;
+  const tech = result.specialist_handoffs?.technical;
+  const nba = result.next_best_action;
+
+  const make = (lane: RecipientLane, over: Partial<OpportunityTeaser>): OpportunityTeaser => ({
+    ...base,
+    // Owner-only goal impact — never leak to a non-owner lane.
+    goal_impact: lane === ownerLane ? base.goal_impact : null,
+    limitation: params.attendanceByLane?.[lane] ? attendanceFrame(params.attendanceByLane[lane]) : base.limitation,
+    ...over
+  });
+
+  return {
+    sales: make("sales", {
+      why_you: "Commercial owner: account importance, goal alignment, and the commercial next step.",
+      recommended_action: base.recommended_action,
+      expected_output: (sales?.expected_deliverables ?? [])[0] ?? base.expected_output,
+      evidence_points: (sales?.business_context ?? []).slice(0, 3).map((t) => ({ text: t, evidence_ids: [] })) || base.evidence_points
+    }),
+    technical: make("technical", {
+      why_you: "Technical owner: customer problem, current environment, architecture fit, and workshop scope.",
+      recommended_action: nba?.summary?.trim() ? firstSentence(nba.summary) : base.recommended_action,
+      expected_output: (tech?.expected_deliverables ?? [])[0] ?? "Validated data sources + pass/fail criteria for the scenarios.",
+      evidence_points: (tech?.current_environment ?? []).slice(0, 3).map((t) => ({ text: t, evidence_ids: [] }))
+    }),
+    leadership: make("leadership", {
+      why_you: "Leadership: strategic importance, resource requirement, and the pursuit decision.",
+      recommended_action: `Decide pursuit + owner coverage for ${base.account} (${result.executive_summary.verdict}).`,
+      expected_output: "A go/hold decision and confirmed owner coverage.",
+      evidence_points: ((result.opportunity_scoring ? [`Pursuit: ${result.executive_summary.verdict}`] : []) as string[]).map((t) => ({ text: t, evidence_ids: [] }))
+    })
+  };
+}
+
 export function buildOpportunityTeaser(params: {
   result: SecureNetworkingTriageResult;
   profile: SellerProfile | null;

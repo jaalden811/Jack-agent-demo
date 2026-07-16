@@ -184,6 +184,9 @@ export type PersonalizationBlock = {
   goal_impact: GoalImpact;
   notification_decision: NotificationDecision;
   opportunity_teaser: OpportunityTeaser;
+  /** Per-recipient teasers with lane-specific emphasis (owner-only goal
+   * impact). Sales and technical are materially different. */
+  recipient_teasers?: Record<"sales" | "technical" | "leadership", OpportunityTeaser>;
   search_plan: {
     objective_ids: string[];
     queries_planned: number;

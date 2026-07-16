@@ -3,7 +3,7 @@ import { listObjectives, loadObjectiveCatalog, getObjective } from "@/lib/person
 import { normalizeSellerProfile, toSafeProfile, profileIdFor } from "@/lib/personalization/profileSchema";
 import { computePersonalRelevance, unavailableRelevance, type RelevanceInput } from "@/lib/personalization/relevanceScore";
 import { computeGoalImpact } from "@/lib/personalization/goalImpact";
-import { buildOpportunityTeaser } from "@/lib/notifications/personalizedTeaser";
+import { buildOpportunityTeaser, buildRecipientTeasers } from "@/lib/notifications/personalizedTeaser";
 import { validateTeaser } from "@/lib/notifications/messageQualityGate";
 import { decideNotification } from "@/lib/notifications/notificationPolicy";
 import type { SellerProfile } from "@/lib/personalization/types";
@@ -164,6 +164,18 @@ describe("opportunity teaser + quality gate", () => {
     const nonOwner = buildOpportunityTeaser({ result: teaserResult, profile: p, relevance: rel, goalImpact: impact, forOwner: false });
     expect(nonOwner.goal_impact).toBeNull();
     expect(JSON.stringify(nonOwner)).not.toContain("annual target");
+  });
+
+  it("per-recipient teasers: sales and technical differ; only the owner sees goal impact", () => {
+    const p = profile({ lane: "sales", compensation_context: { annual_target: 1_000_000, current_attainment: null, currency: "USD", pipeline_coverage_target: null, minimum_opportunity_value: null, private: true } });
+    const rel = computePersonalRelevance(relevanceInput(), p);
+    const impact = computeGoalImpact({ profile: p, verifiedOpportunityValue: 250_000, accountStatus: "confirmed" });
+    const teasers = buildRecipientTeasers({ result: teaserResult, profile: p, relevance: rel, goalImpact: impact });
+    expect(teasers.sales.why_you).not.toEqual(teasers.technical.why_you);
+    expect(teasers.sales.goal_impact).not.toBeNull(); // owner lane
+    expect(teasers.technical.goal_impact).toBeNull(); // non-owner
+    expect(teasers.leadership.goal_impact).toBeNull();
+    expect(JSON.stringify(teasers.technical)).not.toContain("annual target");
   });
 
   it("gate rejects a vague action and missing why-you", () => {
