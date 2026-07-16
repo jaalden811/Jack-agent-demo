@@ -12,7 +12,7 @@ function baseInputs(overrides: Partial<AccountResolutionInputs> = {}): AccountRe
     outlookEventSubject: null,
     customerParticipantEmailDomains: [],
     transcriptDialogueText: [],
-    openAiAccountCandidates: [],
+    aiAccountCandidates: [],
     ...overrides
   };
 }
@@ -43,7 +43,7 @@ describe("Test 3: email domain contributes to account resolution", () => {
     const result = resolveAccount(
       baseInputs({
         customerParticipantEmailDomains: ["acmeretail.com", "gmail.com"],
-        openAiAccountCandidates: [{ name: "Acme Retail", domain: "acmeretail.com", confidence: 0.6, evidence_ids: ["stage_a"] }]
+        aiAccountCandidates: [{ name: "Acme Retail", domain: "acmeretail.com", confidence: 0.6, evidence_ids: ["stage_a"] }]
       })
     );
     // Two independent weak sources pointing at the same domain still

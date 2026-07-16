@@ -107,11 +107,10 @@ function stageDBodyToHtml(body: string): string {
   return `<p>${withBold.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`;
 }
 
-/** Prefers Circuit Stage D message drafts (ai_trace.stage_d) over the legacy
- * OpenAI synthesis. Returns mapped previews only when Stage D is present AND
- * passes the same delivery-time quality gate; otherwise null so the caller
- * falls through to OpenAI synthesis (being retired) and then the deterministic
- * builder. This is the Circuit replacement for OpenAI message synthesis. */
+/** Prefers Circuit Stage D message drafts (ai_trace.stage_d) — the sole AI
+ * message synthesizer. Returns mapped previews only when Stage D is present AND
+ * passes the delivery-time quality gate; otherwise null so the caller uses the
+ * deterministic message builder. */
 function applyCircuitStageD(params: {
   result: SecureNetworkingTriageResult;
   messages: WebexMessagePreview[];

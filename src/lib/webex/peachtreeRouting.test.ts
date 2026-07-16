@@ -114,7 +114,7 @@ function buildResult(overrides: {
     account_resolution: { ...buildDefaultAccountResolution(), name: "Test Account", status: "confirmed", confidence: 0.9, action_required: null },
     meddpicc: buildDefaultMeddpicc(),
     public_enrichment: buildDefaultPublicEnrichment(),
-    ai_processing: buildDefaultAiProcessing(false, "text-embedding-3-small", "gpt-4o-mini"),
+    ai_processing: buildDefaultAiProcessing(false, "deterministic-local", "circuit"),
     analysis_link: { included: false, url: null, reason: "no_public_base_url", expires_at: null },
     transcript_diagnostics: { raw_characters: 0, raw_lines: 0, speaker_headers_detected: 0, turns_parsed: 0, sentences_parsed: 0, participants: [], rejected_header_candidates: [] },
     generic_diagnostics: { parser: { turns: 0, sentences: 0, participants: [], warning: null }, signals: { commercial: [], technical: [], ownership: [], next_steps: [] }, category_scores: [] },

@@ -233,7 +233,7 @@ export type AccountRecommendation = {
   confidenceScore: number;
   confidenceLabel: "high" | "medium" | "low" | "fallback";
 
-  /** OpenAI-assigned priority: A = high, B = medium, C = low/fallback */
+  /** AI-provider (Circuit) assigned priority: A = high, B = medium, C = low/fallback */
   priority: PriorityLevel;
   priorityReason: string;
 

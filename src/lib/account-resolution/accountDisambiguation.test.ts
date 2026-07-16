@@ -13,7 +13,7 @@ function baseInputs(overrides: Partial<AccountResolutionInputs> = {}): AccountRe
     outlookEventSubject: null,
     customerParticipantEmailDomains: [],
     transcriptDialogueText: [],
-    openAiAccountCandidates: [],
+    aiAccountCandidates: [],
     ...overrides
   };
 }

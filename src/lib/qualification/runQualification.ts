@@ -90,7 +90,7 @@ export async function runQualificationPipeline(params: {
     attendeeEmailDomains: [],
     uploadedAccountContextName: null,
     dialogueMentionedCompany: dialogueMention,
-    openAiAccountCandidates: extraction.result?.account_candidates ?? [],
+    aiAccountCandidates: extraction.result?.account_candidates ?? [],
     // Scan ALL sentences (not only customer-attributed) for the org-
     // entity parser — an organization can be named in any turn, including
     // inside a negated commercial claim.

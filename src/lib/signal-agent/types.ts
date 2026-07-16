@@ -605,8 +605,8 @@ export type SecureNetworkingTriageResult = {
    * present; `enabled: false` when disabled, not configured, or gated
    * off by the search-enrichment decision logic. */
   public_enrichment: PublicEnrichmentStatus;
-  /** Which OpenAI qualification/synthesis stages actually ran for this
-   * result (Section 13/14) — independent of the existing
+  /** Which AI-provider (Circuit) qualification/synthesis stages actually ran
+   * for this result (Section 13/14) — independent of the existing
    * `providers` block, which covers only embeddings/legacy synthesis. */
   ai_processing: AiProcessingStatus;
   /** Signed, expiring public link to this run's read-only result page

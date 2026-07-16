@@ -1,12 +1,12 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
 /**
- * "Sources & enrichment" tab (Section 13): shows exactly which OpenAI
- * qualification stages ran, the full SerpAPI query trace (purpose,
- * query, result/accept/reject counts, cache status, errors), and every
- * accepted public source with its evidence score and inclusion
- * rationale — so a reviewer can see precisely what evidence contributed
- * to the result, and what did not.
+ * "Sources & enrichment" tab (Section 13): shows whether the Circuit AI
+ * provider is configured for the qualification pipeline, the full SerpAPI
+ * query trace (purpose, query, result/accept/reject counts, cache status,
+ * errors), and every accepted public source with its evidence score and
+ * inclusion rationale — so a reviewer can see precisely what evidence
+ * contributed to the result, and what did not.
  */
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
