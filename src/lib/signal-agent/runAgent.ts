@@ -25,8 +25,8 @@ import { buildPersonalizationBlock, buildPersonalizationContextForResult } from 
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
-import { planObjectiveSearch } from "@/lib/objective-search/queryPlanner";
-import { getBudgetState, recordQuerySpend } from "@/lib/objective-search/searchBudget";
+import { runObjectiveEnrichment } from "@/lib/objective-search/runObjectiveEnrichment";
+import type { SearchTrace } from "@/lib/objective-search/types";
 import { SUGGESTED_QUESTIONS } from "@/lib/run-assistant/types";
 import { recordProductEvent } from "@/lib/analytics/analyticsStore";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
@@ -302,6 +302,14 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
 
   const useQualification = request.options?.useQualification ?? true;
   const lifecycleStageGuess = commercialSignals.renewal_events.length > 0 ? "RENEW" : "ADOPT";
+
+  // Resolve the active seller profile up front so the objective-aware search
+  // planner can be the CANONICAL controller for live SerpAPI execution: when
+  // it will drive enrichment, the legacy generic opportunity-fit execution is
+  // skipped (no duplicate queries). Reused for personalization below.
+  const sellerProfileForRun = await resolveActiveSellerProfile().catch(() => null);
+  const objectivePlannerHandlesEnrichment = Boolean(sellerProfileForRun) && enrichPublicSignals;
+
   const qualification = await runQualificationPipeline({
     transcript,
     accountMatchedInCrm: account.matched,
@@ -318,6 +326,7 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     verdict: primaryEvaluation.intentLabel,
     lifecycleStageGuess,
     enrichPublicSignals,
+    objectivePlannerHandlesEnrichment,
     useQualification,
     userEnteredAccount: request.userEnteredAccount ?? null,
     nextStepSignals: genericSignals.filter((s) => s.bucket === "next_steps").map((s) => s.text)
@@ -454,14 +463,36 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // prioritize salience + wording for the recipient. The profile is reused
   // for the final personalization block below.
   const verifiedOpportunityValue = account.openOpportunity && account.dealValue > 0 ? account.dealValue : null;
-  let sellerProfileForRun: Awaited<ReturnType<typeof resolveActiveSellerProfile>> = null;
   let personalizationContext = null;
   try {
-    sellerProfileForRun = await resolveActiveSellerProfile();
     personalizationContext = buildPersonalizationContextForResult({ result, profile: sellerProfileForRun, verifiedOpportunityValue });
   } catch {
-    sellerProfileForRun = null;
     personalizationContext = null;
+  }
+
+  // Objective-aware public enrichment — the CANONICAL live-SerpAPI executor.
+  // When a seller profile drives it, it replaces the (now-skipped) legacy
+  // generic opportunity-fit execution and feeds Stage B + the canonical search
+  // trace. Public evidence is context/narrative-only (never scoring-eligible),
+  // so the deterministic opportunity score is unchanged.
+  let objectiveSearchTrace: SearchTrace | null = null;
+  if (sellerProfileForRun && enrichPublicSignals) {
+    try {
+      const enrichment = await runObjectiveEnrichment({
+        account: result.account_resolution?.name ?? result.executive_summary.account ?? null,
+        accountDomain: result.account_resolution?.domain ?? null,
+        accountStatus: result.account_resolution?.status ?? "unresolved",
+        verdict: result.executive_summary.verdict,
+        objectiveIds: sellerProfileForRun.goals.map((g) => g.goal_id),
+        primaryMotion: result.matches[0]?.entry_id ?? "unknown",
+        transcriptThemes: result.matches.slice(0, 3).map((m) => m.pain_category).filter(Boolean),
+        transcriptSignals: genericSignals.map((s) => s.text)
+      });
+      result.serpapi_signals = enrichment.serpapi_signals;
+      objectiveSearchTrace = enrichment.trace;
+    } catch {
+      objectiveSearchTrace = null;
+    }
   }
 
   // Circuit AI-enhancement: run Stage A→D, then PROMOTE each stage's
@@ -511,34 +542,16 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     result.opportunity_thread = null;
   }
 
-  // Objective-aware research plan: what PUBLIC facts could change this
-  // recipient's action, given their goals + account + motion — plus the
-  // app-observed query budget. Execution remains on the existing SerpAPI
-  // flow; this is the goal-aware plan/trace + budget accounting.
+  // Canonical search trace (Section 9) — the single source of truth for what
+  // the objective planner planned/executed/suppressed this run, surfaced under
+  // personalization.search_plan. Reflects the ACTUAL planner-controlled
+  // execution above (not a second, post-hoc trace).
   try {
-    if (result.personalization && sellerProfileForRun) {
-      const budget = await getBudgetState();
-      const plan = planObjectiveSearch({
-        account: result.account_resolution?.name ?? null,
-        accountStatus: result.account_resolution?.status ?? "unresolved",
-        verdict: result.executive_summary.verdict,
-        objectiveIds: sellerProfileForRun.goals.map((g) => g.goal_id),
-        primaryMotion: result.matches[0]?.entry_id ?? "unknown",
-        transcriptThemes: result.matches.slice(0, 3).map((m) => m.pain_category).filter(Boolean),
-        budgetRemaining: budget.remaining
-      });
-      const executed = result.serpapi_signals?.queries?.length ?? 0;
-      result.personalization.search_plan = {
-        objective_ids: plan.objective_ids,
-        queries_planned: plan.queries_planned,
-        queries_executed: executed,
-        cache_hits: plan.cache_hits,
-        budget_remaining: plan.budget_remaining
-      };
-      await recordQuerySpend(executed);
+    if (result.personalization && objectiveSearchTrace) {
+      result.personalization.search_plan = objectiveSearchTrace;
     }
   } catch {
-    /* research planning is additive; never blocks a run */
+    /* trace surfacing is additive; never blocks a run */
   }
 
   // Observable product-value event: was an alert generated or suppressed?

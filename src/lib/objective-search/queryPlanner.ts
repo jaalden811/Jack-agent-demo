@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
 import { loadSearchBudgetPolicy } from "@/lib/objective-search/searchBudget";
 import { searchRuleFor } from "@/lib/objective-search/objectiveSearchMap";
-import type { PlannedQuery, SearchPlan } from "@/lib/objective-search/types";
+import { buildRawCacheKey } from "@/lib/objective-search/rawCache";
+import type { ExecutableQuery, PlannedQuery, SearchPlan } from "@/lib/objective-search/types";
+
+export const PLANNER_VERSION = "objective-planner-v1";
 
 /**
  * Objective-aware research planner. Decides IF and WHAT public facts to
@@ -42,7 +46,7 @@ function fillTemplate(template: string, input: PlannerInput): string {
 function rawCacheKey(query: string): string {
   // Raw-search cache key deliberately EXCLUDES the classification version, so
   // changing classification logic never forces re-purchasing the search.
-  return `raw:${query.toLowerCase()}`;
+  return buildRawCacheKey(query);
 }
 
 function emptyPlan(reason: string, budgetRemaining: number): SearchPlan {
@@ -114,4 +118,32 @@ export function planObjectiveSearch(input: PlannerInput): SearchPlan {
     relevance_dimensions_affected: Array.from(dimensions),
     message_fields_affected: Array.from(fields)
   };
+}
+
+function queryId(objectiveId: string, intentId: string, query: string): string {
+  return `oq_${createHash("sha256").update(`${objectiveId}:${intentId}:${query.toLowerCase()}`).digest("hex").slice(0, 10)}`;
+}
+
+/** Maps a plan into deterministic, executable query objects — the ONLY thing
+ * the execution layer will run. Cache-hit queries are included (they resolve
+ * from the raw cache, not the provider). */
+export function buildExecutableQueries(input: PlannerInput): { plan: SearchPlan; queries: ExecutableQuery[] } {
+  const policy = loadSearchBudgetPolicy();
+  const plan = planObjectiveSearch(input);
+  const themeIds = (input.transcriptThemes ?? []).map((t) => t.toLowerCase());
+  const queries: ExecutableQuery[] = plan.planned_queries.map((q, index) => ({
+    query_id: queryId(q.objective_id, q.intent_id, q.query),
+    objective_id: q.objective_id,
+    intent_id: q.intent_id,
+    purpose: q.purpose,
+    query: q.query,
+    account: input.account ?? "",
+    motion_id: input.primaryMotion,
+    transcript_theme_ids: themeIds,
+    priority: index,
+    max_results: policy.max_source_fetches_per_run > 0 ? Math.min(5, policy.max_source_fetches_per_run) : 5,
+    cache_key: q.cache_key,
+    reason: q.cache_hit ? "raw_cache_candidate" : "planned"
+  }));
+  return { plan, queries };
 }

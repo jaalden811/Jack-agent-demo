@@ -4,7 +4,13 @@ import { buildPersonalizationContext, relevanceInputFromResult } from "@/lib/per
 import { computeGoalImpact, unavailableGoalImpact } from "@/lib/personalization/goalImpact";
 import { computePersonalRelevance, unavailableRelevance } from "@/lib/personalization/relevanceScore";
 import type { PersonalizationBlock, PersonalizationContext, SellerProfile } from "@/lib/personalization/types";
+import type { SearchTrace } from "@/lib/objective-search/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+
+/** Empty canonical search trace (no objective search executed yet). */
+function emptySearchTrace(objectiveIds: string[]): SearchTrace {
+  return { planner_version: "objective-planner-v1", objective_ids: objectiveIds, queries_planned: 0, queries_executed: 0, raw_cache_hits: 0, derived_cache_hits: 0, queries_suppressed: 0, budget_before: 0, budget_after: 0, fallback_used: false, items: [] };
+}
 
 /**
  * Assembles the additive personalization block for the run. Purely a
@@ -52,7 +58,7 @@ export function buildPersonalizationBlock(params: {
       goal_impact: goalImpact,
       notification_decision: decideNotification({ result, relevance, profile: null, extras: params.extras }),
       opportunity_teaser: buildOpportunityTeaser({ result, profile: null, relevance, goalImpact, forOwner: false }),
-      search_plan: { objective_ids: [], queries_planned: 0, queries_executed: 0, cache_hits: 0, budget_remaining: 0 }
+      search_plan: emptySearchTrace([])
     };
   }
 
@@ -74,6 +80,6 @@ export function buildPersonalizationBlock(params: {
     notification_decision: decideNotification({ result, relevance, profile, extras: params.extras }),
     opportunity_teaser: buildOpportunityTeaser({ result, profile, relevance, goalImpact, forOwner: true }),
     recipient_teasers: buildRecipientTeasers({ result, profile, relevance, goalImpact }),
-    search_plan: { objective_ids: profile.goals.map((g) => g.goal_id), queries_planned: 0, queries_executed: 0, cache_hits: 0, budget_remaining: 0 }
+    search_plan: emptySearchTrace(profile.goals.map((g) => g.goal_id))
   };
 }

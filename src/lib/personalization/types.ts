@@ -6,6 +6,8 @@
  * the deterministic opportunity scores, routing, or evidence identity.
  */
 
+import type { SearchTrace } from "@/lib/objective-search/types";
+
 export type SellerLane = "sales" | "technical" | "specialist" | "leadership" | "operations";
 
 export type GoalTimeframe = "quarter" | "year" | "rolling";
@@ -187,11 +189,7 @@ export type PersonalizationBlock = {
   /** Per-recipient teasers with lane-specific emphasis (owner-only goal
    * impact). Sales and technical are materially different. */
   recipient_teasers?: Record<"sales" | "technical" | "leadership", OpportunityTeaser>;
-  search_plan: {
-    objective_ids: string[];
-    queries_planned: number;
-    queries_executed: number;
-    cache_hits: number;
-    budget_remaining: number;
-  };
+  /** The single canonical objective-aware search trace (Section 9): what the
+   * planner planned / executed / suppressed for live SerpAPI this run. */
+  search_plan: SearchTrace;
 };

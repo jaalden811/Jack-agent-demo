@@ -30,6 +30,7 @@ export function buildRunAssistantContext(result: SecureNetworkingTriageResult): 
   const teaser = result.personalization?.opportunity_teaser ?? null;
   return {
     run_id: result.run_id,
+    account: result.account_resolution?.name ?? result.executive_summary.account ?? null,
     transcript_text: result.transcript_meta?.raw_text ?? "",
     evidence_items: items,
     next_action_summary: result.next_best_action?.summary ?? null,

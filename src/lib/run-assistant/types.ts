@@ -11,6 +11,7 @@ export type AssistantEvidenceItem = {
 
 export type RunAssistantContext = {
   run_id: string;
+  account: string | null;
   transcript_text: string;
   evidence_items: AssistantEvidenceItem[];
   next_action_summary: string | null;
