@@ -127,13 +127,18 @@ Done:
   the real deterministic opportunity brief and prompted for the exact gate
   skeleton (no fabrication). Live-verified: the preview delivered Circuit Stage D
   content (`synthesized_by_ai: true`).
+- **Attendance-aware message routing + modes (Phase 7b)**: the meeting
+  participation matrix (`@/lib/meeting-participation`) + team roster
+  (`@/lib/team-routing`) derive a per-recipient attendance status and message
+  MODE (action delta vs full/contextual handoff), frame each message, annotate
+  the delivery results, and order auto-sends by mode. Additive and
+  non-authoritative for recipient SELECTION — the Peachtree lane recipients are
+  unchanged; attendance only changes HOW each is addressed and the send order.
+  Live-verified: a rep who spoke → `ATTENDEE_ACTION_DELTA`, an absent owner →
+  `UNKNOWN_CONTEXTUAL_HANDOFF`.
 
 Remaining (tracked, not yet done):
-1. Attendance-aware recipient routing + message modes (Phase 7b): wire
-   `@/lib/team-routing` + `@/lib/meeting-participation` into recipient selection
-   (currently the Peachtree JSON lanes are authoritative) with attendance-based
-   message modes and auto-send ordering.
-2. Route the remaining Signal-to-Action OpenAI call sites
+1. Route the remaining Signal-to-Action OpenAI call sites
    (`src/lib/qualification/openai*.ts`, `src/lib/openai/*`,
    `src/lib/signal-agent/openaiSynthesis.ts`) through the provider registry or
    remove them in favor of the Circuit stages + deterministic engine.
