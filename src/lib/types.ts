@@ -61,7 +61,11 @@ export type ProviderStatusSnapshot = {
   searchProvider: "tavily" | "brave" | "exa" | "serpapi";
   checks: ProviderCheck[];
   liveSearchAvailable: boolean;
-  openAiEmbeddingsAvailable: boolean;
+  /** Whether the generative AI provider (Circuit) is configured. */
+  aiProviderConfigured: boolean;
+  /** Remote embedding endpoint availability. Always false: Circuit exposes no
+   * embedding API, so KB retrieval uses deterministic local embeddings. */
+  remoteEmbeddingsAvailable: boolean;
   firecrawlAvailable: boolean;
   contactEnrichmentAvailable: boolean;
   fallbackModeActive: boolean;
@@ -117,10 +121,10 @@ export type RunDebugStats = {
   marketSignalsOnly: number;
   // Final guard
   finalGuardReplacements: number;
-  // OpenAI steps
-  openAiSynthesisUsed: boolean;
-  openAiEntityExtractionRan: boolean;
-  openAiRerankingRan: boolean;
+  // Generative AI (Circuit) steps
+  aiSynthesisUsed: boolean;
+  aiEntityExtractionRan: boolean;
+  aiRerankingRan: boolean;
   // LinkedIn / contact discovery
   linkedInQueriesRun: number;
   contactCandidatesFound: number;
@@ -246,7 +250,7 @@ export type ResearchRun = {
   status: RunStatus;
   providerStatus: ProviderStatusSnapshot;
   liveSearchUsed: boolean;
-  openAiEmbeddingsUsed: boolean;
+  remoteEmbeddingsUsed: boolean;
   firecrawlExtractionUsed: boolean;
   contactEnrichmentUsed: boolean;
   isVerified: boolean;
