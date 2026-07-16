@@ -112,7 +112,7 @@ Done:
 - Zod stage schemas + shared stage runner for Stages A–D (extraction / public
   evidence / qualification / message) with evidence-integrity validation and a
   deterministic fallback for every stage.
-- Signal-to-Action pipeline runs Stages A→B→C additively (`ai_trace`),
+- Signal-to-Action pipeline runs Stages A→B→C→D additively (`ai_trace`),
   live-verified against the real endpoint.
 - **Market + Buyer Intelligence (`src/lib/services.ts`) cut over to Circuit**:
   org-name entity extraction, org-fit synthesis, and account reranking now route
@@ -120,9 +120,19 @@ Done:
   this flow), each with a deterministic fallback. KB retrieval uses deterministic
   local embeddings (Circuit has no embedding endpoint). Live-verified: synthesis
   and reranking both executed on Circuit and produced org-specific output.
+- **Stage D wired into message delivery (Phase 7a)**: `applyAiMessageSynthesis`
+  prefers Circuit `ai_trace.stage_d` drafts over the legacy OpenAI synthesis and
+  the deterministic builder, but only when they pass the same delivery quality
+  gate (`@/lib/webex/messageQuality`); otherwise it falls back. Stage D is fed
+  the real deterministic opportunity brief and prompted for the exact gate
+  skeleton (no fabrication). Live-verified: the preview delivered Circuit Stage D
+  content (`synthesized_by_ai: true`).
 
 Remaining (tracked, not yet done):
-1. Wire Stage D + attendance-aware routing into final message delivery.
+1. Attendance-aware recipient routing + message modes (Phase 7b): wire
+   `@/lib/team-routing` + `@/lib/meeting-participation` into recipient selection
+   (currently the Peachtree JSON lanes are authoritative) with attendance-based
+   message modes and auto-send ordering.
 2. Route the remaining Signal-to-Action OpenAI call sites
    (`src/lib/qualification/openai*.ts`, `src/lib/openai/*`,
    `src/lib/signal-agent/openaiSynthesis.ts`) through the provider registry or
