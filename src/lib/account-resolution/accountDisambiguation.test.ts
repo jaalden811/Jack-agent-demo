@@ -56,6 +56,19 @@ describe("resolveAccountWithDisambiguation (Section 2)", () => {
     expect(result.source).toBe("combined");
   });
 
+  it("harvests one first-party domain from multiple first-party subdomains, unconfused by third-party corroboration", async () => {
+    vi.spyOn(client, "executeSerpApiSearch").mockResolvedValue({
+      organic_results: [
+        { title: "AECOM investor relations", link: "https://investors.aecom.com/overview", snippet: "AECOM investor overview." },
+        { title: "AECOM home", link: "https://www.aecom.com/", snippet: "AECOM builds infrastructure." },
+        { title: "AECOM SEC filing", link: "https://www.sec.gov/cgi-bin/browse-edgar?aecom", snippet: "SEC filing for AECOM." }
+      ]
+    });
+    const result = await resolveAccountWithDisambiguation(baseInputs({ webexMeetingTitle: "AECOM Discovery" }));
+    expect(result.status).toBe("confirmed");
+    expect(result.domain).toBe("aecom.com");
+  });
+
   it("does not upgrade when disambiguation results point to conflicting high-authority domains", async () => {
     vi.spyOn(client, "executeSerpApiSearch").mockResolvedValue({
       organic_results: [

@@ -80,6 +80,24 @@ function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/\b(inc|corp|corporation|company|co|ltd|llc|plc|technologies|technology|group|holdings|international|global)\b/g, "").replace(/[^a-z0-9]/g, "");
 }
 
+// Common multi-part public suffixes so "acme.co.uk" collapses to
+// "acme.co.uk", not "co.uk". POC-appropriate heuristic (not the full PSL).
+const MULTI_PART_TLDS = new Set([
+  "co.uk", "org.uk", "gov.uk", "ac.uk", "co.jp", "com.au", "net.au", "org.au",
+  "co.nz", "com.br", "com.mx", "co.za", "com.sg", "com.hk", "co.in", "com.cn"
+]);
+
+/** Collapse a hostname to its registrable domain (eTLD+1) so first-party
+ * subdomains (investors.aecom.com, www.aecom.com, aecom.com) are recognized
+ * as ONE canonical company domain rather than several competing ones. */
+export function registrableDomain(domain: string): string {
+  const parts = domain.toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 2) return parts.join(".");
+  const lastTwo = parts.slice(-2).join(".");
+  if (MULTI_PART_TLDS.has(lastTwo)) return parts.slice(-3).join(".");
+  return lastTwo;
+}
+
 /** A registrable-domain label (e.g. "aecom" from "investors.aecom.com") that
  * matches the account name is a first-party (canonical) domain signal. */
 export function domainMatchesName(domain: string, name: string): boolean {
@@ -130,18 +148,35 @@ export async function disambiguateAccount(params: {
   }
 
   const highAuthorityEvidence = allEvidence.filter((e) => HIGH_AUTHORITY_TYPES.has(e.source_type));
-  const distinctDomains = new Set(highAuthorityEvidence.map((e) => e.domain));
 
   // The CANONICAL domain must be first-party: an official-website match, or a
-  // domain whose registrable label matches the account name. Third-party
+  // domain whose registrable label matches the account name. Collapse to the
+  // registrable domain so first-party subdomains (investors.acme.com,
+  // www.acme.com, acme.com) count as ONE company domain. Third-party
   // directories/news/social/job boards (e.g. zoominfo.com) can confirm the
   // NAME but must never become the company's domain.
-  const canonicalDomains = new Set(
+  const canonicalRegistrable = new Set(
     highAuthorityEvidence
       .filter((e) => (e.source_type === "official_website" || domainMatchesName(e.domain, params.candidateName)) && !isNonCanonicalDomain(e.domain))
-      .map((e) => e.domain)
+      .map((e) => registrableDomain(e.domain))
   );
-  const confirmedDomain = canonicalDomains.size === 1 ? Array.from(canonicalDomains)[0] : null;
+  const confirmedDomain = canonicalRegistrable.size === 1 ? Array.from(canonicalRegistrable)[0] : null;
+
+  // Identity is ambiguous when first-party evidence points to MORE THAN ONE
+  // company domain. A single verified first-party domain is the strongest
+  // possible identity signal — third-party corroboration (gov filings, news)
+  // about that company must NOT make it "ambiguous". Only when there is NO
+  // first-party domain do multiple distinct third-party domains (a possible
+  // name collision) signal ambiguity.
+  const thirdPartyRegistrable = new Set(highAuthorityEvidence.map((e) => registrableDomain(e.domain)));
+  const remainsAmbiguous =
+    highAuthorityEvidence.length === 0
+      ? true
+      : canonicalRegistrable.size > 1
+        ? true
+        : canonicalRegistrable.size === 1
+          ? false
+          : thirdPartyRegistrable.size > 1;
 
   // The NAME is confirmed by any non-conflicting high-authority source (a
   // directory listing is fine for existence); the domain is set separately
@@ -152,6 +187,6 @@ export async function disambiguateAccount(params: {
     queries_executed: executed,
     confirmed_domain: confirmedDomain,
     evidence: highAuthorityEvidence,
-    remains_ambiguous: highAuthorityEvidence.length === 0 || distinctDomains.size > 1
+    remains_ambiguous: remainsAmbiguous
   };
 }
