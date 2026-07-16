@@ -1068,6 +1068,20 @@ button:disabled {
 @media (max-width: 720px) {
   .seller-wizard .wizard-grid { grid-template-columns: 1fr; }
 }
+.run-assistant .assistant-input { display: flex; gap: 8px; }
+.run-assistant .assistant-input input {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-2);
+  border-radius: 6px;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.run-assistant .assistant-log { max-height: 320px; overflow-y: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .personalized-details details { transition: none; }
+}
 
 /* ── Integrations panel ──────────────────────────────────────────────── */
 

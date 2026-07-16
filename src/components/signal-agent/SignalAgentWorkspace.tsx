@@ -13,6 +13,7 @@ import { ContextCard } from "@/components/signal-agent/ContextCard";
 import { SummaryCard } from "@/components/signal-agent/SummaryCard";
 import { CircuitRunDiagnostic } from "@/components/signal-agent/CircuitRunDiagnostic";
 import { PersonalizedOpportunityCard } from "@/components/signal-agent/PersonalizedOpportunityCard";
+import { RunAssistantPanel } from "@/components/signal-agent/RunAssistantPanel";
 import { ActionCenter } from "@/components/signal-agent/ActionCenter";
 import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
@@ -227,6 +228,7 @@ export function SignalAgentWorkspace() {
             <>
               <SignalToActionJourney result={result} />
               <PersonalizedOpportunityCard result={result} />
+              <RunAssistantPanel result={result} />
               <ActionCenter result={result} />
               <ScoreSemanticsSummary result={result} />
               <SummaryCard result={result} />

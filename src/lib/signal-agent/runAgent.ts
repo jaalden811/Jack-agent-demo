@@ -27,6 +27,7 @@ import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThre
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
 import { planObjectiveSearch } from "@/lib/objective-search/queryPlanner";
 import { getBudgetState, recordQuerySpend } from "@/lib/objective-search/searchBudget";
+import { SUGGESTED_QUESTIONS } from "@/lib/run-assistant/types";
 import { loadRoutingConfig } from "@/lib/webex/peachtreeRouting";
 import type {
   CorroborationSummary,
@@ -503,7 +504,7 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     });
     const latestFb = await latestPursuitFeedback(result.run_id);
     result.feedback = { latest_decision: latestFb?.decision ?? null, action_status: latestFb?.action_status ?? "recommended" };
-    result.assistant = { available: false, suggested_questions: [] };
+    result.assistant = { available: true, suggested_questions: SUGGESTED_QUESTIONS };
   } catch {
     result.personalization = null;
     result.opportunity_thread = null;
