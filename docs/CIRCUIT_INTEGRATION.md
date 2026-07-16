@@ -4,10 +4,13 @@ Circuit is the single active generative-AI provider for this application. It
 replaces OpenAI as the reasoning/synthesis layer. Public search (SerpAPI) and
 the deterministic engine are unchanged.
 
-> Status: this document covers the **provider foundation** that is implemented
-> and tested (`src/lib/circuit/**`, `src/lib/ai-provider/**`). Wiring Circuit
-> into every former OpenAI call site and removing the `openai` dependency is a
-> subsequent, separately-verifiable step (see "Remaining migration" below).
+> Status: the **provider foundation** (`src/lib/circuit/**`,
+> `src/lib/ai-provider/**`), the **Stage A–D runners**, the **Signal-to-Action
+> additive enhancement**, and the **Market + Buyer Intelligence cutover**
+> (`src/lib/services.ts`) are implemented, tested, and live-verified. Wiring the
+> remaining Signal-to-Action OpenAI call sites through the registry and removing
+> the `openai` dependency are subsequent, separately-verifiable steps (see
+> "Migration status" below).
 
 ## 1. What Circuit does
 Enriches evidence interpretation, qualification, action planning, specialist
@@ -101,13 +104,29 @@ Never repeatedly retry 400/401/403/404.
 - `POST /api/circuit/test-inference` — tiny inference to verify the contract.
 - `POST /api/circuit/token/refresh` / `POST /api/circuit/token/clear`.
 
-## 9. Remaining migration (tracked, not yet done)
-1. Route the former OpenAI call sites (`src/lib/qualification/openai*.ts`,
-   `src/lib/services.ts`, `src/lib/openai/*`) through
-   `@/lib/ai-provider/registry` → Circuit, keeping deterministic fallback.
-2. Add Zod stage schemas (extraction / public evidence / qualification /
-   message) + the versioned master prompt loader.
-3. Replace OpenAI labels/config/UI with Circuit; run `npm uninstall openai`
-   once no active imports remain.
-4. Run live `test-auth` / `test-inference` once real Circuit credentials and
-   the confirmed contract are in `.env.local`.
+## 9. Migration status
+
+Done:
+- Circuit foundation (config, token manager, inference client, error
+  normalizer, diagnostics, provider registry) + versioned master prompt loader.
+- Zod stage schemas + shared stage runner for Stages A–D (extraction / public
+  evidence / qualification / message) with evidence-integrity validation and a
+  deterministic fallback for every stage.
+- Signal-to-Action pipeline runs Stages A→B→C additively (`ai_trace`),
+  live-verified against the real endpoint.
+- **Market + Buyer Intelligence (`src/lib/services.ts`) cut over to Circuit**:
+  org-name entity extraction, org-fit synthesis, and account reranking now route
+  through `@/lib/ai-provider/registry` → Circuit (no OpenAI SDK import remains in
+  this flow), each with a deterministic fallback. KB retrieval uses deterministic
+  local embeddings (Circuit has no embedding endpoint). Live-verified: synthesis
+  and reranking both executed on Circuit and produced org-specific output.
+
+Remaining (tracked, not yet done):
+1. Wire Stage D + attendance-aware routing into final message delivery.
+2. Route the remaining Signal-to-Action OpenAI call sites
+   (`src/lib/qualification/openai*.ts`, `src/lib/openai/*`,
+   `src/lib/signal-agent/openaiSynthesis.ts`) through the provider registry or
+   remove them in favor of the Circuit stages + deterministic engine.
+3. Remove OpenAI runtime/labels/config/UI and run `npm uninstall openai` once no
+   active imports remain (rename residual `openai`/`OPENAI_*` identifiers).
+4. Point the Setup/status UI at Circuit provider diagnostics.
