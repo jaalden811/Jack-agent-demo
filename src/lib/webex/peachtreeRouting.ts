@@ -40,8 +40,23 @@ export function getRoutingConfigPath(): string {
 export function loadRoutingConfig(): RoutingConfig {
   if (cachedConfig) return cachedConfig;
   const text = readFileSync(getRoutingConfigPath(), "utf8");
-  cachedConfig = JSON.parse(text) as RoutingConfig;
+  const parsed = JSON.parse(text) as RoutingConfig;
+  cachedConfig = { ...parsed, webex_spaces: resolveWebexSpaces(parsed.webex_spaces) };
   return cachedConfig;
+}
+
+/** Per-lane Webex space (room) IDs, config JSON overlaid with env vars so a
+ * lane whose 1:1 recipient is the connected user (self-direct — e.g. the
+ * technical owner IS the sender) still delivers to a real space. No room ID
+ * is ever hard-coded; set WEBEX_TECHNICAL_SPACE_ID / WEBEX_SALES_SPACE_ID as
+ * environment variables. */
+function resolveWebexSpaces(fromJson?: Partial<Record<WebexLane, string>>): Partial<Record<WebexLane, string>> {
+  const spaces: Partial<Record<WebexLane, string>> = { ...(fromJson ?? {}) };
+  const tech = (process.env.WEBEX_TECHNICAL_SPACE_ID ?? "").trim();
+  const sales = (process.env.WEBEX_SALES_SPACE_ID ?? "").trim();
+  if (tech) spaces.technical = tech;
+  if (sales) spaces.sales = sales;
+  return spaces;
 }
 
 export function clearRoutingConfigCache() {
