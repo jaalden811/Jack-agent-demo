@@ -129,7 +129,10 @@ export function buildOpportunityTeaser(params: {
   return {
     headline: `${primaryMotion} at ${account}`,
     account,
-    signal_label: `${summary.verdict} · signal ${Math.round((summary.confidence ?? 0) * 100)}%`,
+    // Use the deterministic SIGNAL-STRENGTH score (the same value the score
+    // cards + journey show), NOT the intent-classification confidence, so
+    // "signal N%" is consistent everywhere.
+    signal_label: `${summary.verdict} · signal ${Math.round(result.opportunity_scoring?.signal_strength?.score ?? (summary.confidence ?? 0) * 100)}%`,
     why_you: whyYou(profile, relevance),
     why_now: firstSentence(whyNowSource),
     goal_alignment: goalAlignmentText(relevance),

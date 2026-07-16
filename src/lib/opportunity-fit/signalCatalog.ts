@@ -39,6 +39,7 @@ export const STRATEGIC_OBJECTIVE_THEMES: Array<{ subcategory: string; keywords: 
 ];
 
 export function planStrategicObjectiveQueries(company: string, transcriptSignals: string[]): Array<{ query: string; subcategory: string }> {
+  if (!isUsableAccount(company)) return [];
   const signalText = transcriptSignals.join(" ").toLowerCase();
   const matched = STRATEGIC_OBJECTIVE_THEMES.filter((theme) => theme.keywords.some((kw) => signalText.includes(kw)));
   return matched.map((theme) => ({ query: `"${company}" ${theme.template}`, subcategory: theme.subcategory }));
@@ -47,13 +48,33 @@ export function planStrategicObjectiveQueries(company: string, transcriptSignals
 // B. Executive priorities — generic, always applicable once an
 // account is resolved (earnings/annual-report/investor language is a
 // standard public-disclosure category, not tied to any one company).
+// Placeholder / non-real domains that must never produce a live `site:` query
+// (an unresolved template, empty domain, or aggregator would waste a query).
+const PLACEHOLDER_DOMAINS = new Set(["site.com", "example.com", "domain.com", "company.com", "yourcompany.com", "acme.com", "test.com", "localhost"]);
+
+/** True only for a real, resolvable second-level domain — guards `site:`
+ * queries so an incomplete/placeholder domain never calls the provider. */
+export function isUsableDomain(domain: string | null): boolean {
+  if (!domain) return false;
+  const d = domain.trim().toLowerCase();
+  if (d.length < 4 || PLACEHOLDER_DOMAINS.has(d) || d.startsWith("site.")) return false;
+  return /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) && /\.[a-z]{2,}$/.test(d);
+}
+
+/** Guards a company token so an empty/generic account never runs a query. */
+export function isUsableAccount(company: string): boolean {
+  const c = company.trim();
+  return c.length >= 2 && !/^(the )?(account|company|customer|unknown|not stated|n\/?a)$/i.test(c);
+}
+
 export function planExecutivePriorityQueries(company: string, domain: string | null): Array<{ query: string; subcategory: string }> {
+  if (!isUsableAccount(company)) return [];
   const queries = [
     { query: `"${company}" earnings technology priorities`, subcategory: "earnings_call" },
     { query: `"${company}" annual report technology investment`, subcategory: "annual_report" },
     { query: `"${company}" investor presentation digital transformation`, subcategory: "investor_presentation" }
   ];
-  if (domain) queries.push({ query: `site:${domain} strategy technology`, subcategory: "official_strategy_page" });
+  if (isUsableDomain(domain)) queries.push({ query: `site:${domain} strategy technology`, subcategory: "official_strategy_page" });
   return queries;
 }
 
@@ -75,6 +96,7 @@ export const TRIGGER_EVENT_THEMES: Array<{ subcategory: string; keywords: string
 ];
 
 export function planTriggerEventQueries(company: string, transcriptSignals: string[]): Array<{ query: string; subcategory: string }> {
+  if (!isUsableAccount(company)) return [];
   const signalText = transcriptSignals.join(" ").toLowerCase();
   const matched = TRIGGER_EVENT_THEMES.filter((theme) => theme.keywords.some((kw) => signalText.includes(kw)));
   return matched.map((theme) => ({ query: `"${company}" ${theme.template}`, subcategory: theme.subcategory }));
@@ -84,8 +106,9 @@ export function planTriggerEventQueries(company: string, transcriptSignals: stri
 // detected in the transcript or selected taxonomy entries, never an
 // unconditional per-vendor sweep.
 export function planTechnologyAlignmentQueries(company: string, domain: string | null, detectedTechnologies: string[]): Array<{ query: string; subcategory: string }> {
+  if (!isUsableAccount(company)) return [];
   const queries = detectedTechnologies.slice(0, 4).map((tech) => ({ query: `"${company}" ${tech}`, subcategory: `technology:${tech}` }));
-  if (domain && detectedTechnologies.length > 0) {
+  if (isUsableDomain(domain) && detectedTechnologies.length > 0) {
     queries.push({ query: `site:${domain}/careers ${detectedTechnologies[0]}`, subcategory: "hiring_signal" });
   }
   return queries;
@@ -94,8 +117,9 @@ export function planTechnologyAlignmentQueries(company: string, domain: string |
 // F. Competitive/incumbent signals — only for competitors/incumbents
 // actually named in the transcript, account context, or taxonomy.
 export function planCompetitionQueries(company: string, domain: string | null, namedCompetitors: string[]): Array<{ query: string; subcategory: string }> {
+  if (!isUsableAccount(company)) return [];
   const queries = namedCompetitors.slice(0, 3).map((competitor) => ({ query: `"${company}" "${competitor}"`, subcategory: `competitor:${competitor}` }));
-  if (domain && namedCompetitors.length > 0) {
+  if (isUsableDomain(domain) && namedCompetitors.length > 0) {
     queries.push({ query: `site:${domain} "${namedCompetitors[0]}"`, subcategory: "incumbent_site_mention" });
   }
   return queries;
@@ -104,7 +128,7 @@ export function planCompetitionQueries(company: string, domain: string | null, n
 // G. Timing/urgency — generic public deadline/transformation-timeline
 // language, only when the transcript itself surfaces timing pressure.
 export function planTimingQueries(company: string, mentionsUrgency: boolean): Array<{ query: string; subcategory: string }> {
-  if (!mentionsUrgency) return [];
+  if (!mentionsUrgency || !isUsableAccount(company)) return [];
   return [
     { query: `"${company}" transformation deadline timeline`, subcategory: "transformation_timeline" },
     { query: `"${company}" platform retirement end of life`, subcategory: "platform_retirement" }

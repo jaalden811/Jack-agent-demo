@@ -59,6 +59,38 @@ function normalizeResults(raw: RawSerpApiResponse, candidateDomain: string | nul
 
 const HIGH_AUTHORITY_TYPES: ReadonlySet<DisambiguationSourceType> = new Set(["official_website", "investor_relations", "government_regulatory", "business_directory", "major_news"]);
 
+// Third-party sites (directories, social, news wires, job boards, generic
+// registries) may CORROBORATE that a company exists, but their domain is NOT
+// the company's canonical domain. Generic list — never an account-specific
+// entry.
+const NON_CANONICAL_DOMAIN_HINTS = [
+  "zoominfo.com", "crunchbase.com", "bloomberg.com", "dnb.com", "reuters.com", "wsj.com", "businesswire.com",
+  "prnewswire.com", "cnbc.com", "forbes.com", "linkedin.com", "indeed.com", "glassdoor.com", "wikipedia.org",
+  "facebook.com", "twitter.com", "x.com", "youtube.com", "sec.gov", "companieshouse", "opencorporates.com",
+  "talent.com", "jobleads.com", "talents.vaia.com", "clearancejobs.com", "investing.com", "finance.yahoo.com",
+  "okta.com", "mdcounties.org", "glassdoor", "ziprecruiter.com"
+];
+
+export function isNonCanonicalDomain(domain: string): boolean {
+  const d = domain.toLowerCase();
+  return NON_CANONICAL_DOMAIN_HINTS.some((hint) => d === hint || d.endsWith(`.${hint}`) || d.includes(hint));
+}
+
+function normalizeToken(value: string): string {
+  return value.toLowerCase().replace(/\b(inc|corp|corporation|company|co|ltd|llc|plc|technologies|technology|group|holdings|international|global)\b/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+/** A registrable-domain label (e.g. "aecom" from "investors.aecom.com") that
+ * matches the account name is a first-party (canonical) domain signal. */
+export function domainMatchesName(domain: string, name: string): boolean {
+  const parts = domain.toLowerCase().split(".").filter(Boolean);
+  if (parts.length < 2) return false;
+  const label = normalizeToken(parts[parts.length - 2]);
+  const n = normalizeToken(name);
+  if (label.length < 3 || n.length < 3) return false;
+  return n.includes(label) || label.includes(n);
+}
+
 export async function disambiguateAccount(params: {
   candidateName: string;
   candidateDomain: string | null;
@@ -100,12 +132,20 @@ export async function disambiguateAccount(params: {
   const highAuthorityEvidence = allEvidence.filter((e) => HIGH_AUTHORITY_TYPES.has(e.source_type));
   const distinctDomains = new Set(highAuthorityEvidence.map((e) => e.domain));
 
-  // Confirmation requires at least one high-authority source, and no
-  // conflicting high-authority sources pointing at genuinely different
-  // companies (a rough heuristic: too many distinct domains among the
-  // high-authority set suggests the name is still ambiguous).
-  const confirmedDomain = distinctDomains.size === 1 ? Array.from(distinctDomains)[0] : null;
+  // The CANONICAL domain must be first-party: an official-website match, or a
+  // domain whose registrable label matches the account name. Third-party
+  // directories/news/social/job boards (e.g. zoominfo.com) can confirm the
+  // NAME but must never become the company's domain.
+  const canonicalDomains = new Set(
+    highAuthorityEvidence
+      .filter((e) => (e.source_type === "official_website" || domainMatchesName(e.domain, params.candidateName)) && !isNonCanonicalDomain(e.domain))
+      .map((e) => e.domain)
+  );
+  const confirmedDomain = canonicalDomains.size === 1 ? Array.from(canonicalDomains)[0] : null;
 
+  // The NAME is confirmed by any non-conflicting high-authority source (a
+  // directory listing is fine for existence); the domain is set separately
+  // and stays null when no first-party domain is verified.
   return {
     ran: true,
     reason: null,

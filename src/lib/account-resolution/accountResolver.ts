@@ -177,14 +177,22 @@ export async function resolveAccountWithDisambiguation(
     return disambiguation.reason ? { ...base, issues: [...base.issues, `Account disambiguation not run: ${disambiguation.reason}`] } : base;
   }
 
-  if (base.status === "probable" && disambiguation.confirmed_domain && !disambiguation.remains_ambiguous) {
+  // Name confirmation (existence via non-conflicting high-authority sources)
+  // upgrades status — INDEPENDENT of whether a first-party domain was found.
+  // The canonical domain is only ever a verified first-party domain (a
+  // third-party directory/news domain like zoominfo.com is never adopted).
+  if (base.status === "probable" && !disambiguation.remains_ambiguous && disambiguation.evidence.length > 0) {
     return {
       ...base,
       status: "confirmed",
       confidence: Math.max(base.confidence, 0.9),
       domain: base.domain ?? disambiguation.confirmed_domain,
       source: "combined",
-      issues: [...base.issues, `Confirmed via SerpAPI disambiguation (${disambiguation.evidence.length} high-authority source(s)).`]
+      issues: [
+        ...base.issues,
+        `Confirmed via SerpAPI disambiguation (${disambiguation.evidence.length} high-authority source(s)).`,
+        ...(disambiguation.confirmed_domain ? [] : ["Canonical domain not set: no first-party company domain was verified (third-party listings do not count)."])
+      ]
     };
   }
 

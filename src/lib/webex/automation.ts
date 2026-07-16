@@ -228,8 +228,13 @@ export async function computePeachtreePreview(result: SecureNetworkingTriageResu
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   // Canonical message origin: Circuit Stage D drafts (when quality-valid) vs
-  // the deterministic message builder — surfaced in the run diagnostic.
+  // the deterministic message builder — surfaced honestly in the run
+  // diagnostic (a Stage D that succeeded at the Circuit level but failed the
+  // delivery quality gate is NOT reported as the message source).
   result.message_source = synthesis.used ? "circuit_stage_d" : "deterministic_fallback";
+  result.message_source_reason = synthesis.used
+    ? "Circuit Stage D draft passed the delivery quality gate and is the delivered message."
+    : synthesis.fallback_reason ?? "Circuit Stage D unavailable or failed the delivery quality gate; deterministic message used.";
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
 
   // Attendance-aware framing (Phase 7b): derive each recipient's meeting
@@ -284,8 +289,13 @@ export async function deliverPeachtreePipeline(
   const synthesis = await applyAiMessageSynthesis({ result, routing, runId, analysisLink, messages: deterministicMessages, emails: deterministicEmails });
   result.ai_processing.message_synthesis_used = synthesis.used;
   // Canonical message origin: Circuit Stage D drafts (when quality-valid) vs
-  // the deterministic message builder — surfaced in the run diagnostic.
+  // the deterministic message builder — surfaced honestly in the run
+  // diagnostic (a Stage D that succeeded at the Circuit level but failed the
+  // delivery quality gate is NOT reported as the message source).
   result.message_source = synthesis.used ? "circuit_stage_d" : "deterministic_fallback";
+  result.message_source_reason = synthesis.used
+    ? "Circuit Stage D draft passed the delivery quality gate and is the delivered message."
+    : synthesis.fallback_reason ?? "Circuit Stage D unavailable or failed the delivery quality gate; deterministic message used.";
   if (!synthesis.used && synthesis.fallback_reason) result.ai_processing.fallback_reason = result.ai_processing.fallback_reason ?? synthesis.fallback_reason;
 
   // Attendance-aware framing + send ordering (Phase 7b). Recipients are

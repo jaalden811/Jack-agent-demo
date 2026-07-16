@@ -41,6 +41,9 @@ export function CircuitRunDiagnostic({ result }: { result: SecureNetworkingTriag
         <StatusPill label={`analysis: ${mode === "circuit" ? "circuit" : mode === "circuit_partial" ? "circuit (partial)" : "deterministic fallback"}`} tone={modeTone} title="Which interpretation layer produced the canonical fields" />
         <StatusPill label={`messages: ${result.message_source === "circuit_stage_d" ? "Stage D" : "deterministic"}`} tone={result.message_source === "circuit_stage_d" ? "ok" : "pending"} title="Origin of the final recipient messages" />
       </div>
+      {result.message_source_reason ? (
+        <p className="muted" style={{ margin: "2px 0 6px", fontSize: "0.8rem" }}>{result.message_source_reason}</p>
+      ) : null}
 
       <div className="summary-headline" style={{ gap: 6, flexWrap: "wrap" }}>
         <StatusPill label={`configured: ${boolLabel(cr.configured)}`} tone={boolTone(cr.configured)} title="Token creds + inference endpoint + App Key present" />
@@ -53,12 +56,16 @@ export function CircuitRunDiagnostic({ result }: { result: SecureNetworkingTriag
       <ul className="compact-list" style={{ marginTop: 10 }}>
         {STAGE_LABELS.map(({ key, label }) => {
           const s = cr.stages[key];
+          // Stage D's "canonical" status is whether its message is actually the
+          // delivered one (the delivery quality gate) — not merely that Circuit
+          // produced a draft — so provenance can't contradict message_source.
+          const promotedText = key === "stage_d" ? (result.message_source === "circuit_stage_d" ? " · used as final message" : s.status === "ok" ? " · draft produced (not used — see message source)" : "") : s.promoted ? " · promoted to canonical" : "";
           return (
             <li key={key} style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <StatusPill label={`Stage ${label}`} tone={stageTone(s.status)} />
               <span className="muted">
                 {s.status}
-                {s.promoted ? " · promoted to canonical" : ""}
+                {promotedText}
                 {s.safe_error_code ? ` · ${s.safe_error_code}` : ""}
               </span>
             </li>

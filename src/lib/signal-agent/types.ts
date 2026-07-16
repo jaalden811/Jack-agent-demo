@@ -711,6 +711,11 @@ export type SecureNetworkingTriageResult = {
    * Set once messages are built (delivery path); `deterministic_fallback`
    * until then. */
   message_source: MessageSource;
+  /** Exact, safe explanation of why message_source is what it is (e.g. Stage D
+   * passed the gate, or the specific quality reason it was rejected). Makes
+   * message provenance truthful when Stage D succeeded at the Circuit level but
+   * its draft did not become the delivered message. */
+  message_source_reason?: string | null;
   /** Safe, per-run Circuit diagnostic (never secrets): configuration,
    * auth/inference reachability, per-stage status, repair/fallback flags,
    * and a safe error code — so a silent deterministic fallback is always

@@ -166,6 +166,18 @@ describe("opportunity teaser + quality gate", () => {
     expect(JSON.stringify(nonOwner)).not.toContain("annual target");
   });
 
+  it("teaser signal label uses signal-strength (not classification confidence)", () => {
+    const scored = {
+      ...teaserResult,
+      executive_summary: { ...teaserResult.executive_summary, confidence: 0.66 },
+      opportunity_scoring: { signal_strength: { score: 41, band: "LOW" } }
+    } as unknown as SecureNetworkingTriageResult;
+    const rel = computePersonalRelevance(relevanceInput(), profile());
+    const teaser = buildOpportunityTeaser({ result: scored, profile: profile(), relevance: rel, goalImpact: computeGoalImpact({ profile: profile(), verifiedOpportunityValue: null, accountStatus: "confirmed" }), forOwner: true });
+    expect(teaser.signal_label).toContain("signal 41%");
+    expect(teaser.signal_label).not.toContain("66%");
+  });
+
   it("per-recipient teasers: sales and technical differ; only the owner sees goal impact", () => {
     const p = profile({ lane: "sales", compensation_context: { annual_target: 1_000_000, current_attainment: null, currency: "USD", pipeline_coverage_target: null, minimum_opportunity_value: null, private: true } });
     const rel = computePersonalRelevance(relevanceInput(), p);
