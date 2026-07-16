@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "purpose": "Deterministic, config-driven Personal Relevance scoring. Ranks/communicates an opportunity for a specific seller from their profile + goals. STRICTLY SEPARATE from the factual opportunity scores (signal strength, qualification, external fit, pursuit, deal maturity, handoff readiness) — changing a seller profile changes personal relevance and message emphasis but never the deterministic opportunity scores.",
+    "version": "1.0.0"
+  },
+  "weights": {
+    "goal_alignment": 0.2,
+    "account_ownership": 0.08,
+    "product_domain_fit": 0.08,
+    "actionability": 0.08,
+    "role_fit": 0.07,
+    "territory_fit": 0.07,
+    "lane_fit": 0.06,
+    "specialty_fit": 0.06,
+    "timing_alignment": 0.06,
+    "measurement_alignment": 0.06,
+    "segment_fit": 0.05,
+    "opportunity_size_alignment": 0.05,
+    "evidence_confidence": 0.05,
+    "novelty": 0.03
+  },
+  "bands": { "high": 70, "medium": 45 },
+  "penalties": {
+    "unresolved_account": 15,
+    "no_clear_action": 20,
+    "missing_recipient": 10,
+    "duplicate_alert": 15,
+    "stale_opportunity": 10,
+    "no_goal_alignment": 12,
+    "unverifiable_opportunity_size": 5,
+    "low_evidence_quality": 10,
+    "max_total": 45
+  },
+  "confidence": { "base": 0.4, "per_present_input": 0.04, "min": 0.1, "max": 0.95 },
+  "inputs_for_confidence": [
+    "role_family",
+    "lane",
+    "territories",
+    "segments",
+    "specialties",
+    "product_domains",
+    "goals",
+    "measurement_metrics",
+    "account_ownership"
+  ]
+}

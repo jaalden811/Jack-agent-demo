@@ -1028,6 +1028,64 @@ button:disabled {
   color: var(--muted);
 }
 
+.topbar-pill.warn {
+  background: var(--tint-warning);
+  color: var(--warning);
+}
+
+/* ── Personalized opportunity card + wizard ─────────────────────────────── */
+.personalized-card { border: 1px solid var(--accent, #3b82f6); }
+.personalized-primary { margin: 10px 0; display: grid; gap: 4px; }
+.personalized-primary p { margin: 2px 0; }
+.personalized-details { margin-top: 12px; display: grid; gap: 6px; }
+.personalized-details details {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.personalized-details summary { cursor: pointer; font-weight: 600; }
+.personalized-details details[open] summary { margin-bottom: 6px; }
+.pursuit-control { margin: 10px 0; }
+.button.is-selected { outline: 2px solid var(--success); }
+.seller-wizard .wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.seller-wizard .wizard-grid label { display: flex; flex-direction: column; font-size: 0.82rem; gap: 3px; }
+.seller-wizard .wizard-grid input,
+.seller-wizard .wizard-grid select {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-2);
+  border-radius: 6px;
+  color: inherit;
+  padding: 6px 8px;
+}
+.seller-wizard .wizard-fieldset { border: 1px solid var(--surface-2); border-radius: 8px; margin: 10px 0; padding: 8px 12px; }
+.seller-wizard .wizard-fieldset legend { font-weight: 600; font-size: 0.85rem; padding: 0 6px; }
+.seller-wizard .chip label { cursor: pointer; }
+@media (max-width: 720px) {
+  .seller-wizard .wizard-grid { grid-template-columns: 1fr; }
+}
+.run-assistant .assistant-input { display: flex; gap: 8px; }
+.run-assistant .assistant-input input {
+  background: var(--surface-2);
+  border: 1px solid var(--surface-2);
+  border-radius: 6px;
+  color: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.run-assistant .assistant-log { max-height: 320px; overflow-y: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .personalized-details details { transition: none; }
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+.summary-metric { display: flex; flex-direction: column; gap: 2px; }
+.summary-metric strong { font-size: 1.1rem; }
+
 /* ── Integrations panel ──────────────────────────────────────────────── */
 
 .provider-line {

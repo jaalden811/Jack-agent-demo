@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "purpose": "Config-driven quality gate + budgets for the personalized opportunity teaser. Editable here — never hard-coded in components. Separate from the existing delivery-message quality gate (webex/messageQuality) which continues to guard Circuit Stage D full messages.",
+    "version": "1.0.0"
+  },
+  "teaser": {
+    "min_chars": 120,
+    "max_chars": 1200,
+    "max_bytes": 1400,
+    "max_evidence_points": 3,
+    "max_links": 3,
+    "max_actions": 1,
+    "density_char_budgets": { "concise": 700, "standard": 1200, "detailed": 2000 }
+  },
+  "required_elements": ["why_you", "why_now", "recommended_action"],
+  "vague_actions": [
+    "follow up",
+    "follow-up",
+    "progress the opportunity",
+    "advance the motion",
+    "touch base",
+    "circle back",
+    "engage the specialist",
+    "reach out",
+    "check in"
+  ],
+  "forbidden": {
+    "ellipsis": true,
+    "raw_search_snippets": true,
+    "debug_language": true,
+    "private_compensation": true,
+    "incomplete_sentence": true
+  }
+}

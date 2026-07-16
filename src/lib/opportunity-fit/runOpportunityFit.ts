@@ -40,10 +40,17 @@ export async function runSerpApiSignalSearch(params: {
   namedCompetitors: string[];
   mentionsUrgency: boolean;
   enrichmentEnabled: boolean;
+  /** When the objective-aware planner is the canonical live-SerpAPI executor,
+   * this legacy generic opportunity-fit execution is skipped (no duplicate
+   * queries); the planner path in runAgent populates serpapi_signals instead. */
+  objectivePlannerHandlesEnrichment?: boolean;
 }): Promise<SerpApiSignalsResult> {
   const config = getConfig();
   const accountAvailable = params.accountResolution.status === "confirmed" || params.accountResolution.status === "probable";
 
+  if (params.objectivePlannerHandlesEnrichment) {
+    return { status: "not_run", reason: "handled_by_objective_planner", queries: [], signals: [], strong_signal_count: 0, supporting_signal_count: 0, weak_signal_count: 0, rejected_result_count: 0 };
+  }
   if (!params.enrichmentEnabled) {
     return { status: "not_run", reason: "public enrichment disabled by user", queries: [], signals: [], strong_signal_count: 0, supporting_signal_count: 0, weak_signal_count: 0, rejected_result_count: 0 };
   }

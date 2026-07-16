@@ -12,8 +12,11 @@ export function SummaryCard({ result }: { result: SecureNetworkingTriageResult }
       <div className="summary-headline">
         <VerdictBadge verdict={summary.verdict} />
         <span className="summary-confidence">{Math.round(summary.confidence * 100)}% confidence</span>
-        <span className="topbar-pill pending" title="Which capability combination produced this result">
-          Analysis mode: {result.providers.analysis_mode.replace(/_/g, " ")}
+        <span
+          className={`topbar-pill ${result.analysis_mode === "circuit" ? "ok" : "warn"}`}
+          title="Which interpretation layer produced the canonical fields this run (Circuit vs deterministic fallback)"
+        >
+          Analysis mode: {result.analysis_mode === "circuit" ? "circuit" : result.analysis_mode === "circuit_partial" ? "circuit (partial)" : "deterministic fallback"}
         </span>
         <span className="topbar-pill pending" title="Structural call participants detected by the transcript parser">
           Participants: {result.transcript_meta.participant_count}

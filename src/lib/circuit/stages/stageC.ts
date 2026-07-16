@@ -2,6 +2,7 @@ import { z } from "zod";
 import { runStage } from "@/lib/circuit/stages/stageRunner";
 import { invalidEvidenceIds } from "@/lib/circuit/stages/evidenceValidator";
 import type { StageDefinition, StageResult } from "@/lib/circuit/stages/types";
+import type { PersonalizationContext } from "@/lib/personalization/types";
 
 /**
  * Stage C — qualification, authority, action, and handoff synthesis
@@ -107,6 +108,10 @@ export type StageCInput = {
   stage_b_summary: unknown;
   evidence: Array<{ evidence_id: string; text: string }>;
   taxonomy_candidates: string[];
+  /** Safe recipient personalization context (goals/lane/relevance) — used ONLY
+   * to prioritize salience/wording; never changes scores or invents facts.
+   * Never contains private compensation values. */
+  personalization_context?: PersonalizationContext | null;
   deterministic: StageCOutput;
 };
 
@@ -125,8 +130,14 @@ const stageCDefinition: StageDefinition<StageCInput, StageCOutput> = {
       stage_b: input.stage_b_summary,
       deterministic_evidence: input.evidence,
       taxonomy_candidates: input.taxonomy_candidates,
+      personalization_context: input.personalization_context ?? null,
       task:
-        "STAGE C — qualification, authority, action, and handoff synthesis. Explain (do NOT change) the supplied existing_scores and deal_maturity. Produce evidence-backed output. Every evidence_ids array must reference ONLY the supplied deterministic_evidence ids (use [] when none). Reject vague actions like 'follow up'. commercial_handoff and technical_handoff MUST differ materially. Do NOT invent evidence, people, or scores. Return ONE JSON object with EXACTLY these keys and item shapes: " +
+        "STAGE C — qualification, authority, action, and handoff synthesis. Explain (do NOT change) the supplied existing_scores and deal_maturity. Produce evidence-backed output. " +
+        "MEDDPICC RULES: qualify from CUSTOMER evidence only. A seller's question NEVER confirms a dimension — do not treat a seller asking about renewal, budget, replacement, competition, or the economic buyer as evidence those exist. Use MISSING when only the seller raised it; DISTRIBUTED when authority is spread with no single named buyer; HYPOTHESIS for a plausible-but-unconfirmed read; PARTIAL when some customer evidence exists but it is incomplete; CONFIRMED only with clear customer evidence. " +
+        "NEXT BEST ACTION: derive it from what the CUSTOMER actually requested or agreed. A customer's cautionary/skeptical statement about a vendor capability (accuracy, maintainability, cost, data access, sovereignty) is a risk/objection — it is NOT the agreed next step, the due basis, or a why-now event. timing_basis must reflect a real customer-stated timing driver. " +
+        "do_not_reask MUST list the specific topics the customer already answered (so the specialist does not re-ask them). remaining_questions MUST list the genuinely unresolved questions. Both must be non-empty when the transcript supports them. " +
+        "If personalization_context is present, use it ONLY to prioritize salience and word the opportunity_thesis + next_best_action for that recipient's goals/lane — never change the scores, never invent goal or quota impact, never invent public facts, and never expose private compensation. " +
+        "Every evidence_ids array must reference ONLY the supplied deterministic_evidence ids (use [] when none). Reject vague actions like 'follow up'. commercial_handoff and technical_handoff MUST differ materially. Do NOT invent evidence, people, or scores. Return ONE JSON object with EXACTLY these keys and item shapes: " +
         JSON.stringify({
           facts: [{ statement: "string", evidence_ids: ["string"] }],
           inferences: [{ statement: "string", evidence_ids: ["string"] }],
