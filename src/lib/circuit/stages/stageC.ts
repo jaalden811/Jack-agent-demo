@@ -107,6 +107,10 @@ export type StageCInput = {
   stage_a_summary: unknown;
   stage_b_summary: unknown;
   evidence: Array<{ evidence_id: string; text: string }>;
+  /** Transcript turn ids (t#) that Circuit MAY cite — Stage A cites turn ids
+   * and passes its summary here, so Stage C must be allowed to re-cite them
+   * (otherwise valid transcript citations are rejected as "not present"). */
+  transcript_turn_ids?: string[];
   taxonomy_candidates: string[];
   /** Safe recipient personalization context (goals/lane/relevance) — used ONLY
    * to prioritize salience/wording; never changes scores or invents facts.
@@ -116,7 +120,7 @@ export type StageCInput = {
 };
 
 export function allowedStageCEvidenceIds(input: StageCInput): Set<string> {
-  return new Set(input.evidence.map((e) => e.evidence_id));
+  return new Set([...input.evidence.map((e) => e.evidence_id), ...(input.transcript_turn_ids ?? [])]);
 }
 
 const stageCDefinition: StageDefinition<StageCInput, StageCOutput> = {

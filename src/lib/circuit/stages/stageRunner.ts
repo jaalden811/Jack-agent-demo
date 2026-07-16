@@ -4,6 +4,10 @@ import { loadCircuitMasterPrompt } from "@/lib/circuit/prompts/promptLoader";
 import { extractJsonObject } from "@/lib/circuit/stages/jsonParser";
 import type { StageDefinition, StageResult, StageTrace } from "@/lib/circuit/stages/types";
 
+/** Max corrective repair passes after the first attempt (flash-tier models
+ * occasionally need a second nudge to satisfy the schema). */
+const CIRCUIT_MAX_REPAIRS = 2;
+
 /**
  * Generic Circuit stage runner (Phase 1). One code path for every stage:
  * assemble prompt → call Circuit → parse one JSON object → Zod-validate →
@@ -93,23 +97,35 @@ export async function runStage<TInput, TOutput>(def: StageDefinition<TInput, TOu
     return fallback(first.errorCode);
   }
 
-  // One repair attempt for a malformed/invalid response.
+  // Up to two repair attempts for a malformed/invalid response — a
+  // flash-tier model occasionally emits a shape that fails schema/semantic
+  // validation, and a second corrective pass materially raises the promotion
+  // rate (so Stage C/D reach canonical instead of deterministic fallback).
   trace.repair_attempted = true;
-  const repairPrompt = [
-    userPrompt,
-    "",
-    "Your previous response was rejected. Return ONE valid JSON object only (no markdown, no code fences, no commentary).",
-    "Fix these problems and cite ONLY evidence IDs and URLs present in the input:",
-    ...first.issues.map((i) => `- ${i}`)
-  ].join("\n");
-  const repaired = await callAndValidate({ def, input, system, userPrompt: repairPrompt, timeoutMs: opts?.timeoutMs });
-  trace.model_returned = repaired.model ?? trace.model_returned;
-  trace.request_id = repaired.requestId ?? trace.request_id;
-  if (repaired.ok) {
-    trace.succeeded = true;
-    trace.duration_ms = Date.now() - startedAt;
-    return { output: repaired.output, trace };
+  let lastFailure = first;
+  for (let attempt = 0; attempt < CIRCUIT_MAX_REPAIRS; attempt += 1) {
+    const repairPrompt = [
+      userPrompt,
+      "",
+      "Your previous response was rejected. Return ONE valid JSON object only (no markdown, no code fences, no commentary).",
+      "Include EVERY required key with the EXACT field names and types from the schema above; use [] or \"\" for anything you cannot fill rather than omitting it.",
+      "Fix these problems and cite ONLY evidence IDs and URLs present in the input:",
+      ...lastFailure.issues.map((i) => `- ${i}`)
+    ].join("\n");
+    const repaired = await callAndValidate({ def, input, system, userPrompt: repairPrompt, timeoutMs: opts?.timeoutMs });
+    trace.model_returned = repaired.model ?? trace.model_returned;
+    trace.request_id = repaired.requestId ?? trace.request_id;
+    if (repaired.ok) {
+      trace.succeeded = true;
+      trace.duration_ms = Date.now() - startedAt;
+      return { output: repaired.output, trace };
+    }
+    lastFailure = repaired;
+    if (repaired.errorCode !== "CIRCUIT_SCHEMA_VALIDATION_FAILED" && repaired.errorCode !== "CIRCUIT_RESPONSE_PARSE_FAILED") break;
   }
 
-  return fallback(repaired.errorCode);
+  if (process.env.CIRCUIT_DEBUG_ISSUES === "true") {
+    console.warn(`[circuit-debug] stage ${def.stage} failed after repairs: first=${JSON.stringify(first.issues)} last=${JSON.stringify(lastFailure.issues)}`);
+  }
+  return fallback(lastFailure.errorCode);
 }

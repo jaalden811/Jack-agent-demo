@@ -231,8 +231,28 @@ export function selectRelevantChunks(transcript: IngestedTranscript): Transcript
   return customerChunks.length > 0 ? customerChunks : transcript.chunks;
 }
 
+/**
+ * Normalizes a transcript that was pasted as (nearly) ONE line with no
+ * speaker newlines — e.g. "Rachel: ... Jordan: ... Maya: ..." — by inserting
+ * a newline before each recurring inline "Speaker:" label so the line-anchored
+ * parser recovers real turns (instead of one giant turn → "Participants: 1").
+ * Conservative: only fires when there are far fewer newlines than distinct
+ * inline speakers, so normally-formatted transcripts are untouched.
+ */
+export function normalizeInlineSpeakers(rawText: string): string {
+  const inlineSpeakerRe = /(^|\s)([A-Z][a-z]+(?:\s[A-Z][a-z]+)?):\s/g;
+  const matches = [...rawText.matchAll(inlineSpeakerRe)];
+  const distinct = new Set(matches.map((m) => m[2].trim().toLowerCase()).filter((n) => !NON_SPEAKER_KEYS.has(n.split(/\s+/)[0])));
+  const newlineCount = (rawText.match(/\n/g) ?? []).length;
+  if (matches.length < 4 || distinct.size < 2 || newlineCount >= distinct.size) return rawText;
+  return rawText.replace(inlineSpeakerRe, (full, pre: string, name: string) => {
+    if (NON_SPEAKER_KEYS.has(name.trim().toLowerCase().split(/\s+/)[0])) return full;
+    return `${pre && pre.length ? "\n" : ""}${name}: `;
+  });
+}
+
 export function ingestTranscript(rawText: string): IngestedTranscript {
-  const lines = rawText.split(/\r?\n/);
+  const lines = normalizeInlineSpeakers(rawText).split(/\r?\n/);
 
   let account: string | null = null;
   const recordsByKey = new Map<string, ParticipantRecord>();

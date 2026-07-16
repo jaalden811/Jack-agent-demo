@@ -1,6 +1,7 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { StageCInput, StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { PersonalizationContext } from "@/lib/personalization/types";
+import { ingestTranscript } from "@/lib/signal-agent/transcript";
 
 /**
  * Builds a Stage C input (+ deterministic-fallback output) from an
@@ -87,6 +88,10 @@ export function buildStageCInput(result: SecureNetworkingTriageResult, stageASum
     stage_a_summary: stageASummary ?? null,
     stage_b_summary: stageBSummary ?? null,
     evidence,
+    // Transcript turn ids Stage A cites (t#) — allowed for Stage C citations
+    // too, so valid transcript references aren't rejected. Ids only (kept out
+    // of the prompt body to avoid bloat; the text is available via stage_a).
+    transcript_turn_ids: result.transcript_meta?.raw_text ? ingestTranscript(result.transcript_meta.raw_text).sentences.map((s) => `t${s.index}`) : [],
     taxonomy_candidates: result.matches.slice(0, 5).map((m) => m.pain_category).filter(Boolean),
     personalization_context: personalizationContext ?? null,
     deterministic
