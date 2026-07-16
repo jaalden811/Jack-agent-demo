@@ -21,7 +21,7 @@ import { buildQuestionIndex } from "@/lib/handoff/questionIndex";
 import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
 import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
-import { buildPersonalizationBlock } from "@/lib/personalization/buildPersonalization";
+import { buildPersonalizationBlock, buildPersonalizationContextForResult } from "@/lib/personalization/buildPersonalization";
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
@@ -445,12 +445,27 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
 
+  // Resolve the active seller profile once, and build the SAFE recipient
+  // personalization context (goals/lane/relevance) so Circuit Stage C/D can
+  // prioritize salience + wording for the recipient. The profile is reused
+  // for the final personalization block below.
+  const verifiedOpportunityValue = account.openOpportunity && account.dealValue > 0 ? account.dealValue : null;
+  let sellerProfileForRun: Awaited<ReturnType<typeof resolveActiveSellerProfile>> = null;
+  let personalizationContext = null;
+  try {
+    sellerProfileForRun = await resolveActiveSellerProfile();
+    personalizationContext = buildPersonalizationContextForResult({ result, profile: sellerProfileForRun, verifiedOpportunityValue });
+  } catch {
+    sellerProfileForRun = null;
+    personalizationContext = null;
+  }
+
   // Circuit AI-enhancement: run Stage A→D, then PROMOTE each stage's
   // validated output into the canonical fields (interpretation/message
   // layer). Deterministic scores, routing owners, and evidence identity are
   // never overwritten. No-op when Circuit is unconfigured/unavailable —
   // never throws.
-  result.ai_trace = await enhanceWithCircuit(result);
+  result.ai_trace = await enhanceWithCircuit(result, { personalizationContext });
   promoteCircuitIntoCanonical(result);
 
   // When any Circuit stage was promoted, rebuild the do-not-re-ask index and
@@ -470,8 +485,6 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // history — never changes deterministic scores, routing, or evidence
   // identity. No-op-safe when no profile/thread exists.
   try {
-    const sellerProfile = await resolveActiveSellerProfile();
-    const verifiedOpportunityValue = account.openOpportunity && account.dealValue > 0 ? account.dealValue : null;
     const thread = await recordAndBuildThread(result);
     result.opportunity_thread = {
       thread_id: thread.thread_id,
@@ -482,7 +495,7 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     const materialChange = thread.material_changes.some((c) => c !== "No material change since last time.");
     result.personalization = buildPersonalizationBlock({
       result,
-      profile: sellerProfile,
+      profile: sellerProfileForRun,
       verifiedOpportunityValue,
       extras: { novelty: thread.novelty, duplicateOf: thread.duplicate_of, materialChange }
     });

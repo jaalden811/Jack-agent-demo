@@ -1,5 +1,6 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import type { StageCInput, StageCOutput } from "@/lib/circuit/stages/stageC";
+import type { PersonalizationContext } from "@/lib/personalization/types";
 
 /**
  * Builds a Stage C input (+ deterministic-fallback output) from an
@@ -9,7 +10,7 @@ import type { StageCInput, StageCOutput } from "@/lib/circuit/stages/stageC";
  * and decision are passed read-only — Circuit never changes them.
  */
 
-export function buildStageCInput(result: SecureNetworkingTriageResult, stageASummary?: unknown, stageBSummary?: unknown): StageCInput {
+export function buildStageCInput(result: SecureNetworkingTriageResult, stageASummary?: unknown, stageBSummary?: unknown, personalizationContext?: PersonalizationContext | null): StageCInput {
   const buckets = result.generic_diagnostics?.signals;
   const evidence = buckets
     ? [...buckets.commercial, ...buckets.technical, ...buckets.ownership, ...buckets.next_steps].map((s) => ({ evidence_id: s.evidence_id, text: s.text }))
@@ -87,6 +88,7 @@ export function buildStageCInput(result: SecureNetworkingTriageResult, stageASum
     stage_b_summary: stageBSummary ?? null,
     evidence,
     taxonomy_candidates: result.matches.slice(0, 5).map((m) => m.pain_category).filter(Boolean),
+    personalization_context: personalizationContext ?? null,
     deterministic
   };
 }
