@@ -321,22 +321,25 @@ const stageDInput: StageDInput = {
   account: "Meridian",
   channel_byte_budget: 6400,
   allowed_urls: ["https://meridian.com/about"],
-  stage_c: {
-    opportunity_thesis: "thesis",
-    next_best_action: { title: "t", summary: "Lead a workshop", owner_role: "technical" },
-    commercial_handoff: { summary: "commercial brief", key_points: ["impact"], remaining_questions: ["budget?"] },
-    technical_handoff: { summary: "technical brief", key_points: ["environment"], remaining_questions: ["data sources?"] },
+  brief: {
+    opportunity_thesis: "A credible opportunity centered on unified operations.",
+    why_now: ["Board approved a $1.4M budget", "Renewal window in Q3", "Purchase intent this quarter"],
+    meddpicc_lines: ["EB — Confirmed: CIO owns the budget", "DC — Partial: pilot metrics"],
+    stakeholder_lines: ["CIO — executive sponsor"],
+    sales_actions: ["Validate the budget owner", "Anchor the business case", "Map the procurement path"],
+    technical_actions: ["Define the target architecture", "Scope a proof-of-value", "Confirm integrations"],
+    top_risks: ["Economic buyer not yet confirmed"],
     do_not_reask: ["current environment"]
   },
   deterministic: stageDDeterministic
 };
 
 describe("runStageD", () => {
-  it("returns distinct Circuit messages using the canonical account", async () => {
+  it("returns distinct Circuit messages using the canonical account + required sections", async () => {
     configure();
     vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
-      sales_webex: "**Commercial action — Meridian**\n\nWhy now and the commercial next step.",
-      technical_webex: "**Technical action — Meridian**\n\nCustomer environment and the workshop plan.",
+      sales_webex: "**Account:** Meridian\n\n**Opportunity thesis**\nA credible opportunity.\n\n**Why now**\n- Budget approved\n\n**MEDDPICC**\n- EB confirmed\n\n**Recommended next actions**\n- Validate the budget owner",
+      technical_webex: "**Account:** Meridian\n\n**Customer problem & environment**\n- Fragmented tooling\n\n**Recommended next actions**\n- Scope a proof-of-value",
       sales_email: { subject: "Commercial — Meridian", body: "b" },
       technical_email: { subject: "Technical — Meridian", body: "b" }
     }));
@@ -344,6 +347,7 @@ describe("runStageD", () => {
     expect(trace.succeeded).toBe(true);
     expect(output.sales_webex).not.toEqual(output.technical_webex);
     expect(output.sales_webex).toContain("Meridian");
+    expect(output.sales_webex.toLowerCase()).toContain("opportunity thesis");
   });
 
   it("rejects identical messages / missing account / invented URL / ellipsis -> fallback", async () => {

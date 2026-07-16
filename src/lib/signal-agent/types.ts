@@ -7,6 +7,7 @@ import type { QuestionIndex, SpecialistHandoffPacket } from "@/lib/handoff/types
 import type { StageAOutput } from "@/lib/circuit/stages/stageA";
 import type { StageBOutput } from "@/lib/circuit/stages/stageB";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
+import type { StageDOutput } from "@/lib/circuit/stages/stageD";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
 export type CircuitStageTraceSummary = {
@@ -32,6 +33,11 @@ export type AiTrace = {
   stage_a: StageAOutput | null;
   stage_b: StageBOutput | null;
   stage_c: StageCOutput | null;
+  /** Circuit's recipient-specific message drafts (commercial + technical
+   * Webex/email). Preferred by the delivery layer over the deterministic
+   * message builder when present and quality-valid; null when Circuit is
+   * unconfigured/unavailable or Stage D fell back. */
+  stage_d: StageDOutput | null;
 };
 import type { GenericSignal } from "@/lib/qualification/genericSignalExtraction";
 import type { CategoryScoreDiagnostic } from "@/lib/signal-agent/dominance";

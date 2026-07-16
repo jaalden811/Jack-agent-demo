@@ -109,11 +109,55 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-/** Stage D: replaces the deterministic Webex/email content with
- * OpenAI-synthesized, evidence-backed content when qualification/
- * message synthesis is enabled, configured, and validates — otherwise
- * the already-built deterministic messages/emails are returned
- * unchanged. Never blocks delivery on a synthesis failure. */
+/** Converts a Stage D email body (Markdown-ish plain text) into safe HTML for
+ * Outlook. HTML entities are escaped FIRST (XSS-safe), then `**bold**` markers
+ * and line breaks are rendered on the already-escaped text. */
+function stageDBodyToHtml(body: string): string {
+  const escaped = body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const withBold = escaped.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  return `<p>${withBold.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`;
+}
+
+/** Prefers Circuit Stage D message drafts (ai_trace.stage_d) over the legacy
+ * OpenAI synthesis. Returns mapped previews only when Stage D is present AND
+ * passes the same delivery-time quality gate; otherwise null so the caller
+ * falls through to OpenAI synthesis (being retired) and then the deterministic
+ * builder. This is the Circuit replacement for OpenAI message synthesis. */
+function applyCircuitStageD(params: {
+  result: SecureNetworkingTriageResult;
+  messages: WebexMessagePreview[];
+  emails: EmailMessagePreview[];
+  qualityContext: Parameters<typeof validateMessageQuality>[0]["context"];
+}): { messages: WebexMessagePreview[]; emails: EmailMessagePreview[] } | null {
+  const aiTrace = params.result.ai_trace;
+  const stageD = aiTrace?.enhanced ? aiTrace.stage_d : null;
+  if (!stageD) return null;
+
+  const validation = validateMessageQuality({
+    salesMarkdown: stageD.sales_webex,
+    technicalMarkdown: stageD.technical_webex,
+    context: params.qualityContext
+  });
+  if (!validation.valid) return null;
+
+  const messages = params.messages.map((message) =>
+    message.lane === "sales"
+      ? { ...message, markdown: stageD.sales_webex, character_count: stageD.sales_webex.length, synthesized_by_ai: true }
+      : { ...message, markdown: stageD.technical_webex, character_count: stageD.technical_webex.length, synthesized_by_ai: true }
+  );
+  const emails = params.emails.map((email) =>
+    email.lane === "sales"
+      ? { ...email, subject: stageD.sales_email.subject, html: stageDBodyToHtml(stageD.sales_email.body), text: stageD.sales_email.body, synthesized_by_ai: true }
+      : { ...email, subject: stageD.technical_email.subject, html: stageDBodyToHtml(stageD.technical_email.body), text: stageD.technical_email.body, synthesized_by_ai: true }
+  );
+  return { messages, emails };
+}
+
+/** Message synthesis for delivery. Precedence: (1) Circuit Stage D drafts
+ * (ai_trace.stage_d) when the run was Circuit-enhanced and they pass the
+ * delivery quality gate; (2) the legacy OpenAI synthesis (being retired) when
+ * enabled/configured and it validates; (3) the already-built deterministic
+ * messages/emails. Never blocks delivery on a synthesis failure. */
 async function applyAiMessageSynthesis(params: {
   result: SecureNetworkingTriageResult;
   routing: ReturnType<typeof buildLaneRouting>;
@@ -148,6 +192,14 @@ async function applyAiMessageSynthesis(params: {
     byteCeiling: WEBEX_HARD_BYTE_CEILING,
     requireRichBrief: params.result.executive_summary.verdict !== "NOISE"
   };
+
+  // Circuit Stage D is the primary AI message synthesizer. When the run was
+  // Circuit-enhanced and Stage D produced quality-valid distinct messages, use
+  // them and skip the legacy OpenAI path entirely.
+  const circuit = applyCircuitStageD({ result: params.result, messages: params.messages, emails: params.emails, qualityContext });
+  if (circuit) {
+    return { messages: circuit.messages, emails: circuit.emails, used: true, fallback_reason: null };
+  }
 
   const synthesisArgs = {
     result: params.result,

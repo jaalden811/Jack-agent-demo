@@ -223,3 +223,107 @@ describe("computePeachtreePreview — no delivery attempted", () => {
     expect(sendOutlookEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("Circuit Stage D message synthesis in delivery", () => {
+  // A rich, quality-passing Stage D draft (distinct sales/technical, canonical
+  // account, opportunity thesis + MEDDPICC + ≥3 why-now + ≥3 next actions).
+  const salesWebex = [
+    "**Account:** Acme Retail",
+    "",
+    "**Opportunity thesis**",
+    "Acme Retail needs unified cross-domain network operations across campus, branch, and cloud.",
+    "",
+    "**MEDDPICC**",
+    "- Economic buyer: CIO Dana Whitfield",
+    "- Decision criteria: pilot metrics must be met",
+    "",
+    "**Why now**",
+    "- Board approved a $1.4M budget",
+    "- Architecture workshop requested this quarter",
+    "- Prepared to purchase this quarter",
+    "",
+    "**Bella next actions**",
+    "- Confirm the architecture workshop date",
+    "- Align on the pilot success metrics",
+    "- Prepare the commercial proposal"
+  ].join("\n");
+  const technicalWebex = [
+    "**Account:** Acme Retail",
+    "",
+    "**Current environment**",
+    "- Five disconnected dashboards across campus, branch, and cloud-managed sites",
+    "- A different single pane of glass per team",
+    "",
+    "**Jack next actions**",
+    "- Scope the architecture workshop agenda",
+    "- Map the current console inventory",
+    "- Define the POV technical success criteria"
+  ].join("\n");
+
+  function withStageD(result: Awaited<ReturnType<typeof runSignalAgent>>, sales: string, technical: string) {
+    result.ai_trace = {
+      provider: "circuit",
+      enhanced: true,
+      stages: [],
+      stage_a: null,
+      stage_b: null,
+      stage_c: null,
+      stage_d: {
+        sales_webex: sales,
+        technical_webex: technical,
+        sales_email: { subject: "Commercial action — Acme Retail", body: sales },
+        technical_email: { subject: "Technical action — Acme Retail", body: technical }
+      }
+    };
+    return result;
+  }
+
+  it("prefers Circuit Stage D drafts (synthesized_by_ai) over the deterministic builder when they pass the quality gate", async () => {
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } }),
+      salesWebex,
+      technicalWebex
+    );
+    const preview = await computePeachtreePreview(result);
+
+    const sales = preview.messages.find((m) => m.lane === "sales");
+    const technical = preview.messages.find((m) => m.lane === "technical");
+    expect(sales?.markdown).toBe(salesWebex);
+    expect(sales?.synthesized_by_ai).toBe(true);
+    expect(technical?.markdown).toBe(technicalWebex);
+    expect(technical?.synthesized_by_ai).toBe(true);
+
+    // Emails also come from Stage D, HTML-escaped (defense-in-depth).
+    const salesEmail = preview.emails.find((e) => e.lane === "sales");
+    expect(salesEmail?.subject).toBe("Commercial action — Acme Retail");
+    expect(salesEmail?.text).toBe(salesWebex);
+  });
+
+  it("falls back to the deterministic builder when Stage D fails the quality gate (identical lanes)", async () => {
+    const identical = salesWebex; // identical sales/technical -> not materially different
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } }),
+      identical,
+      identical
+    );
+    const preview = await computePeachtreePreview(result);
+
+    const sales = preview.messages.find((m) => m.lane === "sales");
+    // Circuit draft rejected -> deterministic content, not synthesized_by_ai.
+    expect(sales?.synthesized_by_ai).toBe(false);
+    expect(sales?.markdown).not.toBe(identical);
+  });
+
+  it("HTML-escapes Stage D email bodies (no raw HTML injection)", async () => {
+    const injected = salesWebex + "\n\n<script>alert(1)</script>";
+    const result = withStageD(
+      await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: { useOpenAIEmbeddings: false, useOpenAISynthesis: false } }),
+      injected,
+      technicalWebex
+    );
+    const preview = await computePeachtreePreview(result);
+    const salesEmail = preview.emails.find((e) => e.lane === "sales");
+    expect(salesEmail?.html).not.toContain("<script>");
+    expect(salesEmail?.html).toContain("&lt;script&gt;");
+  });
+});

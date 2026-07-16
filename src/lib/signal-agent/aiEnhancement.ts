@@ -5,24 +5,31 @@ import { buildStageBInput } from "@/lib/circuit/stages/stageBAdapter";
 import { runStageB } from "@/lib/circuit/stages/stageB";
 import { buildStageCInput } from "@/lib/circuit/stages/stageCAdapter";
 import { runStageC } from "@/lib/circuit/stages/stageC";
+import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
+import { runStageD } from "@/lib/circuit/stages/stageD";
 import type { StageTrace } from "@/lib/circuit/stages/types";
 import type { AiTrace, CircuitStageTraceSummary, SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
 /**
  * Circuit AI-enhancement layer for the Signal-to-Action pipeline (Phases
- * 1 & 3). Runs Stage A (transcript/evidence interpretation) then Stage C
- * (qualification/action/handoff synthesis) via the shared Circuit stage
- * runner AFTER the deterministic result is built. This is ADDITIVE:
+ * 1, 3 & 7). Runs Stage A (transcript/evidence interpretation), Stage B
+ * (public-evidence classification, when there are public sources), Stage C
+ * (qualification/action/handoff synthesis), then Stage D (recipient-specific
+ * message drafts) via the shared Circuit stage runner AFTER the deterministic
+ * result is built. This is ADDITIVE:
  *
  *  - deterministic evidence, account truth, and every numeric score remain
  *    authoritative and unchanged;
  *  - Circuit's validated interpretation is attached under result.ai_trace
  *    (unsupported claims are already rejected by the stage validators);
+ *  - Stage D drafts are attached to ai_trace.stage_d; the delivery layer
+ *    prefers them over the deterministic message builder only when they pass
+ *    the same delivery-time quality gate (@/lib/webex/messageQuality);
  *  - when Circuit is unconfigured/unavailable or fails, enhancement is a
  *    no-op and the deterministic result stands (never throws).
  */
 
-const NONE: AiTrace = { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null };
+const NONE: AiTrace = { provider: "circuit", enhanced: false, stages: [], stage_a: null, stage_b: null, stage_c: null, stage_d: null };
 
 function summary(trace: StageTrace): CircuitStageTraceSummary {
   return {
@@ -52,13 +59,30 @@ export async function enhanceWithCircuit(result: SecureNetworkingTriageResult): 
     const stageB = hasPublicSources ? await runStageB(buildStageBInput(result)) : null;
 
     const stageC = await runStageC(buildStageCInput(result, stageA.output, stageB?.output));
+
+    // Stage D — recipient-specific message drafts, built from the (always
+    // populated) Stage C output. If Circuit fails here it falls back to the
+    // deterministic Stage D messages; the delivery layer independently
+    // re-validates before ever preferring these over the message builder.
+    const stageD = await runStageD(buildStageDInput(result, stageC.output));
+
     return {
       provider: "circuit",
-      enhanced: stageA.trace.succeeded || (stageB?.trace.succeeded ?? false) || stageC.trace.succeeded,
-      stages: [summary(stageA.trace), ...(stageB ? [summary(stageB.trace)] : []), summary(stageC.trace)],
+      enhanced:
+        stageA.trace.succeeded ||
+        (stageB?.trace.succeeded ?? false) ||
+        stageC.trace.succeeded ||
+        stageD.trace.succeeded,
+      stages: [
+        summary(stageA.trace),
+        ...(stageB ? [summary(stageB.trace)] : []),
+        summary(stageC.trace),
+        summary(stageD.trace)
+      ],
       stage_a: stageA.output,
       stage_b: stageB?.output ?? null,
-      stage_c: stageC.output
+      stage_c: stageC.output,
+      stage_d: stageD.output
     };
   } catch {
     // Enhancement must never break a run — fall back to the deterministic
