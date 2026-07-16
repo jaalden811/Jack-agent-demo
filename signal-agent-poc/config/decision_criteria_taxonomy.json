@@ -1,0 +1,42 @@
+{
+  "description": "Generic taxonomy for extracting a customer DECISION-CRITERIA ledger and typing OBJECTIONS from a transcript. Detection is by linguistic shape/theme only (cue substrings), never a company, product, or specific transcript. A criterion is created only when a category cue matches; criteria_lead_cues merely raise confidence. Objection responses are GENERIC framings (acknowledge + address with evidence) — never an invented product claim, per the sales-intelligence-integrity rule. Logic lives in src/lib/decision-packet; this file is editable without code changes.",
+  "version": "1.0",
+  "criteria_lead_cues": [
+    "decision criteria", "our criteria", "criteria are", "criteria is", "the criteria",
+    "we need", "we require", "we want", "we would need", "we'd need", "we expect",
+    "must be", "must have", "important that", "important to us", "the bar is",
+    "we care about", "priority is", "key requirement", "non-negotiable", "matters to us",
+    "what would make", "good outcome", "requirement", "we're looking for", "looking for"
+  ],
+  "categories": [
+    { "id": "evaluation_rigor", "label": "Evaluation rigor / evidence quality", "cues": ["neutral criteria", "objective", "representative data", "evidence quality", "data quality", "normalized data", "credible", "apples to apples", "level playing field", "fair comparison", "fair evaluation"] },
+    { "id": "data_sovereignty", "label": "Data sovereignty / residency", "cues": ["sovereignty", "data location", "data residency", "where the data", "keep data", "without moving", "federated search", "data stays", "in-region", "in region", "data-location"] },
+    { "id": "cost_governance", "label": "Cost predictability / governance", "cues": ["cost predictab", "licensing", "license cost", "ingest everything", "data tiers", "data tier", "retention cost", "cost governance", "budget predictab", "overlapping tools", "too expensive", "cost control"] },
+    { "id": "openness_multivendor", "label": "Openness / multivendor", "cues": ["multivendor", "multi-vendor", "not all cisco", "not all one vendor", "vendor lock", "lock-in", "vendor neutral", "avoid lock", "multivendor openness", "openness"] },
+    { "id": "integration", "label": "Integration with existing systems", "cues": ["integrate with", "integration with", "servicenow", "system of record", "prebuilt", "connectors", "compatible with", "works with", "out of the box", "genuinely prebuilt"] },
+    { "id": "security_access", "label": "Security & access control", "cues": ["access control", "role-based", "rbac", "data segregation", "segregation", "access-controlled", "auditab", "least privilege", "retention control", "properly separated", "data separation"] },
+    { "id": "data_retention", "label": "Data retention / tiering", "cues": ["retention", "storage pattern", "keep for", "archive", "retain", "storage tier", "how long"] },
+    { "id": "skills_operating_model", "label": "Skills & operating model", "cues": ["skills", "maintainab", "operating model", "managed content", "engineering backlog", "permanent integration project", "who will run", "resourc", "expertise", "people who can"] },
+    { "id": "transparency_confidence", "label": "Transparency / confidence", "cues": ["show confidence", "data gaps", "black-box", "black box", "correlation is not causation", "pretending", "explainab", "confidence or data", "what evidence"] },
+    { "id": "scope_boundaries", "label": "Scope boundaries", "cues": ["rip-and-replace", "rip and replace", "keep our specialist", "keep specialist tools", "not looking to replace", "not a rip", "where they are better", "specialist tools", "not replace"] }
+  ],
+  "objection_types": [
+    { "id": "trust", "label": "Trust / credibility", "cues": ["become fiction", "look impressive", "looks impressive", "black-box", "black box", "pretending", "correlation is not causation", "on paper", "in theory", "expensive explanation"] },
+    { "id": "commercial", "label": "Commercial / cost", "cues": ["too expensive", "licensing cost", "overlapping tools", "pay for two", "cost governance later", "increase the licensing"] },
+    { "id": "technical", "label": "Technical / feasibility", "cues": ["won't be uniform", "not be uniform", "instrumentation", "stays accurate", "depends on the source", "not zero", "how much is manual", "become fiction"] },
+    { "id": "scope", "label": "Scope / boundaries", "cues": ["rip-and-replace", "rip and replace", "too broad", "so generalized", "everyone sees everything", "surrender control", "expensive explanation"] },
+    { "id": "political", "label": "Organizational / adoption", "cues": ["internal politics", "decentralized", "surrender control", "declaring a new enterprise view", "trust one system", "adoption"] }
+  ],
+  "objection_responses": {
+    "trust": "Acknowledge the credibility concern directly and plan to demonstrate it with the customer's own evidence and explicit confidence / data-gap reporting in the working session — never counter with unproven claims.",
+    "commercial": "Treat cost governance as a first-class design input (data tiering, retention, scope) and agree what data belongs where before any commitment.",
+    "technical": "Scope a bounded, credible test on one representative environment rather than promising uniform coverage; validate feasibility with real telemetry.",
+    "scope": "Reaffirm the boundaries the customer set (no rip-and-replace; preserve specialist tools and systems of record) and frame the work within those constraints.",
+    "political": "Respect the operating model the customer described (decentralized ownership, existing authoritative systems) and design for shared visibility without central control.",
+    "general": "Acknowledge the concern and commit to addressing it with evidence during the agreed working session; do not overpromise."
+  },
+  "limitations": [
+    "Decision criteria are inferred from transcript language; confirm relative priority/weighting with the customer.",
+    "Objection responses are framing guidance only — validate specifics against the customer's environment before committing."
+  ]
+}

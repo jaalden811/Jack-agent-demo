@@ -241,17 +241,29 @@ function qualitativePatterns(): RegExp[] {
   return qualitativeImpactPatterns;
 }
 
-/** True when the customer describes material business/operational impact in
- * qualitative (non-numeric) terms. Read from customer-attributed text only. */
-export function detectQualitativeImpact(transcript: IngestedTranscript): boolean {
+/** Customer-attributed sentences that assert material business/operational
+ * impact in qualitative (non-numeric) terms. */
+export function qualitativeImpactSentences(transcript: IngestedTranscript): string[] {
   const patterns = qualitativePatterns();
+  const out: string[] = [];
+  const seen = new Set<string>();
   for (const chunk of selectRelevantChunks(transcript)) {
     // A question that merely asks whether impact can be quantified is not an
     // assertion of impact ("Are you able to quantify that impact today?").
     if (isInterrogative(chunk.text)) continue;
-    if (patterns.some((re) => re.test(chunk.text))) return true;
+    if (!patterns.some((re) => re.test(chunk.text))) continue;
+    const key = chunk.text.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(chunk.text.trim());
   }
-  return false;
+  return out;
+}
+
+/** True when the customer describes material business/operational impact in
+ * qualitative (non-numeric) terms. Read from customer-attributed text only. */
+export function detectQualitativeImpact(transcript: IngestedTranscript): boolean {
+  return qualitativeImpactSentences(transcript).length > 0;
 }
 
 /** Total intent-evidence score, capped at 1.0 and de-duplicated per

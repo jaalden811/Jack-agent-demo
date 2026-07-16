@@ -22,6 +22,7 @@ import { buildSpecialistHandoff } from "@/lib/handoff/handoffBuilder";
 import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { buildPersonalizationBlock, buildPersonalizationContextForResult } from "@/lib/personalization/buildPersonalization";
+import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
@@ -544,6 +545,16 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   } catch {
     result.personalization = null;
     result.opportunity_thread = null;
+  }
+
+  // Additive Decision Packet: a decomposed, evidence-linked, confidence-scored
+  // analytical view (decision criteria, typed objections, material impact).
+  // Purely a function of evidence already produced — never changes scores,
+  // verdict, routing, MEDDPICC, or evidence identity. No-op-safe.
+  try {
+    result.decision_packet = buildDecisionPacket({ result, transcript });
+  } catch {
+    result.decision_packet = null;
   }
 
   // Canonical search trace (Section 9) — the single source of truth for what

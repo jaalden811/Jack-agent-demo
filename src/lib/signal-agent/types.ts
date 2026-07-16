@@ -10,6 +10,7 @@ import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDOutput } from "@/lib/circuit/stages/stageD";
 import type { PersonalizationBlock } from "@/lib/personalization/types";
 import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
+import type { DecisionPacket } from "@/lib/decision-packet/types";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
 export type CircuitStageTraceSummary = {
@@ -747,6 +748,11 @@ export type SecureNetworkingTriageResult = {
   /** Run-scoped assistant availability + suggested grounded questions.
    * Additive/optional. */
   assistant?: { available: boolean; suggested_questions: string[] } | null;
+  /** Additive analytical Decision Packet: a decomposed, evidence-linked,
+   * confidence-scored view of the customer's decision criteria, typed
+   * objections (with generic response framing), and material impact. NEVER
+   * changes scores, verdict, routing, MEDDPICC, or evidence identity. */
+  decision_packet?: DecisionPacket | null;
 };
 
 export type GenericDiagnostics = {

@@ -1,0 +1,67 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { runSignalAgent } from "@/lib/signal-agent/runAgent";
+import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
+import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
+
+/**
+ * Decision Packet — additive analytical layer. Verified on a discovery
+ * transcript that states explicit decision criteria, voices objections, and
+ * describes qualitative impact. The packet must decompose those into an
+ * evidence-linked, confidence-scored ledger without changing any score.
+ */
+
+const OFF = { enrichPublicSignals: false } as const;
+const FIXTURE = "signal-agent-poc/data/transcripts/discovery_negated_org_scenario_signal.txt";
+
+beforeEach(() => {
+  clearCatalogCache();
+  clearAccountsCache();
+});
+
+async function run() {
+  return runSignalAgent({ customTranscript: readFileSync(FIXTURE, "utf8"), options: OFF });
+}
+
+describe("Decision Packet (additive analytical layer)", () => {
+  it("decomposes explicit customer decision criteria into a categorized, grounded ledger", async () => {
+    const result = await run();
+    const packet = result.decision_packet;
+    expect(packet).toBeTruthy();
+    expect(packet!.decision_criteria.length).toBeGreaterThanOrEqual(3);
+    const categories = new Set(packet!.decision_criteria.map((c) => c.category));
+    expect(categories.has("security_access")).toBe(true);
+    expect(categories.has("integration")).toBe(true);
+    // Every criterion cites a verbatim statement that exists in the transcript.
+    for (const c of packet!.decision_criteria) {
+      expect(result.transcript_meta.raw_text).toContain(c.statement);
+      expect(c.confidence).toBeGreaterThan(0);
+    }
+  });
+
+  it("types objections and attaches a generic (non-fabricated) response framing", async () => {
+    const result = await run();
+    const packet = result.decision_packet!;
+    expect(packet.objections.length).toBeGreaterThanOrEqual(1);
+    for (const o of packet.objections) {
+      expect(["trust", "commercial", "technical", "scope", "political", "general"]).toContain(o.type);
+      expect(o.suggested_response.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it("populates evidence_quality with explicit limitations (transparency)", async () => {
+    const result = await run();
+    const packet = result.decision_packet!;
+    expect(packet.evidence_quality.criteria_count).toBe(packet.decision_criteria.length);
+    expect(packet.evidence_quality.objection_count).toBe(packet.objections.length);
+    expect(packet.evidence_quality.limitations.length).toBeGreaterThan(0);
+  });
+
+  it("is additive — it does not change the verdict or pursuit score", async () => {
+    const result = await run();
+    // Baseline invariants for this fixture remain intact alongside the packet.
+    expect(result.decision_packet).toBeTruthy();
+    expect(result.opportunity_scoring.deal_maturity).toBe("SOLUTION_DISCOVERY");
+    expect(result.account_resolution.name).toBe("CONTOSO");
+  });
+});

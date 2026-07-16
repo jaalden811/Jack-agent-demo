@@ -1033,6 +1033,36 @@ button:disabled {
   color: var(--warning);
 }
 
+/* Confidence bands (reused by the Decision Packet) */
+.topbar-pill.high { background: var(--tint-success); color: var(--success); }
+.topbar-pill.medium { background: var(--tint-warning); color: var(--warning); }
+.topbar-pill.low { background: var(--surface-2); color: var(--muted); }
+
+/* ── Decision Packet (additive analytical layer) ────────────────────────── */
+.decision-packet .dp-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.dp-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+}
+.dp-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style: revert;
+}
+.dp-group[open] > summary { margin-bottom: 10px; }
+.dp-objection { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--border); }
+.dp-objection-statement { margin: 0 0 4px; }
+.dp-objection-response { margin: 0; font-size: 0.9rem; }
+
 /* ── Personalized opportunity card + wizard ─────────────────────────────── */
 .personalized-card { border: 1px solid var(--accent, #3b82f6); }
 .first-run-menu { border: 1px solid var(--accent, #3b82f6); }

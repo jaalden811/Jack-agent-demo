@@ -14,9 +14,11 @@ import { AuditTab } from "@/components/signal-agent/tabs/AuditTab";
 import { SourcesEnrichmentTab } from "@/components/signal-agent/tabs/SourcesEnrichmentTab";
 import { SerpApiSignalsTab } from "@/components/signal-agent/tabs/SerpApiSignalsTab";
 import { SpecialistHandoffTab } from "@/components/signal-agent/tabs/SpecialistHandoffTab";
+import { DecisionPacketTab } from "@/components/signal-agent/tabs/DecisionPacketTab";
 
 const TABS = [
   { id: "handoff", label: "Specialist handoff" },
+  { id: "decision", label: "Decision packet" },
   { id: "executive", label: "Executive summary" },
   { id: "stakeholders", label: "Stakeholders" },
   { id: "signals", label: "Opportunity signals" },
@@ -61,6 +63,7 @@ export function ResultTabs({
 
       <div className="tab-panel">
         {activeTab === "handoff" && <SpecialistHandoffTab result={result} />}
+        {activeTab === "decision" && <DecisionPacketTab result={result} />}
         {activeTab === "executive" && <ExecutiveSummaryTab result={result} />}
         {activeTab === "stakeholders" && <StakeholdersTab result={result} />}
         {activeTab === "signals" && <OpportunitySignalsTab result={result} />}
