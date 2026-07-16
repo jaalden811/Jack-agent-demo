@@ -77,6 +77,12 @@ export function CircuitRunDiagnostic({ result }: { result: SecureNetworkingTriag
           Circuit was required but did not fully run: failed at <strong>{cr.required_failure.stage}</strong> ({cr.required_failure.code}). The result uses deterministic fallback for the affected stage — this is a real failure, not a silent fallback.
         </p>
       ) : null}
+
+      {cr.missing_config.length > 0 ? (
+        <p className="muted" style={{ marginTop: 6 }}>
+          Set these environment variables in your local env file, then restart the dev server: <strong>{cr.missing_config.join(", ")}</strong>. Values are never shown here.
+        </p>
+      ) : null}
     </section>
   );
 }

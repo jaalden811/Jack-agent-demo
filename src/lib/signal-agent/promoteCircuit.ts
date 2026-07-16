@@ -2,7 +2,8 @@ import {
   getCircuitConfig,
   isCircuitConfigured,
   isCircuitContractConfirmed,
-  isCircuitRequired
+  isCircuitRequired,
+  missingCircuitConfigKeys
 } from "@/lib/circuit/config";
 import type { StageAOutput } from "@/lib/circuit/stages/stageA";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
@@ -259,6 +260,7 @@ export function promoteCircuitIntoCanonical(result: SecureNetworkingTriageResult
     repair_attempted: stages.some((s) => s.repair_attempted),
     fallback_used: stages.some((s) => s.fallback_used),
     safe_error_code: firstErr,
+    missing_config: missingCircuitConfigKeys(cfg),
     required_failure: requiredFailure
   };
   result.circuit_run = diagnostic;

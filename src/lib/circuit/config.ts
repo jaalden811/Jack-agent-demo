@@ -86,6 +86,23 @@ export function isCircuitRequired(config: CircuitConfig = getCircuitConfig()): b
   return config.required;
 }
 
+/** The exact env-var NAMES still required for Circuit to be fully
+ * operational (inference + confirmed contract). Names only — NEVER a value —
+ * so the setup/run diagnostics can tell the operator precisely what to set
+ * in the local env file without ever surfacing a secret. */
+export function missingCircuitConfigKeys(config: CircuitConfig = getCircuitConfig()): string[] {
+  const missing: string[] = [];
+  if (config.provider !== "circuit") missing.push("AI_PROVIDER=circuit");
+  if (!config.clientId) missing.push("CIRCUIT_CLIENT_ID");
+  if (!config.clientSecret) missing.push("CIRCUIT_CLIENT_SECRET");
+  if (!config.tokenUrl) missing.push("CIRCUIT_TOKEN_URL");
+  if (!config.inferenceUrl) missing.push("CIRCUIT_INFERENCE_URL");
+  if (!config.appKey) missing.push("CIRCUIT_APP_KEY");
+  if (!config.model) missing.push("CIRCUIT_MODEL");
+  if (!config.contractConfirmed) missing.push("CIRCUIT_CONTRACT_CONFIRMED=true");
+  return missing;
+}
+
 /** True only when a human has confirmed contract.ts matches the Circuit
  * notebook (CIRCUIT_CONTRACT_CONFIRMED=true). Gates every live call. */
 export function isCircuitContractConfirmed(config: CircuitConfig = getCircuitConfig()): boolean {

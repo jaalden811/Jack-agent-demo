@@ -24,6 +24,7 @@ function buildAiProviderStatus(): AiProviderStatus {
     operational: d.operational,
     state: d.state,
     model: d.model,
+    missing_config: d.missingConfig,
     message:
       d.safeError ??
       (d.operational

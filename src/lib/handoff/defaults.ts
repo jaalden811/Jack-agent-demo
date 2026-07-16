@@ -19,6 +19,7 @@ export function emptyCircuitRunDiagnostic(): CircuitRunDiagnostic {
     repair_attempted: false,
     fallback_used: false,
     safe_error_code: null,
+    missing_config: [],
     required_failure: null
   };
 }

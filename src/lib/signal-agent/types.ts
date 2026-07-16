@@ -51,6 +51,11 @@ export type CircuitRunDiagnostic = {
   fallback_used: boolean;
   /** First safe error code seen (CIRCUIT_* taxonomy), or null. */
   safe_error_code: string | null;
+  /** Env-var NAMES still required for Circuit to be operational (never a
+   * value/secret) — empty when fully configured. Lets the run diagnostic
+   * tell the operator exactly what to set when analysis fell back because
+   * Circuit was not configured. */
+  missing_config: string[];
   /** Set when Circuit was required but a required stage did not produce a
    * promotable result — the exact stage + safe code the run failed on. */
   required_failure: { stage: string; code: string } | null;
@@ -490,6 +495,10 @@ export type AiProviderStatus = {
   model: string | null;
   /** Safe, human-readable status/next-action message (never a secret). */
   message: string;
+  /** Env-var NAMES still required for Circuit to be operational (never a
+   * value/secret) — empty when fully configured. Surfaced in the setup
+   * panel so the operator knows exactly which env vars to add. */
+  missing_config: string[];
 };
 
 /** Wire shape for GET /api/signal-agent/status. Mirrors the pattern of

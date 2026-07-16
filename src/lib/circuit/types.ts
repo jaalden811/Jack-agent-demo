@@ -95,6 +95,9 @@ export type CircuitDiagnostics = {
   /** The wire contract has been confirmed against the Circuit notebook. */
   contractConfirmed: boolean;
   contractVersion: string | null;
+  /** Env-var NAMES still required for Circuit to be operational (never a
+   * value/secret) — empty when fully configured. */
+  missingConfig: string[];
   /** Authentication was accepted (a token minted). null = not attempted. */
   authenticationAccepted: boolean | null;
   authenticated: boolean;
