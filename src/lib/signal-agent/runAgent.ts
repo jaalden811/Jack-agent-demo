@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { ingestTranscript, selectRelevantChunks } from "@/lib/signal-agent/transcript";
+import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
 import { findAccount, applyAccountOverride } from "@/lib/signal-agent/accountContext";
 import { embedTranscript } from "@/lib/signal-agent/semanticMatch";
 import { evaluateEntry, selectMultiLabelEvaluations } from "@/lib/signal-agent/scoring";
@@ -458,6 +459,22 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       required_failure: null
     }
   };
+
+  // Trap guard: an explicit CUSTOMER rejection of the vendor's proposed motion
+  // ("remove it from the opportunity", "no project/decision exists", "rejected
+  // the scope", "false opportunity", "cancelled") means the play is dead. Never
+  // chase what the customer rejected — suppress pursuit regardless of how much
+  // latent pain or criteria the call contains. This is distinct from a scope
+  // CONSTRAINT ("no rip-and-replace", "keep the incumbent"), which bounds a
+  // still-real opportunity and must not suppress.
+  const hardRejection = detectHardRejection(
+    transcript.sentences.filter((sentence) => sentence.isCustomer).map((sentence) => sentence.text)
+  );
+  if (hardRejection.rejected && result.opportunity_scoring.decision !== "DO_NOT_PURSUE") {
+    result.opportunity_scoring.decision = "DO_NOT_PURSUE";
+    result.opportunity_scoring.final_pursuit_score = Math.min(result.opportunity_scoring.final_pursuit_score, 15);
+    result.executive_summary.verdict = "NOISE";
+  }
 
   // Action-intelligence + specialist-handoff layer (the defining output):
   // one specific Next Best Action, a do-not-re-ask index, and lane-

@@ -1,0 +1,22 @@
+{
+  "description": "Explicit CUSTOMER rejection of the VENDOR's proposed motion/scope/opportunity — the vendor's play is dead, so pursuit must be suppressed (never chase what the customer rejected). These are deliberately STRONG, specific patterns, distinct from a scope CONSTRAINT on a real opportunity (e.g. 'no rip-and-replace', 'keep AppDynamics'), which must NOT suppress. Generic linguistic shapes only — never a company/product/scenario literal. Logic: src/lib/signal-agent/rejectionGuard.ts.",
+  "version": "1.0.0",
+  "hard_rejection_patterns": [
+    "\\bremove\\b[\\w\\s,'-]{0,40}\\bfrom the (account |crm )?opportunity\\b",
+    "\\breject(ed|s)?\\b[\\w\\s,'-]{0,25}\\b(scope|scope addition|the addition|the proposal|the product)\\b",
+    "\\bfalse opportunity\\b",
+    "\\bno\\b[\\w\\s,'-]{0,45}\\b(project|opportunity)\\b[\\w\\s,'-]{0,15}\\bexists?\\b",
+    "\\b(migration|program|project|deal|initiative|rollout)\\b[\\w\\s,'-]{0,20}\\b(was|were|is|has been|got)\\b[\\w\\s,'-]{0,6}\\bcancel(l)?ed\\b",
+    "\\bno customer[- ]facing commercial action\\b",
+    "\\bunsolicited\\b[\\w\\s,'-]{0,40}\\b(reject|nonconforming|without evaluation)\\w*\\b",
+    "\\bdo not create an opportunity\\b",
+    "\\b(we are|we're) not buying\\b",
+    "\\bnot buying it\\b"
+  ],
+  "_removed_over_broad": "Dropped 'not a/an/our ... opportunity' (matched entity-boundary clarifications like 'not a separate expansion opportunity'), the decision/evaluation/budget 'no X exists|approved' variant (matched early-stage 'no commercial decision/budget yet', which is normal for a live validation), keeping only unambiguous rejections of the vendor's motion.",
+  "negation_of_rejection": [
+    "did not reject",
+    "not rejecting",
+    "would not remove"
+  ]
+}

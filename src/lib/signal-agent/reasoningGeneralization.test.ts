@@ -6,6 +6,7 @@ import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
+import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
 import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
@@ -317,5 +318,43 @@ describe("timing driver honesty & procurement classification (deal-intel via run
     expect(di.timing!.label.toLowerCase()).not.toContain("contracted through");
     // A council/board decision + purchase-order IS procurement timing.
     expect(di.timing!.is_procurement).toBe(true);
+  });
+});
+
+describe("hard-rejection trap guard (never chase a rejected motion)", () => {
+  it("fires on an explicit customer rejection of the vendor's motion", () => {
+    const r = detectHardRejection([
+      "Remove the product from the account opportunity and correct the note; you have no customer-facing commercial action.",
+      "Procurement is engaged in the renewal and rejected the added scope."
+    ]);
+    expect(r.rejected).toBe(true);
+    expect(r.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT fire on entity-boundary, early-stage absence, or a scope constraint (still-real deals)", () => {
+    const r = detectHardRejection([
+      "The shared-services entity participates as operator, not a separate expansion opportunity.",
+      "There is no commercial decision yet; this session is a technical validation.",
+      "We are not authorizing a rip-and-replace — keep the incumbent alongside it.",
+      "No budget has been approved for the evaluation at this stage."
+    ]);
+    expect(r.rejected).toBe(false);
+  });
+
+  it("suppresses pursuit end-to-end when the customer rejects the proposed scope", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Seller — Vendor, Account Executive",
+      "Seller: Given the incidents and the sixty-four-minute recovery time, this looks like a strong expansion for our service-intelligence product.",
+      "Petra — Customer, Procurement",
+      "Petra: This meeting is a renewal review for the incumbent only. Remove the product from the account opportunity — there is no such project and no customer-facing commercial action. Unsolicited products are nonconforming and will be rejected without evaluation.",
+      "Vik — Customer, IT Owner",
+      "Vik: Our current tools are the active plan. We have not defined requirements, budget, or an evaluation."
+    ].join("\n");
+    const result = await runSignalAgent({ customTranscript: transcript });
+    expect(result.executive_summary.verdict).toBe("NOISE");
+    expect(result.opportunity_scoring.decision).toBe("DO_NOT_PURSUE");
+    expect(result.next_best_action?.action_type).toBe("suppress");
   });
 });
