@@ -34,6 +34,9 @@ export type AssistantAnswer = {
   missing_information: string[];
   suggested_follow_up: string | null;
   research_used: boolean;
+  /** True when Circuit rewrote the grounded answer prose (evidence/confidence
+   * remain the deterministic, authoritative values). Additive/optional. */
+  synthesized_by_ai?: boolean;
 };
 
 export type AssistantExchange = {

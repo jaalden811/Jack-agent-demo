@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { answerRunQuestion } from "@/lib/run-assistant/assistantService";
+import { synthesizeAssistantAnswer } from "@/lib/run-assistant/assistantSynthesis";
 import { recordExchange, readExchanges } from "@/lib/run-assistant/assistantStore";
 import { runAssistantResearch } from "@/lib/run-assistant/assistantResearch";
 import type { RunAssistantContext } from "@/lib/run-assistant/types";
@@ -64,6 +65,10 @@ export async function POST(request: Request) {
     answer = { ...answer, evidence: [...answer.evidence, ...newEvidence], research_used: rr.executedCount > 0 || rr.rows.length > 0 };
     await recordProductEvent({ type: "public_research_requested", run_id, metadata: { executed: rr.executedCount } });
   }
+
+  // Circuit rewrites the grounded answer into clearer prose using ONLY the
+  // retrieved evidence (never adds facts); deterministic answer is the fallback.
+  answer = await synthesizeAssistantAnswer(question, ctx, answer);
 
   const exchange = await recordExchange(run_id, question, answer);
   await recordProductEvent({ type: "assistant_question_asked", run_id, metadata: { research } });

@@ -58,7 +58,16 @@ export type WorkshopPlan = {
   procurement_needed: boolean | null;
 };
 
+/** A concise executive read of the packet — Circuit-synthesized when available
+ * (grounded strictly in the extracted criteria/objections/impact, never new
+ * claims), else a deterministic composition. `source` makes provenance honest. */
+export type DecisionPacketNarrative = {
+  text: string;
+  source: "circuit" | "deterministic";
+};
+
 export type DecisionPacket = {
+  narrative: DecisionPacketNarrative;
   business_impact: ImpactEntry[];
   decision_criteria: DecisionCriterion[];
   objections: ObjectionEntry[];

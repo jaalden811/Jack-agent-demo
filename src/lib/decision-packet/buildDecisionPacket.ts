@@ -5,7 +5,7 @@ import type { IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk 
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
 import { buildWorkshopPlan } from "@/lib/decision-packet/workshopPlan";
-import type { DecisionCriterion, DecisionPacket, ImpactEntry, ObjectionEntry, ObjectionType } from "@/lib/decision-packet/types";
+import type { DecisionCriterion, DecisionPacket, ImpactEntry, ObjectionEntry, ObjectionType, WorkshopPlan } from "@/lib/decision-packet/types";
 
 /**
  * Deterministic Decision Packet builder. Assembles a structured, evidence-
@@ -139,6 +139,33 @@ function extractBusinessImpact(result: SecureNetworkingTriageResult, transcript:
   return out.slice(0, 6);
 }
 
+function topLabels<T extends { label: string }>(items: T[], n: number): string[] {
+  const counts = new Map<string, number>();
+  for (const i of items) counts.set(i.label, (counts.get(i.label) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([l]) => l);
+}
+
+/** Deterministic executive read of the packet, grounded in the extracted
+ * criteria/objection labels + workshop request (no new claims). Circuit may
+ * later rephrase this (see decision-packet/narrative.ts); this is the fallback. */
+function deterministicNarrative(p: { account: string | null; decision_criteria: DecisionCriterion[]; objections: ObjectionEntry[]; workshop_plan: WorkshopPlan }): string {
+  const acct = p.account ?? "The account";
+  const parts: string[] = [];
+  if (p.decision_criteria.length > 0) {
+    parts.push(`${acct} weighs ${p.decision_criteria.length} decision criteria (notably ${topLabels(p.decision_criteria, 3).join(", ").toLowerCase()})`);
+  }
+  if (p.objections.length > 0) {
+    parts.push(`with ${p.objections.length} objection${p.objections.length > 1 ? "s" : ""} to address (mostly ${topLabels(p.objections, 2).join(" and ").toLowerCase()})`);
+  }
+  if (p.workshop_plan.requested) {
+    parts.push(
+      `the customer requested a ${(p.workshop_plan.format ?? "working session").toLowerCase()}${p.workshop_plan.candidate_scenarios.length ? ` around ${p.workshop_plan.candidate_scenarios.length} scenarios` : ""}`
+    );
+  }
+  if (parts.length === 0) return `${acct}: no explicit decision criteria or objections were extracted from this conversation.`;
+  return `${parts.join("; ")}. Lead with the requested next step and address the top objection with the customer's own evidence.`;
+}
+
 export function buildDecisionPacket(params: {
   result: SecureNetworkingTriageResult;
   transcript: IngestedTranscript;
@@ -165,6 +192,7 @@ export function buildDecisionPacket(params: {
     decision_criteria.length > 0 ? decision_criteria.reduce((s, c) => s + c.confidence, 0) / decision_criteria.length : 0;
 
   return {
+    narrative: { text: deterministicNarrative({ account: params.result.account_resolution?.name ?? params.result.executive_summary.account, decision_criteria, objections, workshop_plan }), source: "deterministic" },
     business_impact,
     decision_criteria,
     objections,

@@ -57,6 +57,15 @@ describe("Decision Packet (additive analytical layer)", () => {
     expect(packet.evidence_quality.limitations.length).toBeGreaterThan(0);
   });
 
+  it("has an executive narrative (deterministic fallback when Circuit is not configured)", async () => {
+    const result = await run();
+    const packet = result.decision_packet!;
+    expect(packet.narrative.text.length).toBeGreaterThan(0);
+    // No Circuit in CI → deterministic narrative, grounded in the extracted labels.
+    expect(packet.narrative.source).toBe("deterministic");
+    expect(packet.narrative.text.toLowerCase()).toContain("decision criteria");
+  });
+
   it("is additive — it does not change the verdict or pursuit score", async () => {
     const result = await run();
     // Baseline invariants for this fixture remain intact alongside the packet.

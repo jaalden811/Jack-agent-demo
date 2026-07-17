@@ -23,6 +23,7 @@ import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { buildPersonalizationBlock, buildPersonalizationContextForResult } from "@/lib/personalization/buildPersonalization";
 import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
+import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
@@ -566,6 +567,13 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // verdict, routing, MEDDPICC, or evidence identity. No-op-safe.
   try {
     result.decision_packet = buildDecisionPacket({ result, transcript });
+    // Circuit rewrites the packet's executive narrative grounded strictly in
+    // the extracted criteria/objections (deterministic narrative is the
+    // fallback) — more Circuit synthesis, never a new claim.
+    result.decision_packet.narrative = await synthesizeDecisionPacketNarrative(
+      result.decision_packet,
+      result.account_resolution?.name ?? result.executive_summary.account ?? null
+    );
   } catch {
     result.decision_packet = null;
   }

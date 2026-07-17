@@ -51,6 +51,14 @@ export function DecisionPacketTab({ result }: { result: SecureNetworkingTriageRe
 
   return (
     <div className="tab-content decision-packet">
+      {packet.narrative?.text && (
+        <p className="dp-narrative">
+          {packet.narrative.text}
+          <span className="muted" style={{ fontSize: "0.75rem", marginLeft: 6 }}>
+            ({packet.narrative.source === "circuit" ? "Circuit synthesis" : "deterministic"})
+          </span>
+        </p>
+      )}
       <div className="dp-summary">
         <span className="summary-metric">
           <strong>{evidence_quality.criteria_count}</strong> decision criteria
