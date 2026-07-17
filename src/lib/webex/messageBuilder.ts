@@ -42,6 +42,35 @@ function clipAtWord(text: string, maxChars: number): string {
   return (lastSpace > maxChars * 0.6 ? slice.slice(0, lastSpace) : slice).trim();
 }
 
+/** Clip preferring a full sentence/clause boundary within budget, so a field
+ * never ends mid-clause ("...and diagnosis in"). Strips a dangling trailing
+ * connective ("... within three minutes, and"). Falls back to a word clip. */
+function clipAtClause(text: string, maxChars: number): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  const tidy = (s: string) => s.replace(/[,;:]\s*$/, "").replace(/\s+(?:and|or|but|with|to|for|the|a|an|in|of|by)$/i, "").trim();
+  if (t.length <= maxChars) return tidy(t);
+  const slice = t.slice(0, maxChars);
+  const sentenceEnd = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  const clauseEnd = Math.max(slice.lastIndexOf(", "), slice.lastIndexOf("; "));
+  const cut = sentenceEnd > maxChars * 0.5 ? sentenceEnd + 1 : clauseEnd > maxChars * 0.5 ? clauseEnd : -1;
+  return tidy(cut > 0 ? slice.slice(0, cut) : clipAtWord(t, maxChars));
+}
+
+/** Turns a raw customer "success criteria" quote into a crisp expected outcome —
+ * strips conversational lead-ins ("For success criteria, I suggest…") and clips
+ * at a clause boundary (never mid-sentence). */
+function cleanOutcome(text: string): string {
+  const stripped = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(?:for\s+)?success criteria(?:\s+(?:are|would be|could be|include|is|i suggest))?[:,]?\s*/i, "")
+    .replace(/^(?:i(?:'d| would)?\s+suggest|i think|maybe|ideally|we(?:'d| would)?\s+(?:like|want))[:,]?\s*/i, "")
+    .trim();
+  const base = stripped.length > 3 ? stripped : text.trim();
+  const clipped = clipAtClause(base, 200);
+  return clipped.charAt(0).toUpperCase() + clipped.slice(1);
+}
+
 /** Joins pre-built brief sections into markdown, dropping empty sections
  * and collapsing consecutive blank lines. */
 function joinSections(parts: Array<string | null | undefined>): string {
@@ -99,6 +128,10 @@ function firstMeaningful(candidates: Array<string | null | undefined>): string |
 /** The single recommended action: the canonical Next Best Action summary when
  * it is a real action, else the routed lane's first action, else a lane
  * default — never a vague "follow up". */
+// A real date/schedule token — a month, weekday, quarter, relative date, or a
+// numeric date. Deliberately NOT a bare digit (so "$116,000" is not a "date").
+const DATEISH_RE = /\b(mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|q[1-4]|next (?:week|month|quarter|year)|this (?:week|quarter|month)|end of (?:the )?(?:week|month|quarter)|in \d+ (?:days?|weeks?|months?)|\d{1,2}\/\d{1,2})\b/i;
+
 function actionLine(result: SecureNetworkingTriageResult, decision: LaneRoutingDecision, lane: "sales" | "technical"): string {
   const nba = result.next_best_action;
   // Prefer the concise action title over the verbose summary — a push message
@@ -108,8 +141,13 @@ function actionLine(result: SecureNetworkingTriageResult, decision: LaneRoutingD
     const title = nba.title?.trim();
     if (title) {
       const timing = nba.recommended_timing?.trim();
-      const hasDate = timing && /\d|\b(mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(timing);
-      return hasDate ? `${title} — ${clipAtWord(timing!, 80)}` : title;
+      // Only append the timing when it is a SHORT, actual date/schedule token —
+      // never a raw quote that merely contains a digit ("$116,000 …") or a full
+      // sentence that happens to mention a date ("…stays on the incumbent through
+      // next year"), either of which would splice an irrelevant fragment onto the
+      // action. Real scheduling phrases are short ("by September 2", "next week").
+      const hasDate = !!timing && timing.length <= 48 && DATEISH_RE.test(timing);
+      return hasDate ? `${title} — ${clipAtClause(timing!, 80)}` : title;
     }
     if (nba.summary?.trim()) return nba.summary.trim();
   }
@@ -250,8 +288,12 @@ export function buildSalesMessage(params: {
   const whyYouText =
     salesTeaser?.why_you && !/^You are the routed owner/i.test(salesTeaser.why_you)
       ? clipAtWord(salesTeaser.why_you, 200)
-      : `Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.label}.`;
+      : `Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.prose}.`;
   const goalImpactLine = salesTeaser?.goal_impact ? `**Goal impact:** ${clipAtWord(salesTeaser.goal_impact, 130)}` : null;
+  // The concrete goals this opportunity advances (Oscar's "speak to my goals") —
+  // named, not an abstract "goal alignment". Owner-scoped teaser; null when no
+  // profile/goals exist, so profile-less runs are unaffected.
+  const goalFitLine = salesTeaser?.goal_alignment ? `**Goal fit:** ${clipAtWord(salesTeaser.goal_alignment.replace(/^Supports:\s*/i, ""), 140)}` : null;
 
   const markdown = composeToByteBudget(
     [
@@ -260,9 +302,10 @@ export function buildSalesMessage(params: {
       // Owner's goal/quota hook is placed high — the exciting reason to open it.
       { text: goalImpactLine },
       { text: `**Why you:** ${whyYouText}` },
+      { text: goalFitLine, droppable: true, priority: 5 },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
-      { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: `**Expected outcome:** ${cleanOutcome(expected)}` },
       { text: metricLine },
       { text: championLine },
       { text: accountIntelLine },
@@ -324,6 +367,7 @@ export function buildTechnicalMessage(params: {
       ? clipAtWord(techTeaser.why_you, 200)
       : "Technical owner — scope the workshop and validate the environment.";
   const goalImpactLine = techTeaser?.goal_impact ? `**Goal impact:** ${clipAtWord(techTeaser.goal_impact, 130)}` : null;
+  const goalFitLine = techTeaser?.goal_alignment ? `**Goal fit:** ${clipAtWord(techTeaser.goal_alignment.replace(/^Supports:\s*/i, ""), 140)}` : null;
 
   const markdown = composeToByteBudget(
     [
@@ -331,13 +375,14 @@ export function buildTechnicalMessage(params: {
       { text: dealShapeLine },
       { text: goalImpactLine },
       { text: `**Why you:** ${whyYouText}` },
+      { text: goalFitLine, droppable: true, priority: 5 },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
-      { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: `**Expected outcome:** ${cleanOutcome(expected)}` },
       { text: metricLine },
       { text: `**Environment:** ${clipAtWord(currentEnvironment, 140)} · **Motion:** ${clipAtWord(solutionMotion, 140)}` },
       { text: watchOutLine },
-      { text: evidence ? `**Proof:** "${clipAtWord(evidence, 200)}"` : null },
+      { text: evidence ? `**Proof:** "${clipAtClause(evidence, 200)}"` : null },
       { text: "" },
       { text: analysisLinkMarkdown(analysisLink, runId) }
     ],

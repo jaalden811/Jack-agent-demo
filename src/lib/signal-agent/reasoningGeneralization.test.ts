@@ -319,6 +319,23 @@ describe("timing driver honesty & procurement classification (deal-intel via run
     // A council/board decision + purchase-order IS procurement timing.
     expect(di.timing!.is_procurement).toBe(true);
   });
+
+  it("never surfaces a negated deadline ('it is not a procurement deadline') as why-now", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rachel — Vendor, Account Executive",
+      "Rachel: I cover Beacon Freight for our company. A possible path is to validate the platform.",
+      "Dana — Customer, Director of Reliability",
+      "Dana: I run reliability at Beacon Freight. Our review of the validation evidence is on August 18. It is not a procurement deadline. I'd like a scenario-design working session next week."
+    ].join("\n");
+    const di = (await runSignalAgent({ customTranscript: transcript })).deal_intelligence!;
+    if (di.timing) {
+      // The forward driver (the August 18 review), not the negation sentence.
+      expect(di.timing.label.toLowerCase()).not.toContain("not a procurement deadline");
+      expect(di.timing.label.toLowerCase()).toContain("august");
+    }
+  });
 });
 
 describe("one-line transcript: trailing word merged with a recurring speaker", () => {

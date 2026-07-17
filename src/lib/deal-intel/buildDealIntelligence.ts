@@ -99,6 +99,9 @@ function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
 const PAST_EVENT_RE = /\b(already|was signed|were signed|signed in|happened|renewed last|\bago\b|last (year|quarter|month|week))\b/i;
 // Decision-boundary words rank above a bare renewal/month as "why now".
 const DECISION_BOUNDARY_RE = /\b(freeze|memo|committee|review closes|closes|reviews the case|recommendation|deadline|go-?live|cutover|due (by|on|date))\b/i;
+// A sentence that NEGATES a deadline/date ("not a procurement deadline", "no
+// hard deadline", "not a purchase date") — the opposite of a reason to act now.
+const NEGATED_TIMING_RE = /\b(?:not|isn'?t|no)\s+(?:a\s+|an\s+|the\s+)?(?:hard\s+|firm\s+|real\s+|procurement\s+|purchase\s+|buying\s+|close\s+|commercial\s+|sign(?:ing|ature)?\s+)*(?:deadline|close date|purchase date|buying date)\b/i;
 
 /** Extracts the honest timing driver: the decision-relevant deadline, and
  * whether it is real procurement timing or only a decision/planning boundary.
@@ -116,6 +119,11 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
     // A locked-in / "not under review" / "contracted through" statement is the
     // OPPOSITE of a reason to act now — never surface it as "why now".
     if (lockedIn.some((m) => lower.includes(m))) continue;
+    // A sentence NEGATING the deadline ("it is not a procurement deadline", "not
+    // a purchase date", "no hard deadline") states there is NO urgency — it must
+    // never become the "why now" label. (Distinct from "the deadline is not until
+    // September", which affirms a September deadline.)
+    if (NEGATED_TIMING_RE.test(lower)) continue;
     const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
     const hasDate = monthRe.test(lower);
     if (!hasDeadlineWord && !hasDate) continue;

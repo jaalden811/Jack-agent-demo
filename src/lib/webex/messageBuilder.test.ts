@@ -207,6 +207,30 @@ describe("Webex message templates", () => {
     expect(technical.markdown.length).toBeLessThanOrEqual(1100);
   });
 
+  it("renders a clean expected outcome (no lead-in filler, no mid-sentence cut) and never splices a non-date quote into the action", () => {
+    const result = buildResult();
+    result.next_best_action = {
+      ...result.next_best_action,
+      title: "Scope a proof of value for Acme Retail",
+      // A raw quote that merely contains a dollar amount must NOT be appended as
+      // "timing" onto the action.
+      recommended_timing: "But $116,000 of that is committed-capacity cost we pay even if data is deleted",
+      success_criteria: [
+        "For success criteria, I suggest 95 percent end-to-end trace continuity, less than two percent application overhead, detection of a seeded public-journey failure within three minutes, and diagnosis in under 15 minutes."
+      ]
+    };
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const outcomeLine = sales.markdown.split("\n").find((l) => l.startsWith("**Expected outcome:**"))!;
+    // Conversational lead-in stripped; complete clause (no mid-sentence "in").
+    expect(outcomeLine).not.toContain("For success criteria, I suggest");
+    expect(outcomeLine).toContain("diagnosis in under 15 minutes");
+    expect(outcomeLine.trim().endsWith(" in")).toBe(false);
+    // The cost quote never becomes part of the action line.
+    const actionLine = sales.markdown.split("\n").find((l) => l.startsWith("**Recommended action:**"))!;
+    expect(actionLine).not.toContain("$116,000");
+    expect(actionLine).toContain("Scope a proof of value for Acme Retail");
+  });
+
   it("never pastes the full transcript into a message", () => {
     const result = buildResult();
     result.transcript_meta.raw_text = "SENTENCE-MARKER-XYZ ".repeat(500);
@@ -281,8 +305,8 @@ describe("Webex message templates", () => {
     result.personalization = {
       ...(result.personalization ?? ({} as NonNullable<typeof result.personalization>)),
       recipient_teasers: {
-        sales: teaser({ why_you: "This fits your goal to grow strategic accounts and your sales focus.", goal_impact: "$1.20M ≈ 24% of your annual target" }),
-        technical: teaser({ why_you: "Technical owner: environment + workshop scope.", goal_impact: null }),
+        sales: teaser({ why_you: "This fits your goal to grow strategic accounts and your sales focus.", goal_alignment: "Supports: Grow strategic accounts, Expand security portfolio.", goal_impact: "$1.20M ≈ 24% of your annual target" }),
+        technical: teaser({ why_you: "Technical owner: environment + workshop scope.", goal_alignment: "Supports: Expand security portfolio.", goal_impact: null }),
         leadership: teaser({})
       }
     } as NonNullable<typeof result.personalization>;
@@ -290,10 +314,14 @@ describe("Webex message templates", () => {
     // Goal-aligned why-you + the owner's quota hook are in the delivered comms.
     expect(sales.markdown).toContain("This fits your goal to grow strategic accounts");
     expect(sales.markdown).toContain("**Goal impact:** $1.20M ≈ 24% of your annual target");
-    // The technical recipient is not the owner → NO quota leak.
+    // The concrete goals this advances are named (Oscar's "speak to my goals"),
+    // with the "Supports:" prefix stripped.
+    expect(sales.markdown).toContain("**Goal fit:** Grow strategic accounts, Expand security portfolio.");
+    // The technical recipient is not the owner → NO quota leak (but goal fit is fine).
     const tech = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
     expect(tech.markdown).not.toContain("Goal impact:");
     expect(tech.markdown).not.toContain("24% of your annual target");
+    expect(tech.markdown).toContain("**Goal fit:** Expand security portfolio.");
   });
 
   it("a NOISE/suppress result produces an honest 'no action' message (not a pursue nudge) with the customer's boundary", () => {
