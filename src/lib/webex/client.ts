@@ -318,6 +318,22 @@ export async function sendDirectMessage(
  * accepts exactly one of toPersonEmail / roomId. Room delivery is how the
  * technical lane reaches a shared space when a 1:1 is not possible (e.g.
  * the recipient is the connected user). */
+export type WebexRoom = { id: string; title: string; type: string };
+
+/** Lists the connected user's Webex GROUP spaces (developer.webex.com GET
+ * /v1/rooms). Requires the `spark:rooms_read` scope — a 403 here means the
+ * connection predates that scope and the user should reconnect Webex. Group
+ * spaces only (a 1:1 "direct" room is not a valid lane destination). */
+export async function listWebexRooms(accessToken: string, opts?: { max?: number }): Promise<WebexRoom[]> {
+  const max = Math.min(Math.max(opts?.max ?? 100, 1), 200);
+  const response = await webexFetch<{ items: WebexRoom[] }>(`${WEBEX_API_BASE}/rooms?type=group&sortBy=lastactivity&max=${max}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  return (response.items ?? [])
+    .filter((r) => r.id && r.title)
+    .map((r) => ({ id: r.id, title: r.title, type: r.type }));
+}
+
 export async function sendWebexMessage(
   accessToken: string,
   params: { toPersonEmail?: string; roomId?: string; markdown: string }

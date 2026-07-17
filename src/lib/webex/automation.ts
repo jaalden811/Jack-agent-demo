@@ -7,7 +7,7 @@ import { buildMessagesForRouting, buildEmailsForRouting } from "@/lib/webex/mess
 import { deliverMessages } from "@/lib/webex/delivery";
 import { resolveWebexSender } from "@/lib/webex/senderResolution";
 import { sendOutlookEmail } from "@/lib/outlook/send";
-import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit } from "@/lib/webex/store";
+import { getProcessedTranscript, markTranscriptProcessed, addLanesSent, appendWebexAudit, readSelectedSpaces } from "@/lib/webex/store";
 import { validateMessageQuality } from "@/lib/webex/messageQuality";
 import { buildMeetingParticipation, laneAttendanceFor, applyAttendanceFraming, orderLanesByAttendance, annotateDeliveryAttendance } from "@/lib/webex/attendanceRouting";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
@@ -360,9 +360,16 @@ export async function deliverPeachtreePipeline(
   });
 
   const sender = await resolveWebexSender();
+  // A user-selected Webex space (persisted via the space picker) overrides the
+  // routing-config / env space for that lane — this is what lets the technical
+  // lane deliver to a real space instead of a blocked self-DM.
+  const selectedSpaces = await readSelectedSpaces();
+  const laneRoomIds: Partial<Record<"sales" | "technical", string>> = { ...(config.webex_spaces ?? {}) };
+  if (selectedSpaces.sales?.roomId) laneRoomIds.sales = selectedSpaces.sales.roomId;
+  if (selectedSpaces.technical?.roomId) laneRoomIds.technical = selectedSpaces.technical.roomId;
   const webexResults = await deliverMessages(
     messagesToSend,
-    { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail, laneRoomIds: config.webex_spaces },
+    { accessToken: sender.accessToken, mode: sender.mode, senderEmail: sender.senderEmail, laneRoomIds },
     runId
   );
 

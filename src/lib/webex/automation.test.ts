@@ -11,7 +11,7 @@ vi.mock("@/lib/outlook/send", () => ({ sendOutlookEmail: vi.fn() }));
 import { sendWebexMessage } from "@/lib/webex/client";
 import { sendOutlookEmail } from "@/lib/outlook/send";
 import { deliverPeachtreePipeline, computePeachtreePreview } from "@/lib/webex/automation";
-import { getProcessedTranscript, readRecentWebexAudit, writeTokenRecord as writeWebexTokenRecord } from "@/lib/webex/store";
+import { getProcessedTranscript, readRecentWebexAudit, writeTokenRecord as writeWebexTokenRecord, writeIdentityRecord, writeSelectedSpace } from "@/lib/webex/store";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 
 let isolate: { cleanup: () => void };
@@ -64,6 +64,23 @@ describe("deliverPeachtreePipeline — dual-channel delivery, no bot required", 
     expect(sendWebexMessage).toHaveBeenCalledWith("webex-connected-user-token", expect.anything());
     const webexDelivered = peachtree.delivery.filter((item) => item.channel === "webex" && item.delivered);
     expect(webexDelivered.length).toBeGreaterThan(0);
+  });
+
+  it("delivers the technical lane to a selected Webex space when the recipient is the connected user (self-DM)", async () => {
+    await connectWebex();
+    // The connected user's identity email == the technical recipient -> a 1:1
+    // self-DM, which Webex blocks. A selected space must be used instead.
+    await writeIdentityRecord({ personId: "p1", displayName: "Jack Alden", email: "jaalden@cisco.com", cachedAt: new Date().toISOString() });
+    await writeSelectedSpace("technical", { roomId: "ROOM-TECH-123", title: "AECOM Deal Room" });
+    vi.mocked(sendWebexMessage).mockImplementation(async (_token, params) => ({ id: params.roomId ? "msg-room" : "msg-dm", toPersonEmail: params.toPersonEmail }));
+
+    const result = await runSignalAgent({ customTranscript: HIGH_INTENT_TRANSCRIPT, options: {} });
+    const peachtree = await deliverPeachtreePipeline(result, HIGH_INTENT_TRANSCRIPT, null, { idempotencyScope: "run" });
+
+    const techWebex = peachtree.delivery.find((d) => d.lane === "technical" && d.channel === "webex");
+    expect(techWebex?.error_code).not.toBe("self_direct_message_unsupported");
+    const roomCall = vi.mocked(sendWebexMessage).mock.calls.find((c) => c[1].roomId === "ROOM-TECH-123");
+    expect(roomCall).toBeTruthy();
   });
 
   it("also sends an email to each routed lane via Outlook, independent of Webex", async () => {

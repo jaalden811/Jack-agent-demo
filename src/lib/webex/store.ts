@@ -279,6 +279,28 @@ export async function writeAutoSendOverride(enabled: boolean): Promise<void> {
   await writeJsonFile("auto-send.json", enabled);
 }
 
+// ─── Per-lane selected Webex space (user-chosen delivery destination) ───────
+// Lets a lane deliver to a real Webex space instead of a 1:1 DM — required for
+// the technical lane when the recipient IS the connected user (self-DM). The
+// selected room overrides the routing-config / env space at delivery time.
+
+export type WebexLaneKey = "sales" | "technical";
+export type SelectedWebexSpace = { roomId: string; title: string | null };
+export type SelectedWebexSpaces = Partial<Record<WebexLaneKey, SelectedWebexSpace>>;
+
+export async function readSelectedSpaces(): Promise<SelectedWebexSpaces> {
+  return readJsonFile<SelectedWebexSpaces>("selected-spaces.json", {});
+}
+
+/** Persist (or clear when `space` is null) the selected Webex space for a lane. */
+export async function writeSelectedSpace(lane: WebexLaneKey, space: SelectedWebexSpace | null): Promise<SelectedWebexSpaces> {
+  const current = await readSelectedSpaces();
+  if (space && space.roomId.trim()) current[lane] = { roomId: space.roomId.trim(), title: space.title?.trim() || null };
+  else delete current[lane];
+  await writeJsonFile("selected-spaces.json", current);
+  return current;
+}
+
 // ─── Audit trail (append-only JSONL) ───────────────────────────────────────
 
 export type WebexAuditRecord = Record<string, unknown> & {

@@ -52,8 +52,11 @@ async function connectCore() {
 describe("Core vs optional Webex scopes", () => {
   it("getCoreScopes never includes the transcript scope, even if present in the configured value", () => {
     const core = getCoreScopes("spark:people_read meeting:transcripts_read spark:messages_write");
+    expect(core).toEqual(expect.arrayContaining(["spark:people_read", "spark:messages_write"]));
     expect(core).not.toContain(TRANSCRIPT_SCOPE);
-    expect(core).toEqual(["spark:people_read", "spark:messages_write"]);
+    // Spaces read is always part of the core connection (needed for the lane
+    // space picker / technical-lane delivery).
+    expect(core).toContain("spark:rooms_read");
   });
 
   it("getTranscriptEnabledScopes always includes the transcript scope plus the core set", () => {

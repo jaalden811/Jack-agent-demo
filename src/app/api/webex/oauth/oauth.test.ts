@@ -63,7 +63,8 @@ describe("GET /api/webex/oauth/start", () => {
     const response = await startGet();
     const location = new URL(response.headers.get("location")!);
     const scopeParam = location.searchParams.get("scope")!;
-    expect(scopeParam).toBe("spark:people_read spark:messages_write");
+    // spark:rooms_read is always part of the core connection (lane space picker).
+    expect(scopeParam).toBe("spark:people_read spark:messages_write spark:rooms_read");
     expect(scopeParam).not.toContain('"');
     expect(scopeParam).not.toContain(",");
   });
@@ -205,8 +206,9 @@ describe("GET /api/webex/diagnostics", () => {
     expect(data.client_secret_configured).toBe(true);
     expect(data.last_error_code).toBe("invalid_scope");
     // The default "Connect Webex" flow's scope set excludes the optional
-    // transcript scope, even if it happens to be present in WEBEX_SCOPES.
-    expect(data.last_failed_scope_set).toEqual(["spark:messages_write"]);
+    // transcript scope (even if present in WEBEX_SCOPES) and always includes
+    // spark:rooms_read for the lane space picker.
+    expect(data.last_failed_scope_set).toEqual(["spark:messages_write", "spark:rooms_read"]);
     expect(JSON.stringify(data)).not.toContain("test-client-id");
     expect(JSON.stringify(data)).not.toContain("test-client-secret");
   });

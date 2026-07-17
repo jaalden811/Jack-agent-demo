@@ -7,6 +7,7 @@ import type { OutlookStatus } from "@/lib/outlook/types";
 import { Modal } from "@/components/signal-agent/Modal";
 import { SellerProfileWizard } from "@/components/signal-agent/SellerProfileWizard";
 import { AnalyticsView } from "@/components/signal-agent/AnalyticsView";
+import { WebexSpacePicker } from "@/components/signal-agent/WebexSpacePicker";
 
 type RoutingConfigResponse = {
   path: string;
@@ -556,6 +557,10 @@ export function SetupDrawer({
               <code>{routingConfig.path}</code>
             </p>
           )}
+
+          <h4 style={{ margin: "16px 0 4px" }}>Webex delivery spaces</h4>
+          <WebexSpacePicker />
+
           <div className="actions">
             <button type="button" className="button secondary" onClick={() => runAction("reload-routing", reloadRoutingConfig)} disabled={busy === "reload-routing"}>
               Reload routing
