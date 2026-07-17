@@ -21,7 +21,7 @@ export type DialogueAccountCandidate = { name: string; evidence_text: string; co
 // word immediately following the phrase ("we are happy to...") from
 // ever being captured as a company name.
 // Title-case token run, allowing "&"/"and" connectors WITHIN a company name
-// ("PineRiver Water & Power", "Barnes and Noble", "AT&T") while still requiring
+// ("Acme Water & Power", "Barnes and Noble", "AT&T") while still requiring
 // each part to start capitalized (so a trailing lowercase word is never pulled
 // into the name).
 const NAME_CAPTURE = "([A-Z][\\w&.'-]*(?:\\s+(?:&\\s+|and\\s+)?[A-Z][\\w&.'-]*){0,4})";
@@ -55,7 +55,7 @@ const EXPLICIT_ACCOUNT_PATTERNS: RegExp[] = [
   new RegExp(`\\bcanonical\\s+(?:account|scope)[\\w\\s]{0,25}?\\bis\\s+${NAME_CAPTURE}`, "g"),
   // Operating / contracting entity declarations — a customer naming the legal
   // operating or contracting entity that owns the work/subscription ("the
-  // operating utility is PineRiver Water & Power", "the contracting entity is
+  // operating utility is Acme Water & Power", "the contracting entity is
   // Acme Retail"). As strong as an explicit account declaration.
   new RegExp(`\\bthe\\s+(?:operating|contracting|prospective(?:\\s+contracting)?|legal|scoped|canonical)\\s+(?:account|entity|company|utility|business|customer|organi[sz]ation|org|party|subsidiary)\\s+(?:is|should be|will be|remains?)\\s+${NAME_CAPTURE}`, "g")
 ];

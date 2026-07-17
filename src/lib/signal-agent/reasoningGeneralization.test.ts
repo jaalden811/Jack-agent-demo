@@ -410,6 +410,42 @@ describe("delivered message anchors to the canonical Next Best Action", () => {
   });
 });
 
+describe("copied CRM block + slash-joined account (S030 class)", () => {
+  it("does not parse CRM/metadata field labels as speakers and takes the primary entity from a slash-joined account", () => {
+    const transcript = [
+      "Account: Acme State University / Acme Health / Acme Foundation",
+      "Parent: Acme University Foundation",
+      "Opportunity: Unified digital experience platform",
+      "Products: Splunk ITSI, AppDynamics",
+      "Budget: $1,800,000 approved",
+      "Sponsor: University CIO",
+      "Timeline: October 1 enrollment deadline",
+      "Stage: POV requested",
+      "Source: partner conversations",
+      "Juno Park: I am the outgoing account executive; several CRM fields were assembled before I validated the entities.",
+      "Tariq Bello: I am taking the account. Is the Foundation actually the parent?"
+    ].join("\n");
+    const t = ingestTranscript(transcript);
+    const names = t.diagnostics.participants;
+    for (const label of ["Parent", "Opportunity", "Products", "Budget", "Sponsor", "Timeline", "Stage", "Source"]) {
+      expect(names).not.toContain(label);
+    }
+    // Primary (first) entity only — excluded affiliates are not merged in.
+    expect(t.account).toBe("Acme State University");
+  });
+});
+
+describe("economic-owner self-identification (S029 class)", () => {
+  it("confirms a named economic buyer from 'I am the economic owner … I can approve within that envelope'", () => {
+    const turns = [
+      { name: "Marla", text: "I am vice president of customer experience and the program's economic owner. I confirm the $420,000 envelope. I can approve a recommendation within that envelope after the gates. I have not approved a vendor or price." }
+    ];
+    const graph = inferAuthorityGraph({ stakeholderTurns: turns, allCustomerText: turns.map((t) => t.text) });
+    expect(graph.economic_authority.status).toBe("confirmed");
+    expect(graph.economic_authority.named_person).toBe("Marla");
+  });
+});
+
 describe("speaker side — a vendor SE who pitches product capabilities", () => {
   it("classifies product-capability pitches as vendor, but a customer describing their own environment stays customer", () => {
     const se = inferSpeakerSide([

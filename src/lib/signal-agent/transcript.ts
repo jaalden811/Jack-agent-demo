@@ -214,6 +214,33 @@ const NON_SPEAKER_KEYS = new Set([
   "location",
   "agenda",
   "call",
+  // Copied CRM / opportunity-record + scenario-metadata field labels — these are
+  // "Field: value" lines from a pasted record, never a person speaking. Matched
+  // on the first word, so "Products mentioned:" / "Opportunity maturity:" hit too.
+  "parent",
+  "opportunity",
+  "products",
+  "product",
+  "budget",
+  "sponsor",
+  "timeline",
+  "stage",
+  "source",
+  "region",
+  "industry",
+  "difficulty",
+  "family",
+  "maturity",
+  "metadata",
+  "exclusions",
+  "explicit",
+  "scope",
+  "region",
+  "owner",
+  "status",
+  "recommendation",
+  "verdict",
+  "confidence",
   // Discourse markers / sentence adverbs.
   "tentatively",
   "correction",
@@ -256,6 +283,14 @@ const NON_SPEAKER_KEYS = new Set([
   "finally",
   "fyi"
 ]);
+
+/** A candidate is a non-speaker label when the full string OR its first word is
+ * a known metadata/CRM/discourse key ("Explicit exclusions" -> "explicit",
+ * "Products mentioned" -> "products"). */
+function isNonSpeakerKey(name: string): boolean {
+  const k = name.trim().toLowerCase();
+  return NON_SPEAKER_KEYS.has(k) || NON_SPEAKER_KEYS.has(k.split(/\s+/)[0]);
+}
 
 function splitSentences(text: string): string[] {
   return text
@@ -302,8 +337,7 @@ function parseDialogueLine(line: string, options: { allowPlainSpeaker: boolean }
   if (options.allowPlainSpeaker) {
     match = line.match(PLAIN_SPEAKER_RE);
     if (match) {
-      const key = match[1].trim().toLowerCase();
-      if (NON_SPEAKER_KEYS.has(key)) return null;
+      if (isNonSpeakerKey(match[1])) return null;
       if (!isPlausibleSpeakerName(match[1])) return null;
       return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
     }
@@ -323,16 +357,14 @@ type HeaderLineOutcome = { kind: "header"; value: HeaderLine } | { kind: "reject
 function parseHeaderLine(line: string): HeaderLineOutcome {
   let match = line.match(HEADER_NAME_PAREN_RE);
   if (match) {
-    const key = match[1].trim().toLowerCase();
-    if (NON_SPEAKER_KEYS.has(key)) return null;
+    if (isNonSpeakerKey(match[1])) return null;
     if (!isPlausibleSpeakerName(match[1])) return { kind: "rejected", candidate: match[1].trim() };
     return { kind: "header", value: { name: match[1].trim(), descriptor: match[2].trim() } };
   }
 
   match = line.match(HEADER_NAME_TITLE_RE);
   if (match) {
-    const key = match[1].trim().toLowerCase();
-    if (NON_SPEAKER_KEYS.has(key)) return null;
+    if (isNonSpeakerKey(match[1])) return null;
     if (match[2].length > 80) return null; // implausibly long "title" — not a header line
     if (!isPlausibleSpeakerName(match[1])) return { kind: "rejected", candidate: match[1].trim() };
     return { kind: "header", value: { name: match[1].trim(), descriptor: match[2].trim() } };
@@ -479,7 +511,11 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
     if (account === null) {
       const accountMatch = trimmed.match(ACCOUNT_LINE_RE);
       if (accountMatch) {
-        account = accountMatch[1].trim() || null;
+        // A slash/pipe-joined "Account:" value lists multiple entities (e.g. a
+        // copied CRM string "Univ / Health / Foundation" that merges separately
+        // governed affiliates). Take the PRIMARY (first) entity, never the merged
+        // string — a real company name does not contain " / ".
+        account = accountMatch[1].trim().split(/\s+[/|]\s+/)[0].trim() || null;
         continue;
       }
     }

@@ -131,6 +131,9 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
   for (const chunk of chunks) {
     const lower = chunk.text.toLowerCase();
     if (PAST_EVENT_RE.test(lower)) continue;
+    // A QUESTION ("Is November 30 the decision deadline?") asks about timing — it
+    // is not a stated driver. Never surface an interrogative as "why now".
+    if (chunk.text.trim().endsWith("?")) continue;
     // A locked-in / "not under review" / "contracted through" statement is the
     // OPPOSITE of a reason to act now — never surface it as "why now".
     if (lockedIn.some((m) => lower.includes(m))) continue;
@@ -351,7 +354,12 @@ export function buildDealIntelligence(params: {
     .map((s, i) => ({ id: `public_${i}`, label: shortText(s.claim, 160), evidence: s.source_title || s.source_url, speaker: null }));
 
   // ── Value hypothesis (customer's own words) ───────────────────────────────
-  const impact = qualitativeImpactSentences(params.transcript)[0] ?? params.result.commercial_signals?.quantified_impact?.[0] ?? null;
+  // Skip META / instruction statements ("record that as seller-proposed", "do
+  // not use this as the business case", "not a customer commitment") — those are
+  // process notes, never the value hypothesis.
+  const META_RE = /\b(record that|do not use|don'?t use|note that|for the record|to be precise|be careful|not a customer commitment|seller[- ]proposed|do not treat|should not|not the business case|as a hypothesis)\b/i;
+  const impactCandidates = [...qualitativeImpactSentences(params.transcript), ...(params.result.commercial_signals?.quantified_impact ?? [])];
+  const impact = impactCandidates.find((s) => s && !META_RE.test(s)) ?? null;
   const value_hypothesis = impact ? `Frame value in their words: "${shortText(impact, 220)}"` : null;
 
   // ── Honest, compelling headline ───────────────────────────────────────────

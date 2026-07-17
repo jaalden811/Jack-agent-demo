@@ -45,7 +45,12 @@
     { "pattern": "\\breduce (dependence|reliance) on\\b", "weight": 1.5 },
     { "pattern": "\\bshare a (common |single |unified )?data (foundation|layer|platform|fabric|store)\\b", "weight": 2 },
     { "pattern": "\\bsupports (different|multiple|various|both) (storage|search|deployment|data|ingestion)\\b", "weight": 1.5 },
-    { "pattern": "\\bdoesn'?t have to be (uniform|perfect|complete)\\b", "weight": 1.5 }
+    { "pattern": "\\bdoesn'?t have to be (uniform|perfect|complete)\\b", "weight": 1.5 },
+    { "pattern": "\\b(i|we) (will |can |'ll )?reproduce (it|the issue|the error|this|that|the \\d{3})\\b", "weight": 2 },
+    { "pattern": "\\bin a support (tenant|environment|instance|sandbox)\\b", "weight": 2.5 },
+    { "pattern": "\\bi opened (this|a|the) (informal )?(call|case|ticket|support case)\\b", "weight": 2 },
+    { "pattern": "\\b(upload|send) (it |them )?through the support portal\\b", "weight": 2 },
+    { "pattern": "\\b(product[- ]defect|monitor[- ]change|policy) path\\b", "weight": 1.5 }
   ],
   "customer_indicators": [
     { "pattern": "\\bour (environment|team|org|organization|company|infrastructure|stack|estate|business|systems?)\\b", "weight": 2 },

@@ -22,6 +22,28 @@ function toSignal(s: { id: string; label: string; evidence?: string | null; spea
   return { id: s.id, label: s.label, evidence: s.evidence ?? null, speaker: s.speaker ?? null };
 }
 
+/** Keeps only clean product/platform NAMES (e.g. "ThousandEyes", "New Relic",
+ * "Splunk Cloud") from a current-environment list — drops full sentences ("We
+ * have not proven a Splunk defect…"), which are noise in a "current stack" line.
+ * De-dupes case-insensitively, preserving order. */
+function cleanEnvironmentNames(items: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of items) {
+    const t = (raw ?? "").trim().replace(/[.,;:]+$/, "");
+    if (!t) continue;
+    if (t.length > 40) continue; // a sentence, not a name
+    if (t.split(/\s+/).length > 5) continue;
+    if (/[.!?]/.test(t)) continue; // internal sentence punctuation
+    if (/^(we|i|our|the|a|an|they|it|this|that|not|have|has|is|are|do|does|when|because|so)\b/i.test(t)) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+  }
+  return out;
+}
+
 export function buildIntelligencePacket(result: SecureNetworkingTriageResult): IntelligencePacket {
   const account = getCanonicalAccount(result);
   const di = result.deal_intelligence;
@@ -86,7 +108,10 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
       meddpicc: Object.fromEntries(Object.entries(result.meddpicc ?? {}).map(([k, v]) => [k, (v as { status: string }).status])),
       decision_criteria: (dp?.decision_criteria ?? []).map((c) => ({ statement: c.statement, speaker: c.speaker, evidence_ids: c.evidence_ids }))
     },
-    current_environment: (result.specialist_handoffs?.technical?.current_environment ?? primaryMatch?.solution_decision?.retained_existing_platforms ?? []).slice(0, 6),
+    current_environment: cleanEnvironmentNames([
+      ...(primaryMatch?.solution_decision?.retained_existing_platforms ?? []),
+      ...(result.specialist_handoffs?.technical?.current_environment ?? [])
+    ]).slice(0, 5),
     stakeholders,
     deal_intelligence: {
       deal_shape: di?.deal_shape?.label ?? null,

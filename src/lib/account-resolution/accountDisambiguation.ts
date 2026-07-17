@@ -88,7 +88,7 @@ const MULTI_PART_TLDS = new Set([
 ]);
 
 /** Collapse a hostname to its registrable domain (eTLD+1) so first-party
- * subdomains (investors.aecom.com, www.aecom.com, aecom.com) are recognized
+ * subdomains (investors.acme.com, www.acme.com, acme.com) are recognized
  * as ONE canonical company domain rather than several competing ones. */
 export function registrableDomain(domain: string): string {
   const parts = domain.toLowerCase().split(".").filter(Boolean);
@@ -98,7 +98,7 @@ export function registrableDomain(domain: string): string {
   return lastTwo;
 }
 
-/** A registrable-domain label (e.g. "aecom" from "investors.aecom.com") that
+/** A registrable-domain label (e.g. "acme" from "investors.acme.com") that
  * matches the account name is a first-party (canonical) domain signal. */
 export function domainMatchesName(domain: string, name: string): boolean {
   const parts = domain.toLowerCase().split(".").filter(Boolean);

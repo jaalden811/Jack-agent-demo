@@ -476,6 +476,24 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     result.executive_summary.verdict = "NOISE";
   }
 
+  // Qualified-deal rescue (inverse of the trap guard): a call with a CONFIRMED,
+  // NAMED economic buyer AND confirmed pain, metrics, and decision criteria is a
+  // fully-qualified opportunity. It must not sit at NOISE just because a support-
+  // led or noisy framing held the raw intent score under the REVIEW floor. This
+  // is deliberately narrow — it requires all four hard MEDDPICC pillars incl. a
+  // named economic buyer, which a monitor/support/trap conversation never has —
+  // so it lifts only genuinely strong deals, and never on a hard rejection.
+  if (!hardRejection.rejected && result.executive_summary.verdict === "NOISE") {
+    const m = result.meddpicc;
+    const confirmed = (f?: { status?: string }) => f?.status === "CONFIRMED";
+    if (confirmed(m?.economic_buyer) && confirmed(m?.identify_pain) && confirmed(m?.metrics) && confirmed(m?.decision_criteria)) {
+      result.executive_summary.verdict = "REVIEW";
+      if (["HOLD", "DO_NOT_PURSUE", "NURTURE"].includes(result.opportunity_scoring.decision)) {
+        result.opportunity_scoring.decision = "PURSUE_WITH_DISCOVERY";
+      }
+    }
+  }
+
   // Action-intelligence + specialist-handoff layer (the defining output):
   // one specific Next Best Action, a do-not-re-ask index, and lane-
   // specific handoff packets — all derived from the assembled evidence.

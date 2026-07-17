@@ -51,14 +51,19 @@ const TECHNICAL_EVALUATOR_PATTERNS = [/\b(integration|architecture|data flows?|t
 // can authorize a test/design session without any budget power (and often adds
 // "I am not authorizing a purchase"). So the "authorize/approve" verbs must
 // have a spend/budget/purchase/contract object.
-const MONEY_OBJECT = "(the )?(spend|spending|budget|funding|purchase|deal|contract|licen[cs]e|payment|investment|money|cost)";
+const MONEY_OBJECT = "(the |that |this )?(spend|spending|budget|funding|purchase|deal|contract|licen[cs]e|payment|investment|money|cost|envelope|program envelope|fiscal[- ]year envelope)";
 // A single confirmed economic buyer asserts their OWN authority, in the first
 // person, POSITIVELY. Committee/finance/board approval is DISTRIBUTED authority
 // (handled below), and a NEGATED statement ("I did not approve a purchase",
 // "not approve purchase") is the opposite of authority — see the negation guard.
 const ECONOMIC_AUTHORITY_PATTERNS = [
   new RegExp(`\\b(i control the budget|i own the budget|i am the (economic )?buyer|final (budget )?decision sits with me|i hold (final )?(budget|approval|spend) authority|i can fund (it|this|that))\\b`, "i"),
-  new RegExp(`\\bi (?:can |will |personally )?(approve|authorize|sign off on|release)\\b[\\w\\s]{0,15}${MONEY_OBJECT}\\b`, "i")
+  // First-person economic-OWNER self-identification: "I am the program's economic
+  // owner", "I am the budget owner", "I own the business outcome / the envelope".
+  new RegExp(`\\bi am (?:the |a |our )?(?:program'?s |project'?s )?(economic|budget|commercial) (owner|buyer|sponsor|authority)\\b`, "i"),
+  new RegExp(`\\bi (?:am the |own the )?(?:business outcome owner|owner of the (?:budget|spend|program envelope|business outcome))\\b`, "i"),
+  // "I can approve … within that envelope", "I confirm the $X envelope/budget".
+  new RegExp(`\\bi (?:can |will |personally )?(approve|authorize|sign off on|release|confirm)\\b[\\w\\s,'$-]{0,35}${MONEY_OBJECT}\\b`, "i")
 ];
 // Negation / disclaimer of authority — a sentence carrying one of these is NOT
 // an authority claim even if it lexically contains "approve … budget".
