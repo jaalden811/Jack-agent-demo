@@ -14,11 +14,11 @@
   ],
   "risk_cues": [
     { "id": "no_single_eb", "label": "No single economic buyer — budgets are separate", "cues": ["there may not be one person", "no single buying authority", "no single approver", "separate budgets", "don't necessarily share a budget", "distributed budget"] },
-    { "id": "not_a_competition", "label": "Do NOT frame this as a SIEM competition", "cues": ["not running a siem competition", "siem competition", "no approved replacement", "there is no approved replacement project"] },
-    { "id": "decentralized_control", "label": "Decentralized model — no central control", "cues": ["surrender control", "decentralized operating model", "internal politics", "every project must surrender"] },
-    { "id": "sovereignty", "label": "Data sovereignty / residency is gating", "cues": ["data sovereignty is not theoretical", "data sovereignty", "data-location", "data location and access"] },
-    { "id": "cost_governance", "label": "Cost governance sensitivity", "cues": ["overlapping tools", "increases the licensing cost", "ingest everything", "cost governance later"] },
-    { "id": "skills_gap", "label": "Skills / operating-model constraint", "cues": ["engineering backlog", "permanent integration project", "unlimited number of people", "explain the results to the business"] },
+    { "id": "not_a_competition", "label": "Do NOT frame this as a competitive replacement", "cues": ["not running a competition", "not a bake-off", "not a competitive evaluation", "no approved replacement", "no replacement project"] },
+    { "id": "decentralized_control", "label": "Decentralized model — no central control", "cues": ["surrender control", "decentralized", "central control", "internal politics", "each team decides", "no central mandate"] },
+    { "id": "sovereignty", "label": "Data sovereignty / residency is gating", "cues": ["data sovereignty", "data residency", "data location", "in-country", "in country", "cross-border", "data cannot leave", "residency"] },
+    { "id": "cost_governance", "label": "Cost governance sensitivity", "cues": ["overlapping tools", "licensing cost", "license cost", "ingest everything", "cost governance", "retention cost", "too expensive"] },
+    { "id": "skills_gap", "label": "Skills / operating-model constraint", "cues": ["engineering backlog", "permanent integration project", "operating model", "who will run", "maintenance burden", "skills gap", "resourcing"] },
     { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["black-box", "black box", "correlation is not causation", "not proof", "unproven", "on paper only", "in theory"] }
   ],
   "composed_risk_cues": [
@@ -49,13 +49,13 @@
     "locked_in_markers": ["not under replacement review", "not under review", "contracted through", "committed through", "locked in through", "no replacement", "not asking to replace", "not planning to replace", "not going to replace", "not up for renewal", "already signed", "renewal already", "signed in"]
   },
   "stakeholder_roles": [
-    { "id": "business_champion", "label": "Business champion", "cues": ["i'd like", "i would like", "working session", "material business risk", "client delivery", "business exposure", "resilience", "what we actually want", "that restraint is useful", "good answer"], "play": "Arm them with exec-legible business-risk framing and a tight next step they can carry internally." },
-    { "id": "cost_gatekeeper", "label": "Cost / commercial gatekeeper", "cues": ["licensing cost", "overlapping tools", "cost governance", "ingest everything", "discretionary money", "expensive", "pay for two"], "play": "Lead with cost governance — data tiering, retention, and what data belongs where — before any commitment." },
-    { "id": "security_risk_owner", "label": "Security & risk owner", "cues": ["access control", "role-based", "data segregation", "privileged", "regulated", "siem", "detection", "security review", "identity"], "play": "Lead with access separation, data boundaries, and sovereignty; keep security and operations workflows distinct." },
-    { "id": "technical_evaluator", "label": "Technical / feasibility evaluator", "cues": ["instrumentation", "become fiction", "correlation is not causation", "engineering backlog", "prebuilt", "not zero", "stays accurate", "can is doing work", "won't be uniform"], "play": "Offer a bounded, credible test on one representative environment; show confidence and data gaps, not black-box answers." }
+    { "id": "business_champion", "label": "Business champion", "cues": ["i'd like", "i would like", "working session", "material business risk", "business exposure", "we want to", "let's move", "i'll bring", "i'll coordinate", "next step"], "play": "Arm them with exec-legible business-risk framing and a tight next step they can carry internally." },
+    { "id": "cost_gatekeeper", "label": "Cost / commercial gatekeeper", "cues": ["licensing cost", "license cost", "overlapping tools", "cost governance", "ingest everything", "discretionary", "expensive", "pay for two"], "play": "Lead with cost governance — data tiering, retention, and what data belongs where — before any commitment." },
+    { "id": "security_risk_owner", "label": "Security & risk owner", "cues": ["access control", "role-based", "data segregation", "privileged", "regulated", "detection", "security review", "identity", "compliance"], "play": "Lead with access separation, data boundaries, and sovereignty; keep security and operations workflows distinct." },
+    { "id": "technical_evaluator", "label": "Technical / feasibility evaluator", "cues": ["instrumentation", "correlation is not causation", "prebuilt", "integration", "feasibility", "data quality", "accuracy", "false positives", "coverage gaps", "black-box"], "play": "Offer a bounded, credible test on one representative environment; show confidence and data gaps, not black-box answers." }
   ],
   "stakeholder_stance": {
-    "supportive_cues": ["i'd like", "i would like", "that could be more relevant", "good answer", "that restraint is useful", "very", "exactly", "yes"],
-    "skeptical_cues": ["become fiction", "can is doing work", "not zero", "expensive explanation", "won't be uniform", "black-box", "correlation is not causation", "i did not say that", "please don't"]
+    "supportive_cues": ["i'd like", "i would like", "we want", "let's", "makes sense", "sounds good", "that helps", "agreed", "exactly", "yes"],
+    "skeptical_cues": ["black-box", "black box", "correlation is not causation", "not convinced", "skeptical", "prove it", "i did not say", "please don't", "won't work", "not sure"]
   }
 }
