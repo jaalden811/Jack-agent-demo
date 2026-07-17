@@ -56,6 +56,12 @@ export type StageDBrief = {
   timing: string;
   sales_lane: StageDLane;
   technical_lane: StageDLane;
+  /** Deal Intelligence (honest, evidence-cited) — lets the message open with
+   * the deal shape and respect the top landmine. Optional/additive. */
+  deal_shape?: string;
+  deal_momentum?: string[];
+  deal_watch_outs?: string[];
+  value_hypothesis?: string | null;
 };
 
 export type StageDInput = {
@@ -82,18 +88,22 @@ function byteLength(s: string): number {
  */
 const SALES_SKELETON = [
   "**Account:** <canonical account>",
+  "**Deal shape:** <material.deal_shape — omit this line if not provided>",
   "**Why you:** <sales_lane.role_label> — <one concise clause from sales_lane.why_selected>",
-  "**Why now:** <ONE sentence from why_now[0] or timing>",
+  "**Why now:** <ONE sentence from why_now[0]/deal_momentum/timing>",
   "**Recommended action:** <the single most important item from sales_lane.actions>",
-  "**Expected outcome:** <sales_lane.expected_output>"
+  "**Expected outcome:** <sales_lane.expected_output>",
+  "**Watch-out:** <the single most important item from deal_watch_outs — omit this line if none>"
 ].join("\n");
 
 const TECHNICAL_SKELETON = [
   "**Account:** <canonical account>",
+  "**Deal shape:** <material.deal_shape — omit this line if not provided>",
   "**Why you:** <technical_lane.role_label> — <one concise clause from technical_lane.why_selected>",
-  "**Why now:** <ONE sentence from why_now[0] or timing>",
+  "**Why now:** <ONE sentence from why_now[0]/deal_momentum/timing>",
   "**Recommended action:** <the single most important item from technical_lane.actions>",
-  "**Expected outcome:** <technical_lane.expected_output>"
+  "**Expected outcome:** <technical_lane.expected_output>",
+  "**Watch-out:** <the single most technical item from deal_watch_outs — omit this line if none>"
 ].join("\n");
 
 const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
@@ -111,9 +121,10 @@ const stageDDefinition: StageDefinition<StageDInput, StageDOutput> = {
       task:
         "STAGE D — write two DISTINCT, CONCISE, action-first internal messages by rewriting the provided `material` into polished Markdown. This is a push notification, NOT a full brief: it must make ONE owner act, fast. Keep each message SHORT (aim for 4-6 short lines, well under " +
         input.channel_byte_budget + " bytes). Do NOT include a MEDDPICC dump, an opportunity-thesis paragraph, a do-not-re-ask list, a stakeholder list, or multiple action bullets — that detail lives in the app. " +
-        "sales_webex is the commercial owner's message and MUST use exactly these headings in order: '**Account:**', '**Why you:**', '**Why now:**', '**Recommended action:**', '**Expected outcome:**'. " +
-        "technical_webex is the technical owner's message and MUST use the SAME headings in the SAME order. " +
-        "For '**Recommended action:**' write the SINGLE most important action for that lane (from material.sales_lane.actions / material.technical_lane.actions) as one clear sentence — never a bulleted list, never a vague action like 'follow up' or 'touch base'. Use material.<lane>.role_label + why_selected for '**Why you:**', material.why_now[0] or material.timing for '**Why now:**', and material.<lane>.expected_output for '**Expected outcome:**'. " +
+        "sales_webex is the commercial owner's message and uses these headings in order: '**Account:**', optional '**Deal shape:**', '**Why you:**', '**Why now:**', '**Recommended action:**', '**Expected outcome:**', optional '**Watch-out:**'. " +
+        "technical_webex is the technical owner's message and uses the SAME headings in the SAME order. " +
+        "For '**Recommended action:**' write the SINGLE most important action for that lane (from material.sales_lane.actions / material.technical_lane.actions) as one clear sentence — never a bulleted list, never a vague action like 'follow up' or 'touch base'. Use material.<lane>.role_label + why_selected for '**Why you:**', material.why_now[0]/material.deal_momentum/material.timing for '**Why now:**', and material.<lane>.expected_output for '**Expected outcome:**'. " +
+        "If material.deal_shape is provided, add the '**Deal shape:**' line so the owner instantly sees what kind of deal this is. If material.deal_watch_outs is non-empty, add ONE '**Watch-out:**' line with the single most important landmine (for technical, prefer a technical/feasibility/sovereignty item). These sharpen the read — but use ONLY the provided material, never invent a shape, momentum, or risk. " +
         "The two lanes MUST be materially different: the commercial message emphasizes the account/commercial next step; the technical message emphasizes the environment/workshop scope. " +
         "STRICT: use ONLY the provided material — do NOT invent signals, actions, metrics, names, dates, or URLs. If personalization_context is present, use it ONLY to tune salience/tone (goals/lane/preferred tone) — never invent goal/quota impact, never expose private compensation. " +
         "Use the canonical account name '" + (input.account ?? "the account") + "' in the '**Account:**' line of BOTH messages. Complete sentences, valid Markdown, no truncation ellipses, at most one link (only from allowed_public_source_urls). " +

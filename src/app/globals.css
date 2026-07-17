@@ -1038,6 +1038,17 @@ button:disabled {
 .topbar-pill.medium { background: var(--tint-warning); color: var(--warning); }
 .topbar-pill.low { background: var(--surface-2); color: var(--muted); }
 
+/* ── Deal intelligence card ─────────────────────────────────────────────── */
+.deal-intel-card { border: 1px solid var(--accent); }
+.deal-intel-headline { font-size: 1.05rem; font-weight: 650; margin: 6px 0 10px; line-height: 1.45; }
+.deal-intel-shape { margin-bottom: 12px; }
+.deal-intel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.deal-intel-grid .meta-label { display: block; margin-bottom: 6px; }
+.deal-intel-value { margin-top: 12px; }
+@media (max-width: 720px) {
+  .deal-intel-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Progressive-disclosure result sections ─────────────────────────────── */
 .section-group {
   border: 1px solid var(--border);

@@ -1,0 +1,25 @@
+{
+  "description": "Generic, evidence-cited deal-intelligence signals. Detects the deal SHAPE (expansion / program-aligned / consolidation), MOMENTUM (what makes this real and winnable now), and RISKS / landmines (what stalls or kills it) from linguistic shapes/themes only — never a company, product, speaker, or a specific transcript's wording. Every surfaced signal cites the customer's own sentence, so the output sharpens a seller's read without inventing anything. Logic lives in src/lib/deal-intel; this file is editable without code changes.",
+  "version": "1.0",
+  "shape_tags": [
+    { "id": "expansion", "label": "Expansion / land-and-expand", "cues": ["we have splunk", "already present", "in pockets", "acquired environment uses it", "already deployed", "already got", "existing footprint"] },
+    { "id": "program_aligned", "label": "Aligned to a sponsored program", "cues": ["resilience effort", "broader resilience", "modernization stream", "improvement program", "senior attention", "executive sponsorship", "resilience has the clearest"] },
+    { "id": "consolidation", "label": "Consolidation / cross-domain correlation", "cues": ["overlapping tools", "fragmented", "correlate", "cross-domain", "a different console", "one place to see", "consolidat", "single pane", "reliable picture"] }
+  ],
+  "participant_role_terms": ["architecture", "service management", "enterprise risk", "security architecture", "application owner", "operations"],
+  "momentum_cues": [
+    { "id": "exec_program", "label": "Exec-sponsored resilience program to attach to", "cues": ["resilience has the clearest senior attention", "senior attention", "executive sponsorship", "broader resilience effort"] },
+    { "id": "existing_footprint", "label": "Existing Splunk footprint (expand, not net-new)", "cues": ["we have splunk", "in pockets", "acquired environment uses it"] },
+    { "id": "cisco_relationship", "label": "Existing Cisco relationship opens the door", "cues": ["significant cisco relationships", "cisco relationship", "cisco's ownership of splunk", "we have significant cisco"] },
+    { "id": "quantified_stakes", "label": "Customer named the business stakes", "cues": ["hundreds of specialists", "client delivery", "delivery milestones", "material business risk", "business exposure"] }
+  ],
+  "risk_cues": [
+    { "id": "no_single_eb", "label": "No single economic buyer — budgets are separate", "cues": ["there may not be one person", "no single buying authority", "security spending follows one path", "don't necessarily share a budget", "separate services another", "difficult"] },
+    { "id": "not_a_competition", "label": "Do NOT frame this as a SIEM competition", "cues": ["not running a siem competition", "siem competition", "no approved replacement", "there is no approved replacement project"] },
+    { "id": "decentralized_control", "label": "Decentralized model — no central control", "cues": ["surrender control", "decentralized operating model", "internal politics", "every project must surrender"] },
+    { "id": "sovereignty", "label": "Data sovereignty / residency is gating", "cues": ["data sovereignty is not theoretical", "data sovereignty", "data-location", "data location and access"] },
+    { "id": "cost_governance", "label": "Cost governance sensitivity", "cues": ["overlapping tools", "increases the licensing cost", "ingest everything", "cost governance later"] },
+    { "id": "skills_gap", "label": "Skills / operating-model constraint", "cues": ["engineering backlog", "permanent integration project", "unlimited number of people", "explain the results to the business"] },
+    { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["become fiction", "black-box", "black box", "correlation is not causation", "pretending the answer"] }
+  ]
+}

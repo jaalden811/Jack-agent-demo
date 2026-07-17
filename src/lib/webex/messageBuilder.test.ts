@@ -165,6 +165,25 @@ describe("Webex message templates", () => {
     expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1100);
   });
 
+  it("surfaces deal intelligence (deal shape + watch-out) in both lanes when present", () => {
+    const result = buildResult();
+    result.deal_intelligence = {
+      deal_shape: { label: "Expansion / land-and-expand · Consolidation / cross-domain correlation", tags: ["expansion", "consolidation"], rationale: "We have Splunk in pockets." },
+      momentum: [{ id: "requested_next_step", label: "Customer asked for the next step", evidence: "Let's do a working session.", speaker: "Jordan" }],
+      risks: [{ id: "no_single_eb", label: "No single economic buyer — budgets are separate", evidence: "There may not be one person.", speaker: "Jordan" }],
+      value_hypothesis: 'Frame value in their words: "hundreds of specialists unable to work"',
+      headline: "Expansion play at Acme Retail — customer asked for the next step; watch: no single economic buyer."
+    };
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    expect(sales.markdown).toContain("**Deal shape:**");
+    expect(sales.markdown).toContain("**Watch-out:**");
+    expect(technical.markdown).toContain("**Deal shape:**");
+    // Still concise.
+    expect(sales.markdown.length).toBeLessThanOrEqual(1100);
+    expect(technical.markdown.length).toBeLessThanOrEqual(1100);
+  });
+
   it("never pastes the full transcript into a message", () => {
     const result = buildResult();
     result.transcript_meta.raw_text = "SENTENCE-MARKER-XYZ ".repeat(500);

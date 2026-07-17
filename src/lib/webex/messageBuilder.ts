@@ -160,14 +160,19 @@ export function buildSalesMessage(params: {
   const scoring = result.opportunity_scoring;
   const pursuitLine =
     scoring && scoring.decision ? `**Pursuit:** ${scoring.decision} — ${Math.round(scoring.final_pursuit_score)}/100` : null;
+  const di = result.deal_intelligence;
+  const dealShapeLine = di ? `**Deal shape:** ${clipAtWord(di.deal_shape.label, 120)}` : null;
+  const watchOutLine = di && di.risks[0] ? `**Watch-out:** ${clipAtWord(di.risks[0].label, 160)}` : null;
 
   const markdown = composeToByteBudget(
     [
       { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — commercial` },
+      { text: dealShapeLine },
       { text: `**Why you:** Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.label}.` },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: watchOutLine },
       { text: pursuitLine },
       { text: impact ? `**Business impact:** ${clipAtWord(impact, 200)}` : null },
       { text: "" },
@@ -209,15 +214,22 @@ export function buildTechnicalMessage(params: {
   const whyNow = firstMeaningful([...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a scenario-based working session.";
   const action = actionLine(result, decision, "technical");
   const expected = firstMeaningful([...(nba?.success_criteria ?? [])]) ?? "Validated data sources and pass/fail criteria for the scenarios.";
+  const di = result.deal_intelligence;
+  const dealShapeLine = di ? `**Deal shape:** ${clipAtWord(di.deal_shape.label, 120)}` : null;
+  // The most technical landmine to respect (credibility/feasibility/sovereignty).
+  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  const watchOutLine = techRisk ? `**Watch-out:** ${clipAtWord(techRisk.label, 160)}` : null;
 
   const markdown = composeToByteBudget(
     [
       { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — technical` },
+      { text: dealShapeLine },
       { text: `**Why you:** Technical owner — scope the workshop and validate the environment.` },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
       { text: `**Environment:** ${clipAtWord(currentEnvironment, 140)} · **Motion:** ${clipAtWord(solutionMotion, 140)}` },
+      { text: watchOutLine },
       { text: evidence ? `**Proof:** "${clipAtWord(evidence, 200)}"` : null },
       { text: "" },
       { text: analysisLinkMarkdown(analysisLink, runId) }

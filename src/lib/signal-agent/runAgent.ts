@@ -24,6 +24,7 @@ import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { buildPersonalizationBlock, buildPersonalizationContextForResult } from "@/lib/personalization/buildPersonalization";
 import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
 import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
+import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
 import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
@@ -469,6 +470,16 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     sales: buildSpecialistHandoff({ result, lane: "sales", recipient: actionOwners.sales, action: result.next_best_action, questionIndex: result.question_index }),
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
+
+  // Deal Intelligence — the honest, evidence-cited "is this real, why now, what
+  // could kill it" read. Computed BEFORE Circuit so the message (Stage D +
+  // deterministic) and the handoff can lead with the deal shape / momentum /
+  // landmine. Additive — never changes scores, routing, or evidence identity.
+  try {
+    result.deal_intelligence = buildDealIntelligence({ result, account, transcript });
+  } catch {
+    result.deal_intelligence = null;
+  }
 
   // Resolve the active seller profile once, and build the SAFE recipient
   // personalization context (goals/lane/relevance) so Circuit Stage C/D can

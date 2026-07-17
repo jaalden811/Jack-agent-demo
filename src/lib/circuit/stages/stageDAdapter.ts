@@ -67,6 +67,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     expected_output: successText ? `A technical outcome: ${successText}.` : "A scoped technical validation (architecture workshop / POV with explicit success criteria)."
   };
 
+  const di = result.deal_intelligence;
   const brief: StageDBrief = {
     opportunity_thesis: thesis,
     why_now: detBrief.why_now,
@@ -76,7 +77,11 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     do_not_reask: doNotReask,
     timing,
     sales_lane,
-    technical_lane
+    technical_lane,
+    deal_shape: di?.deal_shape.label,
+    deal_momentum: (di?.momentum ?? []).map((m) => m.label),
+    deal_watch_outs: (di?.risks ?? []).map((r) => r.label),
+    value_hypothesis: di?.value_hypothesis ?? null
   };
 
   // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
@@ -86,21 +91,34 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const salesAction = firstMeaningful(sales_lane.actions) ?? "Confirm the next commercial step and owner with the customer.";
   const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
 
+  const dealShapeLine = di?.deal_shape.label ? `**Deal shape:** ${di.deal_shape.label}` : null;
+  const salesWatch = di?.risks[0]?.label ? `**Watch-out:** ${di.risks[0].label}` : null;
+  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  const techWatch = techRisk?.label ? `**Watch-out:** ${techRisk.label}` : null;
+
   const salesWebex = [
     `**Account:** ${accountLabel}`,
+    dealShapeLine,
     `**Why you:** ${sales_lane.role_label} — own the commercial next step for ${accountLabel}.`,
     `**Why now:** ${whyNow}`,
     `**Recommended action:** ${salesAction}`,
-    `**Expected outcome:** ${sales_lane.expected_output}`
-  ].join("\n");
+    `**Expected outcome:** ${sales_lane.expected_output}`,
+    salesWatch
+  ]
+    .filter((l): l is string => l !== null)
+    .join("\n");
 
   const technicalWebex = [
     `**Account:** ${accountLabel}`,
+    dealShapeLine,
     `**Why you:** ${technical_lane.role_label} — scope the workshop and validate the environment for ${accountLabel}.`,
     `**Why now:** ${whyNow}`,
     `**Recommended action:** ${technicalAction}`,
-    `**Expected outcome:** ${technical_lane.expected_output}`
-  ].join("\n");
+    `**Expected outcome:** ${technical_lane.expected_output}`,
+    techWatch
+  ]
+    .filter((l): l is string => l !== null)
+    .join("\n");
 
   const deterministic: StageDOutput = {
     sales_webex: salesWebex,

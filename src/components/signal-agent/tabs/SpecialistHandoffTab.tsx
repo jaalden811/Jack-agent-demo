@@ -122,8 +122,25 @@ export function SpecialistHandoffTab({ result }: { result: WebexAutomationRunRes
 
   if (!packet) return <p className="muted">No handoff packet available for this run.</p>;
 
+  const di = result.deal_intelligence;
+
   return (
     <div className="specialist-handoff">
+      {di && (
+        <div className="handoff-brief" style={{ borderLeft: "3px solid var(--accent)" }}>
+          <span className="meta-label">Deal intelligence</span>
+          <p style={{ margin: "4px 0" }}>{di.headline}</p>
+          <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+            <strong>Shape:</strong> {di.deal_shape.label}
+            {di.risks[0] ? (
+              <>
+                {" · "}
+                <strong>Top landmine:</strong> {di.risks[0].label}
+              </>
+            ) : null}
+          </p>
+        </div>
+      )}
       <div className="handoff-lane-toggle" role="tablist">
         <button type="button" className={`button ${lane === "technical" ? "" : "secondary"}`} onClick={() => setLane("technical")}>
           Jack — Technical

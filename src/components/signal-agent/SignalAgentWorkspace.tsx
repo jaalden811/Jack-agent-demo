@@ -13,6 +13,7 @@ import { ContextCard } from "@/components/signal-agent/ContextCard";
 import { SummaryCard } from "@/components/signal-agent/SummaryCard";
 import { CircuitRunDiagnostic } from "@/components/signal-agent/CircuitRunDiagnostic";
 import { PersonalizedOpportunityCard } from "@/components/signal-agent/PersonalizedOpportunityCard";
+import { DealIntelligenceCard } from "@/components/signal-agent/DealIntelligenceCard";
 import { RunAssistantPanel } from "@/components/signal-agent/RunAssistantPanel";
 import { FirstRunMenu } from "@/components/signal-agent/FirstRunMenu";
 import { ActionCenter } from "@/components/signal-agent/ActionCenter";
@@ -235,6 +236,7 @@ export function SignalAgentWorkspace() {
                   a wall of stacked panels. */}
               <SignalToActionJourney result={result} />
               <PersonalizedOpportunityCard result={result} />
+              <DealIntelligenceCard result={result} />
               <ActionCenter result={result} />
               <DeliveryResultCard result={result} onResultUpdate={setResult} />
 
