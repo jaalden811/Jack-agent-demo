@@ -281,6 +281,20 @@ export function buildDealIntelligence(params: {
 
   for (const group of cfg.momentum_cues) pushSignal(momentum, group.id, group.label, firstSubstantiveMatch(chunks, group.cues));
 
+  // Derived momentum from ALREADY-VALIDATED result fields — dynamic and
+  // evidence-cited, not keyword-memorized. A confirmed metric, stated decision
+  // criteria, or an active evaluation stage are all "why this is winnable now"
+  // signals that a narrow cue list misses on a genuinely strong deal.
+  const mdd = params.result.meddpicc;
+  if (mdd?.metrics?.status === "CONFIRMED") pushSignal(momentum, "quantified_metrics", "Quantified business metrics on the table", null, shortText(mdd.metrics.summary));
+  if (mdd?.decision_criteria?.status === "CONFIRMED") pushSignal(momentum, "clear_criteria", "Customer stated clear decision criteria", null, shortText(mdd.decision_criteria.summary));
+  if (mdd?.economic_buyer?.status === "CONFIRMED") pushSignal(momentum, "eb_identified", "Economic buyer identified", null, shortText(mdd.economic_buyer.summary));
+  const stage = params.result.opportunity_scoring?.deal_maturity;
+  if (params.result.executive_summary.verdict !== "NOISE" && (stage === "VALIDATION" || stage === "COMMERCIAL_EVALUATION" || stage === "PROCUREMENT")) {
+    const stageLabel = stage.toLowerCase().replace(/_/g, " ");
+    pushSignal(momentum, "active_stage", `Active ${stageLabel} — a live deal, not early curiosity`, null, `Deal maturity is ${stageLabel}.`);
+  }
+
   // Structured account context (open opportunity / budget signal) — never a
   // transcript claim, so labeled as account context.
   if (params.account.openOpportunity) momentum.push({ id: "open_opportunity", label: "Open opportunity in pipeline (account context)", evidence: "Marked as an open opportunity in the supplied account context.", speaker: null });

@@ -243,11 +243,23 @@ export function buildSalesMessage(params: {
   const publicIntel = di?.public_context[0];
   const accountIntelLine = publicIntel ? `**Account intel:** ${clipAtWord(publicIntel.label, 170)}` : null;
 
+  // Goal-aligned framing (Oscar's "speak their language / 60%-to-quota" ask).
+  // The recipient teaser carries a goal-aligned "why you" and an OWNER-ONLY
+  // goal/quota hook (already nulled for non-owner lanes — no quota leak).
+  const salesTeaser = result.personalization?.recipient_teasers?.sales;
+  const whyYouText =
+    salesTeaser?.why_you && !/^You are the routed owner/i.test(salesTeaser.why_you)
+      ? clipAtWord(salesTeaser.why_you, 200)
+      : `Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.label}.`;
+  const goalImpactLine = salesTeaser?.goal_impact ? `**Goal impact:** ${clipAtWord(salesTeaser.goal_impact, 130)}` : null;
+
   const markdown = composeToByteBudget(
     [
       { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — commercial` },
       { text: dealShapeLine },
-      { text: `**Why you:** Commercial owner for the ${clipAtWord(opportunity, 90)} opportunity at ${account.label}.` },
+      // Owner's goal/quota hook is placed high — the exciting reason to open it.
+      { text: goalImpactLine },
+      { text: `**Why you:** ${whyYouText}` },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
@@ -304,12 +316,21 @@ export function buildTechnicalMessage(params: {
   // The most technical landmine to respect (credibility/feasibility/sovereignty).
   const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance", "privacy_gate"].includes(r.id)) ?? di?.risks[0] ?? null;
   const watchOutLine = techRisk ? `**Watch-out:** ${clipAtWord(techRisk.label, 160)}` : null;
+  // Goal-aligned framing for the technical owner (owner-only goal hook is null
+  // unless the technical recipient is themselves the profile owner).
+  const techTeaser = result.personalization?.recipient_teasers?.technical;
+  const whyYouText =
+    techTeaser?.why_you && !/^You are the routed owner/i.test(techTeaser.why_you)
+      ? clipAtWord(techTeaser.why_you, 200)
+      : "Technical owner — scope the workshop and validate the environment.";
+  const goalImpactLine = techTeaser?.goal_impact ? `**Goal impact:** ${clipAtWord(techTeaser.goal_impact, 130)}` : null;
 
   const markdown = composeToByteBudget(
     [
       { text: `**${summary.verdict.replace(/_/g, " ")} · ${account.label}** — technical` },
       { text: dealShapeLine },
-      { text: `**Why you:** Technical owner — scope the workshop and validate the environment.` },
+      { text: goalImpactLine },
+      { text: `**Why you:** ${whyYouText}` },
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },

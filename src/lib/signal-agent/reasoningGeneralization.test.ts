@@ -246,6 +246,32 @@ describe("account identity from shared participant org descriptors", () => {
   });
 });
 
+describe("action-shape motion + momentum richness (PoC actionability)", () => {
+  const APPROVED_EVAL = [
+    "Rae — Customer, Security Lead",
+    "Rae: I run the SOC at Acme. The steering committee approved a six-week evaluation of a new detection platform. Our decision criteria are correlation quality, integration with ServiceNow, and cost. We are actively evaluating two vendors. Our existing tool renewal is in the background but not the focus. We took ninety-six minutes to correlate and our target is under thirty."
+  ].join("\n");
+
+  it("an approved/active evaluation is NOT overwritten by a 'renewal review'", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const r = await runSignalAgent({ customTranscript: APPROVED_EVAL });
+    // The renewal is incidental; the drafted action must match the real motion.
+    expect(r.next_best_action?.action_type).not.toBe("renewal_review");
+  });
+
+  it("momentum is derived from validated fields (metrics/criteria) so a strong deal reads as strong", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const di = (await runSignalAgent({ customTranscript: APPROVED_EVAL })).deal_intelligence!;
+    const ids = di.momentum.map((m) => m.id);
+    // Derived from validated MEDDPICC/scoring fields (dynamic, not keyword cues)
+    // — a confirmed metric becomes a "winnable now" signal a cue list misses.
+    expect(ids).toContain("quantified_metrics");
+    expect(di.momentum.length).toBeGreaterThan(0);
+  });
+});
+
 describe("dynamic compositional risks (budget-not-approved / privacy-gate)", () => {
   it("detects the SEMANTIC co-occurrence, not a memorized phrase, and does not over-trigger", async () => {
     clearCatalogCache();

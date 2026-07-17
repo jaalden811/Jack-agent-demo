@@ -271,6 +271,31 @@ describe("Webex message templates", () => {
     expect(salesMessage.markdown).toContain("78/100");
   });
 
+  it("threads goal-aligned framing + owner-only goal/quota hook into the delivered message", () => {
+    const result = buildResult();
+    const teaser = (over: Record<string, unknown>) => ({
+      headline: "x", account: "Acme Retail", signal_label: "REVIEW · signal 80%", why_you: "You are the routed owner for this account.",
+      why_now: "n", goal_alignment: null, goal_impact: null, recommended_action: "a", expected_output: "e",
+      evidence_points: [], confidence: 0.8, limitation: null, cta_labels: [], ...over
+    });
+    result.personalization = {
+      ...(result.personalization ?? ({} as NonNullable<typeof result.personalization>)),
+      recipient_teasers: {
+        sales: teaser({ why_you: "This fits your goal to grow strategic accounts and your sales focus.", goal_impact: "$1.20M ≈ 24% of your annual target" }),
+        technical: teaser({ why_you: "Technical owner: environment + workshop scope.", goal_impact: null }),
+        leadership: teaser({})
+      }
+    } as NonNullable<typeof result.personalization>;
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    // Goal-aligned why-you + the owner's quota hook are in the delivered comms.
+    expect(sales.markdown).toContain("This fits your goal to grow strategic accounts");
+    expect(sales.markdown).toContain("**Goal impact:** $1.20M ≈ 24% of your annual target");
+    // The technical recipient is not the owner → NO quota leak.
+    const tech = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    expect(tech.markdown).not.toContain("Goal impact:");
+    expect(tech.markdown).not.toContain("24% of your annual target");
+  });
+
   it("a NOISE/suppress result produces an honest 'no action' message (not a pursue nudge) with the customer's boundary", () => {
     const result = buildResult();
     result.executive_summary.verdict = "NOISE";

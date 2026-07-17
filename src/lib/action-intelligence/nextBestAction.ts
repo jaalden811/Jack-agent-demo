@@ -101,6 +101,15 @@ function decideActionShape(result: SecureNetworkingTriageResult): ActionShape {
   const hasWorkshop = nextSteps.some((s) => s.category === "working_session" || s.category === "workshop");
   const hasPov = nextSteps.some((s) => s.category === "pilot" || s.category === "proof_of_value");
   const hasRenewal = result.commercial_signals.renewal_events.length > 0;
+  // Is there an ACTIVE new-business / evaluation / expansion motion? If so, an
+  // incidental renewal mention must NOT overwrite it with a "renewal review".
+  // Signals: the customer is actively evaluating, has purchase language, or the
+  // deal is at an advanced stage with confirmed decision criteria (a real
+  // evaluation states its criteria) — none of which describe a routine renewal.
+  const activeEvalMotion =
+    Boolean(result.commercial_signals.evaluation_stage) ||
+    result.commercial_signals.purchase_language.length > 0 ||
+    ((maturity === "VALIDATION" || maturity === "COMMERCIAL_EVALUATION" || maturity === "PROCUREMENT") && result.meddpicc?.decision_criteria?.status === "CONFIRMED");
 
   if (verdict === "NOISE" || decision === "DO_NOT_PURSUE") return { type: "suppress", lane: "shared" };
   if (decision === "HOLD") return { type: "hold", lane: "shared" };
@@ -109,7 +118,16 @@ function decideActionShape(result: SecureNetworkingTriageResult): ActionShape {
 
   if (hasWorkshop) return { type: "architecture_workshop", lane: "technical" };
   if (hasPov) return { type: "proof_of_value", lane: "technical" };
-  if (hasRenewal) return { type: "renewal_review", lane: "sales" };
+  // Renewal review only when the renewal is the PRIMARY motion — never when a
+  // stronger active evaluation/expansion is underway (the drafted action must
+  // match the real motion).
+  if (hasRenewal && !activeEvalMotion) return { type: "renewal_review", lane: "sales" };
+  // An active evaluation/expansion at an advanced stage → validate it, not a
+  // generic commercial-discovery: route to a technical validation when
+  // criteria are confirmed (the customer is ready to prove the solution).
+  if (activeEvalMotion && (maturity === "VALIDATION" || maturity === "COMMERCIAL_EVALUATION")) {
+    return { type: "proof_of_value", lane: "technical" };
+  }
 
   switch (maturity) {
     case "PROBLEM_DISCOVERY":
