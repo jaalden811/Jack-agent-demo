@@ -321,6 +321,16 @@ describe("timing driver honesty & procurement classification (deal-intel via run
   });
 });
 
+describe("one-line transcript: trailing word merged with a recurring speaker", () => {
+  it("does not fabricate a speaker when a prior-sentence word precedes a recurring one-line label", () => {
+    const raw = "Liam: Could we schedule a post-renewal discovery for October Miko: Maybe internally we review the tabletop results Liam: Understood the current-tool plan Miko: We asked for fewer handoffs not one view Liam: Confirmed Miko: Confirmed";
+    const names = ingestTranscript(raw).diagnostics.participants;
+    expect(names).toContain("Liam");
+    expect(names).toContain("Miko");
+    expect(names).not.toContain("October Miko");
+  });
+});
+
 describe("account plausibility & explicit operating-entity declarations", () => {
   it("rejects technical/telecom jargon acronyms as accounts but keeps company acronyms", () => {
     for (const jargon of ["PSTN", "VPN", "SIEM", "APM", "MTTR", "SaaS"]) {

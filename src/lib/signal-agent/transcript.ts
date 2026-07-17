@@ -388,9 +388,36 @@ export function normalizeInlineSpeakers(rawText: string): string {
   const distinct = new Set(matches.map((m) => m[2].trim().toLowerCase()).filter((n) => !NON_SPEAKER_KEYS.has(n.split(/\s+/)[0])));
   const newlineCount = (rawText.match(/\n/g) ?? []).length;
   if (matches.length < 4 || distinct.size < 2 || newlineCount >= distinct.size) return rawText;
+
+  // Frequency of each label (full) and of each single-token label. In a one-
+  // physical-line paste a Title-case word ending the previous sentence can get
+  // merged with the next speaker ("...discovery for October Miko:" → "October
+  // Miko"). When a two-token label's LAST token is itself a recurring single-
+  // token speaker (and the pair is not recurring), the leading word belongs to
+  // the prior sentence, not the name — so split it off rather than fabricate a
+  // speaker. A genuine two-word name ("Maya Chen") is recurring as a pair and is
+  // left intact.
+  const fullCounts = new Map<string, number>();
+  const singleCounts = new Map<string, number>();
+  for (const m of matches) {
+    const label = m[2].trim();
+    const low = label.toLowerCase();
+    fullCounts.set(low, (fullCounts.get(low) ?? 0) + 1);
+    if (!label.includes(" ")) singleCounts.set(low, (singleCounts.get(low) ?? 0) + 1);
+  }
+
   return rawText.replace(inlineSpeakerRe, (full, pre: string, name: string) => {
-    if (NON_SPEAKER_KEYS.has(name.trim().toLowerCase().split(/\s+/)[0])) return full;
-    return `${pre && pre.length ? "\n" : ""}${name}: `;
+    const trimmed = name.trim();
+    if (NON_SPEAKER_KEYS.has(trimmed.toLowerCase().split(/\s+/)[0])) return full;
+    const parts = trimmed.split(/\s+/);
+    if (
+      parts.length === 2 &&
+      (fullCounts.get(trimmed.toLowerCase()) ?? 0) < 2 &&
+      (singleCounts.get(parts[1].toLowerCase()) ?? 0) >= 2
+    ) {
+      return `${pre}${parts[0]}\n${parts[1]}: `;
+    }
+    return `${pre && pre.length ? "\n" : ""}${trimmed}: `;
   });
 }
 
