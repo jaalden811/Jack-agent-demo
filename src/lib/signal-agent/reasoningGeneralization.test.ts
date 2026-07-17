@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
-import { ingestTranscript, isPlausibleSpeakerName } from "@/lib/signal-agent/transcript";
+import { ingestTranscript, isPlausibleSpeakerName, stripSpeakerDescriptor } from "@/lib/signal-agent/transcript";
 import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction";
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
@@ -142,5 +142,61 @@ describe("committee / distributed economic authority (authorityGraph)", () => {
     expect(g.economic_authority.status).toBe("distributed");
     expect(g.economic_authority.named_person).toBeNull();
     expect(g.roles.some((r) => r.role_type === "economic_buyer" && r.status === "confirmed")).toBe(false);
+  });
+
+  it("authorizing a design session/test is NOT economic authority; approving spend IS", () => {
+    const test = [{ name: "Juno", text: "If security clears it, I can authorize a nonproduction design session. I am not authorizing a purchase or a paid tenant." }];
+    const g1 = inferAuthorityGraph({ stakeholderTurns: test, allCustomerText: test.map((t) => t.text) });
+    expect(g1.roles.some((r) => r.role_type === "economic_buyer" && r.status === "confirmed")).toBe(false);
+
+    const spend = [{ name: "Dana", text: "I own the budget and I can approve the spend for this project." }];
+    const g2 = inferAuthorityGraph({ stakeholderTurns: spend, allCustomerText: spend.map((t) => t.text) });
+    expect(g2.economic_authority.status).toBe("confirmed");
+  });
+});
+
+describe("inline 'Name — Org:' parsing and bot/system accounts (parser)", () => {
+  it("strips the org/title suffix so a '[time] Name — Org:' line yields the person's name", () => {
+    expect(stripSpeakerDescriptor("Quinn.Mercer — Hearthlane")).toBe("Quinn.Mercer");
+    expect(stripSpeakerDescriptor("Maya Chen — Acme Account Executive")).toBe("Maya Chen");
+    expect(stripSpeakerDescriptor("Dana Lee")).toBe("Dana Lee");
+  });
+
+  it("a bot/system account is never a speaker; real 'Name — Org:' people parse", () => {
+    const t = ingestTranscript(
+      [
+        "[07:42] IncidentBot — ServiceNow: Channel created for INC001. Severity two.",
+        "[07:43] Quinn.Mercer — Hearthlane: I manage the retail data platform and audit feed stopped.",
+        "[07:44] Elise.Wong — Hearthlane: I own security logging and this is a compliance-evidence gap."
+      ].join("\n")
+    );
+    const names = t.participantRecords.map((r) => r.name);
+    expect(names).toContain("Quinn.Mercer");
+    expect(names).toContain("Elise.Wong");
+    expect(names.some((n) => /bot/i.test(n))).toBe(false);
+    // "Abbot" is an ordinary surname, not a bot account.
+    expect(isPlausibleSpeakerName("Abbot")).toBe(true);
+    expect(isPlausibleSpeakerName("IncidentBot")).toBe(false);
+    expect(isPlausibleSpeakerName("System")).toBe(false);
+  });
+});
+
+describe("timing driver honesty & procurement classification (deal-intel via runSignalAgent)", () => {
+  it("skips locked-in / 'not under review' statements, picks the forward deadline, and flags real procurement", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rachel — Vendor, Account Executive",
+      "Rachel: I cover Beacon Freight for our company. A possible path is to test the platform.",
+      "Dana — Customer, Ops Lead",
+      "Dana: I run operations at Beacon Freight. Our current SD-WAN is contracted through 2029 and is not under replacement review. Our board decision target is October ninth, and the earliest purchase-order target is October twentieth. I'd like a scenario-design working session next week."
+    ].join("\n");
+    const di = (await runSignalAgent({ customTranscript: transcript })).deal_intelligence!;
+    expect(di.timing).toBeTruthy();
+    // The forward decision/procurement deadline, not the locked-in contract.
+    expect(di.timing!.label.toLowerCase()).toContain("october");
+    expect(di.timing!.label.toLowerCase()).not.toContain("contracted through");
+    // A council/board decision + purchase-order IS procurement timing.
+    expect(di.timing!.is_procurement).toBe(true);
   });
 });

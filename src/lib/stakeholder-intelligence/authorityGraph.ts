@@ -46,7 +46,16 @@ export type AuthorityGraph = {
 const DECISION_PROCESS_PATTERNS = [/\b(send it to|send the (outline|materials) to)\b/i, /\bwe(?:'ll| will) decide whether\b/i, /\b(who|which people) (should|will) (receive|attend|join)\b/i, /\b(let'?s|we should) (do|schedule|set up) (a|the)? ?(working session|workshop)\b/i, /\bwe(?:'ll| will) (react|review) (before|first)\b/i, /\bbroaden (the group|participation|access)\b/i];
 const SECURITY_GATEKEEPER_PATTERNS = [/\b(data (segregation|separation)|role-based access|access control|retention control|audit trail|governance|masking)\b/i, /\bsecurity (needs|requires|cannot|must)\b/i, /\bcannot (block|approve) (technical )?approval\b/i, /\bidentity scenario\b/i];
 const TECHNICAL_EVALUATOR_PATTERNS = [/\b(integration|architecture|data flows?|telemetry|collectors?|proof[-\s]of[-\s]value|success criteria|acceptance criteria)\b/i, /\b(what|which) (data sources?|integrations?)\b/i, /\bwe cannot require (one |a )?(proprietary )?agent\b/i, /\boperational scenario\b/i];
-const ECONOMIC_AUTHORITY_PATTERNS = [/\b(controls? the budget|owns? the budget|budget owner|final decision sits with|i can authorize|we can fund|approves? (the )?(spend|purchase|budget)|hold(s)? (final )?(budget|approval) authority)\b/i];
+// Economic authority is about MONEY: budget ownership, funding, or approving
+// spend/purchase. "I can authorize" alone is NOT economic authority — a person
+// can authorize a test/design session without any budget power (and often adds
+// "I am not authorizing a purchase"). So the "authorize/approve" verbs must
+// have a spend/budget/purchase/contract object.
+const MONEY_OBJECT = "(the )?(spend|spending|budget|funding|purchase|deal|contract|licen[cs]e|payment|investment|money|cost)";
+const ECONOMIC_AUTHORITY_PATTERNS = [
+  new RegExp(`\\b(controls? the budget|owns? the budget|budget owner|final (budget )?decision sits with|hold(s)? (final )?(budget|approval|spend) authority|we can fund|i can fund|i control the spend)\\b`, "i"),
+  new RegExp(`\\b(i can authorize|i can approve|i approve|we approve|approves?|authorize[sd]?) [\\w\\s]{0,20}${MONEY_OBJECT}\\b`, "i")
+];
 const CHAMPION_PATTERNS = [/\b(i (own|lead)|we (want|need) to fix|let'?s (do|build|run)|i(?:'ll| will) (bring|coordinate|pull together)|i(?:'d| would) like (a|to))\b/i];
 
 // Distributed-authority cues: multiple spending paths / no single approver /

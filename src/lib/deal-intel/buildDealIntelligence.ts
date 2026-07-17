@@ -19,7 +19,7 @@ import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@
 type ShapeTag = { id: string; label: string; cues: string[] };
 type CueGroup = { id: string; label: string; cues: string[] };
 type RoleDef = { id: string; label: string; cues: string[]; play: string };
-type TimingCues = { deadline_markers: string[]; months: string[]; procurement_markers: string[]; not_procurement_markers: string[] };
+type TimingCues = { deadline_markers: string[]; months: string[]; procurement_markers: string[]; not_procurement_markers: string[]; locked_in_markers?: string[] };
 type DealIntelConfig = {
   shape_tags: ShapeTag[];
   participant_role_terms: string[];
@@ -89,10 +89,14 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
   const tc = cfg.timing_cues;
   if (!tc) return null;
   const monthRe = new RegExp(`\\b(${tc.months.join("|")})\\b`, "i");
+  const lockedIn = tc.locked_in_markers ?? [];
   let best: { chunk: TranscriptChunk; score: number } | null = null;
   for (const chunk of chunks) {
     const lower = chunk.text.toLowerCase();
     if (PAST_EVENT_RE.test(lower)) continue;
+    // A locked-in / "not under review" / "contracted through" statement is the
+    // OPPOSITE of a reason to act now — never surface it as "why now".
+    if (lockedIn.some((m) => lower.includes(m))) continue;
     const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
     const hasDate = monthRe.test(lower);
     if (!hasDeadlineWord && !hasDate) continue;

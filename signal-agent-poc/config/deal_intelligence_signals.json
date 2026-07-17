@@ -27,8 +27,9 @@
   "timing_cues": {
     "deadline_markers": ["freeze", "memo is due", "memo due", "review closes", "closes on", "closes october", "committee reviews", "committee meets", "committee review", "reviews the case", "due by", "due on", "deadline", "no later than", "target date", "go-live", "go live", "cutover", "renewal", "peak season", "peak change", "change freeze", "end of the quarter"],
     "months": ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"],
-    "procurement_markers": ["procurement timing", "purchase order", "contract signing", "contract award", "sign the contract", "commercial close", "purchasing deadline", "buying deadline"],
-    "not_procurement_markers": ["planning boundary", "not procurement", "not a procurement", "not procurement timing", "not a commitment", "not a buying", "creates urgency for a recommendation", "decision urgency", "not permission to rush"]
+    "procurement_markers": ["procurement timing", "purchase order", "purchase-order", "po target", "contract signing", "contract award", "sign the contract", "commercial close", "purchasing deadline", "buying deadline", "council decision", "decision target", "board decision"],
+    "not_procurement_markers": ["planning boundary", "not procurement", "not a procurement", "not procurement timing", "not a commitment", "not a buying", "creates urgency for a recommendation", "decision urgency", "not permission to rush"],
+    "locked_in_markers": ["not under replacement review", "not under review", "contracted through", "committed through", "locked in through", "no replacement", "not asking to replace", "not planning to replace", "not going to replace", "not up for renewal", "already signed", "renewal already", "signed in"]
   },
   "stakeholder_roles": [
     { "id": "business_champion", "label": "Business champion", "cues": ["i'd like", "i would like", "working session", "material business risk", "client delivery", "business exposure", "resilience", "what we actually want", "that restraint is useful", "good answer"], "play": "Arm them with exec-legible business-risk framing and a tight next step they can carry internally." },

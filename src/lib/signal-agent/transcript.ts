@@ -91,9 +91,26 @@ const NAME_PARTICLES = new Set([
  * from ever becoming a fabricated participant — the separator-shape
  * regexes (which require a padded em/en dash, never a bare mid-word
  * hyphen) are the primary defense; this is a second, independent one. */
+/** Strips a trailing " — <Org/Title>" (em/en dash) or " - <Org/Title>" suffix
+ * from an inline speaker segment, so a "[time] Name — Org: text" or
+ * "Name — Org: text" line yields just the person's name (the org/title is not
+ * part of the name). Leaves a plain name untouched. */
+export function stripSpeakerDescriptor(raw: string): string {
+  const parts = raw.split(/\s+[—–]\s+|\s+-\s+/);
+  return (parts[0] ?? raw).trim();
+}
+
+// System/automation accounts that post in a channel but are not people — never
+// a stakeholder, champion, or participant. Matches a camelCase "…Bot" suffix
+// (e.g. "IncidentBot") or a bare system-account word, never an ordinary
+// surname ("Abbot" ends in lowercase "bot" and is unaffected).
+const BOT_ACCOUNT_RE = /(?:[a-z]Bot|[A-Z]{2,}BOT)$/;
+const SYSTEM_ACCOUNT_WORDS = new Set(["system", "bot", "automation", "webhook", "notifier", "pipeline"]);
+
 export function isPlausibleSpeakerName(candidate: string): boolean {
   const trimmed = candidate.trim();
   if (trimmed.length < 1 || trimmed.length > 80) return false;
+  if (BOT_ACCOUNT_RE.test(trimmed) || SYSTEM_ACCOUNT_WORDS.has(trimmed.toLowerCase())) return false;
   if (!/^[A-Za-z][A-Za-z\s'.-]*$/.test(trimmed)) return false;
   if (trimmed.includes("--") || trimmed.startsWith("-") || trimmed.endsWith("-")) return false;
   const words = trimmed.split(/\s+/).filter(Boolean);
@@ -208,10 +225,16 @@ function hasTimestampedHeader(line: string): boolean {
 
 function parseDialogueLine(line: string, options: { allowPlainSpeaker: boolean }): DialogueLine | null {
   let match = line.match(BRACKETED_TIMESTAMP_SPEAKER_RE);
-  if (match && isPlausibleSpeakerName(match[2])) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
+  if (match) {
+    const speaker = stripSpeakerDescriptor(match[2]);
+    if (isPlausibleSpeakerName(speaker)) return { timestamp: match[1], speaker, text: match[3].trim() };
+  }
 
   match = line.match(DASH_TIMESTAMP_SPEAKER_RE);
-  if (match && isPlausibleSpeakerName(match[2])) return { timestamp: match[1], speaker: match[2].trim(), text: match[3].trim() };
+  if (match) {
+    const speaker = stripSpeakerDescriptor(match[2]);
+    if (isPlausibleSpeakerName(speaker)) return { timestamp: match[1], speaker, text: match[3].trim() };
+  }
 
   match = line.match(LEGACY_BRACKET_SPEAKER_RE);
   if (match && isPlausibleSpeakerName(match[1])) return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
