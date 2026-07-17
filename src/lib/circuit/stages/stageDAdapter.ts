@@ -68,6 +68,8 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   };
 
   const di = result.deal_intelligence;
+  const championPlay = di?.power_map.find((p) => p.role_id === "business_champion");
+  const championLine = championPlay ? `${championPlay.name} — ${championPlay.play}` : null;
   const brief: StageDBrief = {
     opportunity_thesis: thesis,
     why_now: detBrief.why_now,
@@ -81,7 +83,8 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     deal_shape: di?.deal_shape.label,
     deal_momentum: (di?.momentum ?? []).map((m) => m.label),
     deal_watch_outs: (di?.risks ?? []).map((r) => r.label),
-    value_hypothesis: di?.value_hypothesis ?? null
+    value_hypothesis: di?.value_hypothesis ?? null,
+    champion: championLine
   };
 
   // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
@@ -103,6 +106,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     `**Why now:** ${whyNow}`,
     `**Recommended action:** ${salesAction}`,
     `**Expected outcome:** ${sales_lane.expected_output}`,
+    championLine ? `**Champion:** ${championLine}` : null,
     salesWatch
   ]
     .filter((l): l is string => l !== null)

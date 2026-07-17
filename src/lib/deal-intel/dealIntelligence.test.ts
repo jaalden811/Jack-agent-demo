@@ -45,6 +45,19 @@ describe("Deal Intelligence", () => {
     for (const s of [...di.momentum, ...di.risks]) expect(s.evidence.trim().length).toBeGreaterThan(0);
   });
 
+  it("builds an evidence-cited stakeholder power map (who to work, and how)", async () => {
+    const di = (await run()).deal_intelligence!;
+    expect(di.power_map.length).toBeGreaterThan(0);
+    // Every entry names a real stakeholder, has a role + play, and cites evidence.
+    for (const p of di.power_map) {
+      expect(p.name.trim().length).toBeGreaterThan(0);
+      expect(p.play.trim().length).toBeGreaterThan(0);
+      expect(["business_champion", "cost_gatekeeper", "security_risk_owner", "technical_evaluator", "influencer"]).toContain(p.role_id);
+    }
+    // The CONTOSO fixture has distinct personas — at least two different roles.
+    expect(new Set(di.power_map.map((p) => p.role_id)).size).toBeGreaterThanOrEqual(2);
+  });
+
   it("is additive — deterministic scores/verdict remain intact", async () => {
     const result = await run();
     expect(result.deal_intelligence).toBeTruthy();

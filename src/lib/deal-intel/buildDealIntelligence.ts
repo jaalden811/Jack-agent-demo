@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AccountRecord, IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
-import type { DealIntelligence, DealShape, DealSignal } from "@/lib/deal-intel/types";
+import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@/lib/deal-intel/types";
 
 /**
  * Deterministic Deal Intelligence. Reads the customer's own sentences + the
@@ -16,11 +16,14 @@ import type { DealIntelligence, DealShape, DealSignal } from "@/lib/deal-intel/t
 
 type ShapeTag = { id: string; label: string; cues: string[] };
 type CueGroup = { id: string; label: string; cues: string[] };
+type RoleDef = { id: string; label: string; cues: string[]; play: string };
 type DealIntelConfig = {
   shape_tags: ShapeTag[];
   participant_role_terms: string[];
   momentum_cues: CueGroup[];
   risk_cues: CueGroup[];
+  stakeholder_roles: RoleDef[];
+  stakeholder_stance: { supportive_cues: string[]; skeptical_cues: string[] };
 };
 
 let cached: DealIntelConfig | null = null;
@@ -47,6 +50,60 @@ function firstMatch(chunks: TranscriptChunk[], cues: string[]): TranscriptChunk 
 function shortText(text: string, max = 200): string {
   const t = text.replace(/\s+/g, " ").trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+}
+
+const INFLUENCER_PLAY = "Keep them informed and confirm their specific requirements — they shape the group's view.";
+
+function firstName(name: string): string {
+  return name.trim().toLowerCase().split(/\s+/)[0] ?? "";
+}
+
+function countCues(texts: string[], cues: string[]): number {
+  const blob = texts.join(" \u2022 ");
+  return cues.filter((c) => blob.includes(c.toLowerCase())).length;
+}
+
+/** Evidence-cited "who to work, and how" map. Each named customer stakeholder
+ * is classified by their OWN words into a deal role + stance + engagement play.
+ * Never invents a person or a trait not backed by their statements. */
+function buildStakeholderPlaybook(chunks: TranscriptChunk[], namedStakeholders: Array<{ name?: string | null }>, cfg: DealIntelConfig): StakeholderPlay[] {
+  const plays: StakeholderPlay[] = [];
+  const seen = new Set<string>();
+  for (const ns of namedStakeholders) {
+    const name = (ns.name ?? "").trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const fn = firstName(name);
+    const myChunks = chunks.filter((c) => c.speaker && firstName(c.speaker) === fn);
+    const texts = myChunks.map((c) => c.text.toLowerCase());
+    if (texts.length === 0) continue;
+
+    let best: RoleDef | null = null;
+    let bestHits = 0;
+    for (const role of cfg.stakeholder_roles) {
+      const hits = countCues(texts, role.cues);
+      if (hits > bestHits) {
+        bestHits = hits;
+        best = role;
+      }
+    }
+    const supportive = countCues(texts, cfg.stakeholder_stance.supportive_cues);
+    const skeptical = countCues(texts, cfg.stakeholder_stance.skeptical_cues);
+    const stance: StakeholderPlay["stance"] = skeptical > supportive && skeptical > 0 ? "skeptical" : supportive > skeptical && supportive > 0 ? "supportive" : "neutral";
+
+    const roleCues = best?.cues ?? [];
+    const evidenceChunk = myChunks.find((c) => roleCues.some((cue) => c.text.toLowerCase().includes(cue.toLowerCase()))) ?? myChunks[0] ?? null;
+
+    plays.push({
+      name,
+      role_id: best?.id ?? "influencer",
+      role_label: best?.label ?? "Influencer",
+      stance,
+      play: best?.play ?? INFLUENCER_PLAY,
+      evidence: evidenceChunk ? shortText(evidenceChunk.text) : null
+    });
+  }
+  return plays.slice(0, 6);
 }
 
 export function buildDealIntelligence(params: {
@@ -121,11 +178,14 @@ export function buildDealIntelligence(params: {
   const topRisk = risks[0]?.label ?? null;
   const headline = `${deal_shape.label} at ${accountName} — ${topMomentum.toLowerCase()}${topRisk ? `; watch: ${topRisk.toLowerCase()}` : ""}.`;
 
+  const power_map = buildStakeholderPlaybook(chunks, params.result.stakeholder_analysis?.named_stakeholders ?? [], cfg);
+
   return {
     deal_shape,
     momentum: momentum.slice(0, 6),
     risks: risks.slice(0, 6),
     value_hypothesis,
+    power_map,
     headline
   };
 }

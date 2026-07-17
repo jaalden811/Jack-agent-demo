@@ -53,6 +53,23 @@ export function DealIntelligenceCard({ result }: { result: SecureNetworkingTriag
         )}
       </div>
 
+      {di.power_map.length > 0 && (
+        <div className="deal-intel-people">
+          <span className="meta-label">Who to work — and how</span>
+          <ul className="compact-list">
+            {di.power_map.map((p) => (
+              <li key={p.name}>
+                <strong>{p.name}</strong> — {p.role_label}{" "}
+                <span className={`chip chip-${p.stance === "supportive" ? "success" : p.stance === "skeptical" ? "warning" : "muted"}`}>{p.stance}</span>
+                <br />
+                <span className="muted">{p.play}</span>
+                {p.evidence ? <span className="muted"> — “{p.evidence}”</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {di.value_hypothesis && (
         <p className="deal-intel-value">
           <span className="meta-label">Value hypothesis</span> {di.value_hypothesis}

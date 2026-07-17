@@ -172,13 +172,17 @@ describe("Webex message templates", () => {
       momentum: [{ id: "requested_next_step", label: "Customer asked for the next step", evidence: "Let's do a working session.", speaker: "Jordan" }],
       risks: [{ id: "no_single_eb", label: "No single economic buyer — budgets are separate", evidence: "There may not be one person.", speaker: "Jordan" }],
       value_hypothesis: 'Frame value in their words: "hundreds of specialists unable to work"',
+      power_map: [{ name: "Jordan", role_id: "business_champion", role_label: "Business champion", stance: "supportive", play: "Arm them with exec-legible business-risk framing.", evidence: "I'd like a working session." }],
       headline: "Expansion play at Acme Retail — customer asked for the next step; watch: no single economic buyer."
     };
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
     expect(sales.markdown).toContain("**Deal shape:**");
     expect(sales.markdown).toContain("**Watch-out:**");
+    expect(sales.markdown).toContain("**Champion:** Jordan");
     expect(technical.markdown).toContain("**Deal shape:**");
+    // The champion line is commercial-only.
+    expect(technical.markdown).not.toContain("**Champion:**");
     // Still concise.
     expect(sales.markdown.length).toBeLessThanOrEqual(1100);
     expect(technical.markdown.length).toBeLessThanOrEqual(1100);

@@ -163,6 +163,8 @@ export function buildSalesMessage(params: {
   const di = result.deal_intelligence;
   const dealShapeLine = di ? `**Deal shape:** ${clipAtWord(di.deal_shape.label, 120)}` : null;
   const watchOutLine = di && di.risks[0] ? `**Watch-out:** ${clipAtWord(di.risks[0].label, 160)}` : null;
+  const champion = di?.power_map.find((p) => p.role_id === "business_champion");
+  const championLine = champion ? `**Champion:** ${champion.name} — ${clipAtWord(champion.play, 160)}` : null;
 
   const markdown = composeToByteBudget(
     [
@@ -172,6 +174,7 @@ export function buildSalesMessage(params: {
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: championLine },
       { text: watchOutLine },
       { text: pursuitLine },
       { text: impact ? `**Business impact:** ${clipAtWord(impact, 200)}` : null },

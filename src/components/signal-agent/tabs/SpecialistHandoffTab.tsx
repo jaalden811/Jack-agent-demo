@@ -132,6 +132,12 @@ export function SpecialistHandoffTab({ result }: { result: WebexAutomationRunRes
           <p style={{ margin: "4px 0" }}>{di.headline}</p>
           <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
             <strong>Shape:</strong> {di.deal_shape.label}
+            {di.power_map.find((p) => p.role_id === "business_champion") ? (
+              <>
+                {" · "}
+                <strong>Champion:</strong> {di.power_map.find((p) => p.role_id === "business_champion")!.name}
+              </>
+            ) : null}
             {di.risks[0] ? (
               <>
                 {" · "}

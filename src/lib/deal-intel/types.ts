@@ -20,6 +20,17 @@ export type DealShape = {
   rationale: string | null;
 };
 
+/** How to work a specific person to win the deal — their role, what they care
+ * about, their stance, and the play — all derived from their OWN words. */
+export type StakeholderPlay = {
+  name: string;
+  role_id: string;
+  role_label: string;
+  stance: "supportive" | "skeptical" | "neutral";
+  play: string;
+  evidence: string | null;
+};
+
 export type DealIntelligence = {
   deal_shape: DealShape;
   /** What makes this real and winnable now (advancing factors). */
@@ -28,6 +39,8 @@ export type DealIntelligence = {
   risks: DealSignal[];
   /** The business value in the customer's own words. */
   value_hypothesis: string | null;
+  /** Who to work, and how — the buying-committee power map (evidence-cited). */
+  power_map: StakeholderPlay[];
   /** A single honest, compelling read of the opportunity. */
   headline: string;
 };
