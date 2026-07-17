@@ -4,6 +4,7 @@ import type { BuyingIntentEvidence, BuyingIntentEvidenceType, IngestedTranscript
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { classifyOwnership } from "@/lib/signal-agent/stakeholderExtraction";
 import { isInterrogative } from "@/lib/signal-agent/speechAct";
+import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
 
 /**
  * Explicit transcript intent extraction — deterministic, generic, and
@@ -45,8 +46,13 @@ const RULES: PatternRule[] = [
     scoreContribution: 0.07
   },
   {
+    // A bare duration ("took four days", "two months ago", "logs last seven
+    // days") is a past/incident/retention duration, NOT a commercial timeline.
+    // Only count it as timing when a buying noun follows (an "X-week
+    // evaluation window", a "30-day timeline"); forward buying windows phrased
+    // as "within N days" are still caught by the dedicated rule below.
     type: "timeline",
-    pattern: /\b\d{1,3}[-\s]?(day|days|week|weeks|month|months)\b/gi,
+    pattern: /\b\d{1,3}[-\s]?(day|days|week|weeks|month|months)\s+(timeline|window|deadline|evaluation|runway|horizon|target)\b/gi,
     scoreContribution: 0.06
   },
   {
@@ -57,6 +63,14 @@ const RULES: PatternRule[] = [
   {
     type: "impact",
     pattern: /\$\s?[\d][\d,.]*\s?(million|billion|thousand|[mkb])?\s?(in )?(lost|impact|cost|revenue)/gi,
+    scoreContribution: 0.14
+  },
+  {
+    // Currency expressed in words rather than a "$" sign ("… an impact range
+    // of 380000 to 420000 dollars") — after spelled-number normalization this
+    // catches worded monetary impact the "$"-anchored rule above misses.
+    type: "impact",
+    pattern: /\b\d[\d,.]*\s?(million|billion|thousand|[mkb])?\s?(dollars?|usd|euros?|pounds?|gbp|eur)\b/gi,
     scoreContribution: 0.14
   },
   {
@@ -155,11 +169,15 @@ export function extractBuyingIntentEvidence(transcript: IngestedTranscript): Buy
   const seenTextByType = new Set<string>();
 
   for (const sentence of sentences) {
+    // Match against a spelled-number-normalized copy so worded metrics
+    // ("ninety-six minutes", "three hundred eighty … thousand dollars") fire
+    // the digit-based rules; the ORIGINAL text is still stored as the quote.
+    const matchText = normalizeSpelledNumbers(sentence.text);
     for (const rule of RULES) {
-      const matches = sentence.text.matchAll(rule.pattern);
+      const matches = matchText.matchAll(rule.pattern);
       for (const match of matches) {
         if (match.index === undefined) continue;
-        if (isPrecededByNegation(sentence.text, match.index)) continue;
+        if (isPrecededByNegation(matchText, match.index)) continue;
 
         const dedupeKey = `${rule.type}::${sentence.text}`;
         if (seenTextByType.has(dedupeKey)) continue;

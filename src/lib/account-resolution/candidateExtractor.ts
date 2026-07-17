@@ -26,7 +26,16 @@ const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
   new RegExp(`\\b[Oo]ur company(?:'s| is)?\\s*,?\\s*${NAME_CAPTURE}\\b`, "g"),
   new RegExp(`\\b[Aa]t\\s+${NAME_CAPTURE}\\s*,?\\s+we\\b`, "g"),
   new RegExp(`\\b[Tt]his is\\s+${NAME_CAPTURE}\\s+calling\\b`, "g"),
-  new RegExp(`\\b[Oo]n behalf of\\s+${NAME_CAPTURE}\\b`, "g")
+  new RegExp(`\\b[Oo]n behalf of\\s+${NAME_CAPTURE}\\b`, "g"),
+  // Vendor coverage / account-ownership framing — a seller naming the
+  // customer account they cover ("I cover Acme Retail for Cisco", "account
+  // executive for Acme Retail"). The account name must be immediately
+  // followed by "for", which distinguishes "I cover [Acme Retail] for Cisco"
+  // (Acme Retail = account) from "I cover the [Cisco] renewal for Acme" (here
+  // the token after "cover" is the vendor/product, not the account, so it is
+  // correctly skipped).
+  new RegExp(`\\b[Ii] (?:cover|look after|handle|carry)\\s+${NAME_CAPTURE}\\s+for\\b`, "g"),
+  new RegExp(`\\baccount (?:executive|manager|owner|lead|director)\\s+for\\s+${NAME_CAPTURE}`, "g")
 ];
 
 const DOMAIN_MENTION_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|co|health|biz))\b/gi;
@@ -45,7 +54,12 @@ export function extractDialogueAccountCandidates(dialogueText: string[]): Dialog
         const key = raw.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
-        candidates.push({ name: raw, evidence_text: sentence, confidence: 0.6 });
+        // Explicit company self-identification / coverage framing is a
+        // reliable account signal — enough to reach "probable" on its own
+        // (0.7 floor), so a transcript that names its account only in
+        // dialogue is not discarded as unresolved. It still requires
+        // corroboration to reach "confirmed".
+        candidates.push({ name: raw, evidence_text: sentence, confidence: 0.72 });
       }
     }
   }

@@ -24,7 +24,21 @@
     { "pattern": "\\b(is there|what(?:'s| is)|do you have)[\\w\\s]{0,15}(target )?(date|timeline|timeframe|deadline)\\b", "weight": 1.5 },
     { "pattern": "\\bwhat would (the|an|your)[\\w\\s]{0,25}(executive|leadership|board|cfo|cio|ciso)[\\w\\s]{0,25}(need to see|want|expect|look for)\\b", "weight": 2 },
     { "pattern": "\\b(how does|what does)[\\w\\s]+affect your (thinking|decision|approach|strategy|plan)\\b", "weight": 1.5 },
-    { "pattern": "\\bis the priority[\\w\\s]+or[\\w\\s]+\\??", "weight": 1.5 }
+    { "pattern": "\\bis the priority[\\w\\s]+or[\\w\\s]+\\??", "weight": 1.5 },
+    { "pattern": "\\bi (cover|look after|handle|carry) [\\w\\s,'&.-]{2,50} for\\b", "weight": 2.5 },
+    { "pattern": "\\b(the |our |your )?account (executive|manager|team|owner|coverage|lead)\\b", "weight": 2 },
+    { "pattern": "\\bthe customer(?:'s)? (list|team|side|contact|contacts|stakeholders?|environment|account)\\b", "weight": 2 },
+    { "pattern": "\\bcommercial (positioning|continuity|alignment|terms|conversation|framing)\\b", "weight": 2 },
+    { "pattern": "\\bwe(?:'re| are) here to (understand|learn|hear|help|explore|dig into)\\b", "weight": 1.5 },
+    { "pattern": "\\ba possible (path|approach|option|way|direction)\\b", "weight": 2 },
+    { "pattern": "\\btest whether [\\w\\s,'&.-]{0,50} can\\b", "weight": 1.5 },
+    { "pattern": "\\b(i|we)(?:'ll| will|'d|d| can| could| would) (send|prepare|put together|own|draft|share|bring|deliver|write up|pull together) (a |an |the |you )?(two[- ]page |one[- ]page |draft |working |quick |short |rough )*(charter|deck|proposal|summary|overview|agenda|write[- ]?up|two[- ]pager|one[- ]pager|pre[- ]read|materials?|slides?|draft|document|plan|map|outline|feasibility map)\\b", "weight": 2 },
+    { "pattern": "\\bour (specialist|sales engineer|solutions? (engineer|architect)|account (executive|manager))\\b", "weight": 1.5 },
+    { "pattern": "\\bI(?:'m| am)\\s+(?:the|a|an)\\s+(?:[\\w-]+\\s+){0,2}(sales engineer|solutions?\\s+(?:engineer|architect|consultant)|account\\s+(?:executive|manager|representative|rep)|overlay|sales rep|pre[- ]?sales)\\b", "weight": 2.5 },
+    { "pattern": "\\b(specialist|engineer|architect|consultant|rep|overlay) supporting\\b", "weight": 2 },
+    { "pattern": "\\b(another|one|a second|a third|the other) (option|approach|path|possibility) (could|would|might) be\\b", "weight": 2 },
+    { "pattern": "\\b(recipient list|follow[- ]up sequence|nurture sequence|outreach sequence|generic follow[- ]up sequence)\\b", "weight": 2 },
+    { "pattern": "\\b(product deck|price book|commercial model|pov plan|proof[- ]of[- ]value plan|joint pov plan)\\b", "weight": 1.5 }
   ],
   "customer_indicators": [
     { "pattern": "\\bour (environment|team|org|organization|company|infrastructure|stack|estate|business|systems?)\\b", "weight": 2 },

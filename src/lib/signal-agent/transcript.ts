@@ -74,6 +74,14 @@ const IMPLAUSIBLE_LEADING_NAME_WORDS = new Set([
   "most", "other", "such", "only", "just", "than", "too", "very", "so's"
 ]);
 
+// Lowercase particles that legitimately appear inside real personal names
+// (e.g. "Juan de la Cruz", "Ludwig van der Rohe"). Interior words outside
+// this set that are lowercase mark a 3+-word label as a non-name annotation.
+const NAME_PARTICLES = new Set([
+  "de", "del", "della", "van", "von", "der", "den", "la", "le", "du", "da", "di",
+  "dos", "das", "bin", "al", "ibn", "san", "st", "mac", "mc", "o", "y", "e", "ter", "ten"
+]);
+
 /** Speaker/header-name plausibility guard (Section 2 "Speaker
  * validation"): 1-80 characters, letters/spaces/apostrophes/periods/
  * internal hyphens only (so real compound names like "Okafor-Lindqvist"
@@ -99,12 +107,32 @@ export function isPlausibleSpeakerName(candidate: string): boolean {
     const subTokens = word.split("-");
     if (IMPLAUSIBLE_LEADING_NAME_WORDS.has(subTokens[0].toLowerCase())) return false;
   }
+  // Multi-word (3+) labels that are actually annotations/artifacts rather
+  // than personal names — e.g. "System note appended by organizer",
+  // "Recording started automatically" — carry ordinary lowercase interior
+  // words. A real 3+-word personal name is title-cased (interior words are
+  // capitalized) except for short name particles (de, van, der, …). This
+  // is a generic shape check, never a scenario/name/word allow-list.
+  if (words.length >= 3) {
+    for (let i = 1; i < words.length; i += 1) {
+      const first = words[i][0];
+      if (first === first.toLowerCase() && first !== first.toUpperCase() && !NAME_PARTICLES.has(words[i].toLowerCase())) {
+        return false;
+      }
+    }
+  }
   return true;
 }
 
 // Header/label lines that must never be mistaken for a speaker name or a
-// participant header, however they're formatted.
+// participant header, however they're formatted. Two families: (1) meeting
+// metadata labels ("Account:", "Date:"), and (2) common single-word discourse
+// markers / sentence adverbs that frequently precede a colon mid-utterance
+// ("Tentatively: indicator, first-seen time, …", "Correction: …") — these are
+// continuations of the open turn, never a new speaker. Generic English
+// discourse vocabulary, never a scenario/name list.
 const NON_SPEAKER_KEYS = new Set([
+  // Meeting-metadata labels.
   "account",
   "participants",
   "attendees",
@@ -117,7 +145,48 @@ const NON_SPEAKER_KEYS = new Set([
   "duration",
   "location",
   "agenda",
-  "call"
+  "call",
+  // Discourse markers / sentence adverbs.
+  "tentatively",
+  "correction",
+  "corrections",
+  "clarification",
+  "understood",
+  "agreed",
+  "exactly",
+  "correct",
+  "incorrect",
+  "possibly",
+  "maybe",
+  "actually",
+  "honestly",
+  "frankly",
+  "note",
+  "notes",
+  "warning",
+  "caveat",
+  "aside",
+  "example",
+  "summary",
+  "reminder",
+  "recap",
+  "context",
+  "background",
+  "update",
+  "conclusion",
+  "translation",
+  "translated",
+  "additionally",
+  "similarly",
+  "however",
+  "meanwhile",
+  "otherwise",
+  "regardless",
+  "importantly",
+  "notably",
+  "specifically",
+  "finally",
+  "fyi"
 ]);
 
 function splitSentences(text: string): string[] {

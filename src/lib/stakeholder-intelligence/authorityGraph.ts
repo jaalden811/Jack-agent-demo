@@ -49,8 +49,23 @@ const TECHNICAL_EVALUATOR_PATTERNS = [/\b(integration|architecture|data flows?|t
 const ECONOMIC_AUTHORITY_PATTERNS = [/\b(controls? the budget|owns? the budget|budget owner|final decision sits with|i can authorize|we can fund|approves? (the )?(spend|purchase|budget)|hold(s)? (final )?(budget|approval) authority)\b/i];
 const CHAMPION_PATTERNS = [/\b(i (own|lead)|we (want|need) to fix|let'?s (do|build|run)|i(?:'ll| will) (bring|coordinate|pull together)|i(?:'d| would) like (a|to))\b/i];
 
-// Distributed-authority cues: multiple spending paths / no single approver.
-const MULTIPLE_FUNDING_PATTERNS = [/\b(multiple (spending|funding|budget) (paths|lanes)|several (spending|funding) (paths|lanes)|different (budgets?|funding))\b/i, /\bno single (buying authority|approver|budget owner)\b/i, /\b(funding placeholder|resilience program funding|project-specific|services funding)\b/i, /\bdistributed across (multiple )?(spending|funding|approval)\b/i];
+// Distributed-authority cues: multiple spending paths / no single approver /
+// a committee or vote-based approval body. These indicate the economic
+// authority is DISTRIBUTED (a committee, not a single named person) — never
+// confirm the *speaker* as the buyer just because they describe the committee.
+const MULTIPLE_FUNDING_PATTERNS = [
+  /\b(multiple (spending|funding|budget) (paths|lanes)|several (spending|funding) (paths|lanes)|different (budgets?|funding))\b/i,
+  /\bno single (buying authority|approver|budget owner)\b/i,
+  /\b(funding placeholder|resilience program funding|project-specific|services funding)\b/i,
+  /\bdistributed across (multiple )?(spending|funding|approval)\b/i,
+  // Committee / board / vote-based approval bodies — inherently distributed.
+  /\b(investment|approval|budget|steering|investment[- ]review|governance|procurement) committee\b/i,
+  /\bcommittee (approves?|reviews?|votes?|has a vote|signs? off|decides?)\b/i,
+  /\b(finance|legal|procurement|the board) (has a vote|votes?|approves?|signs? off|co-?approves?)\b/i,
+  /\bapproves? (cross[- ]?platform|enterprise|the larger|overall) (spend|spending|budget|funding|purchase|investment)\b/i,
+  // An explicit disclaimer of sole authority — the person is NOT the buyer.
+  /\bnot the (sole|single|only) (economic buyer|budget owner|approver|decision[- ]?maker|buyer)\b/i
+];
 const PROCUREMENT_NOT_INVOLVED_PATTERNS = [/\bprocurement (does not|doesn'?t|won'?t) (need to )?(join|be involved)\b/i, /\bprocurement (is )?not (yet )?involved\b/i];
 
 function countMatches(text: string, patterns: RegExp[]): { hits: number; evidence: string[] } {
