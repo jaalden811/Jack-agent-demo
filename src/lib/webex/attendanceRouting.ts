@@ -23,17 +23,23 @@ export type LaneAttendance = {
   message_mode: MessageMode;
 };
 
+// A message must open with the OPPORTUNITY, never a bureaucratic caveat. The
+// confirmed-attendance modes keep a short primer (it genuinely changes how the
+// recipient reads the brief); the UNKNOWN mode — the default when there is no
+// Webex meeting linkage to confirm attendance — adds NO leading caveat, since
+// "we could not confirm you were here" is noise to a seller (the state is still
+// tracked in message_mode and shown in the delivery card).
 const MODE_HEADER: Record<MessageMode, string> = {
   ATTENDEE_ACTION_DELTA: "_You were in this meeting — action delta and next step below._",
   ABSENT_FULL_HANDOFF: "_You were not in this meeting — full handoff below._",
-  UNKNOWN_CONTEXTUAL_HANDOFF: "_Meeting attendance unconfirmed — full context handoff below._",
+  UNKNOWN_CONTEXTUAL_HANDOFF: "",
   LEADER_SUMMARY: "_Leadership summary below._"
 };
 
 const MODE_HEADER_HTML: Record<MessageMode, string> = {
   ATTENDEE_ACTION_DELTA: "<p><em>You were in this meeting — action delta and next step below.</em></p>",
   ABSENT_FULL_HANDOFF: "<p><em>You were not in this meeting — full handoff below.</em></p>",
-  UNKNOWN_CONTEXTUAL_HANDOFF: "<p><em>Meeting attendance unconfirmed — full context handoff below.</em></p>",
+  UNKNOWN_CONTEXTUAL_HANDOFF: "",
   LEADER_SUMMARY: "<p><em>Leadership summary below.</em></p>"
 };
 
@@ -100,16 +106,19 @@ export function applyAttendanceFraming(
   const framedMessages = messages.map((m) => {
     const att = byLane.get(m.lane);
     if (!att) return m;
-    const markdown = `${MODE_HEADER[att.message_mode]}\n\n${m.markdown}`;
+    const header = MODE_HEADER[att.message_mode];
+    const markdown = header ? `${header}\n\n${m.markdown}` : m.markdown;
     return { ...m, markdown, character_count: markdown.length, attendance_status: att.attendance_status, message_mode: att.message_mode };
   });
   const framedEmails = emails.map((e) => {
     const att = byLane.get(e.lane);
     if (!att) return e;
+    const headerHtml = MODE_HEADER_HTML[att.message_mode];
+    const headerText = MODE_HEADER[att.message_mode].replace(/^_|_$/g, "");
     return {
       ...e,
-      html: `${MODE_HEADER_HTML[att.message_mode]}${e.html}`,
-      text: `${MODE_HEADER[att.message_mode].replace(/^_|_$/g, "")}\n\n${e.text}`,
+      html: headerHtml ? `${headerHtml}${e.html}` : e.html,
+      text: headerText ? `${headerText}\n\n${e.text}` : e.text,
       attendance_status: att.attendance_status,
       message_mode: att.message_mode
     };

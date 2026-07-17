@@ -82,7 +82,11 @@ describe("applyAttendanceFraming", () => {
     expect(sales?.message_mode).toBe("ATTENDEE_ACTION_DELTA");
     expect(sales?.character_count).toBe(sales?.markdown.length);
     const tech = messages.find((m) => m.lane === "technical");
-    expect(tech?.markdown).toContain("attendance unconfirmed");
+    // Attendance-unconfirmed adds NO leading caveat — the message opens with the
+    // opportunity body; the state is tracked in message_mode + the delivery card.
+    expect(tech?.markdown).not.toContain("attendance unconfirmed");
+    expect(tech?.markdown.startsWith("TECH-BODY")).toBe(true);
+    expect(tech?.message_mode).toBe("UNKNOWN_CONTEXTUAL_HANDOFF");
     const salesEmail = emails.find((e) => e.lane === "sales");
     expect(salesEmail?.html.startsWith("<p><em>")).toBe(true);
     expect(salesEmail?.text).toContain("body");
