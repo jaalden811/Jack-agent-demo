@@ -18,6 +18,7 @@ import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@
 
 type ShapeTag = { id: string; label: string; cues: string[] };
 type CueGroup = { id: string; label: string; cues: string[] };
+type ComposedRisk = { id: string; label: string; note?: string; all_of: string[][] };
 type RoleDef = { id: string; label: string; cues: string[]; play: string };
 type TimingCues = { deadline_markers: string[]; months: string[]; procurement_markers: string[]; not_procurement_markers: string[]; locked_in_markers?: string[] };
 type DealIntelConfig = {
@@ -25,10 +26,28 @@ type DealIntelConfig = {
   participant_role_terms: string[];
   momentum_cues: CueGroup[];
   risk_cues: CueGroup[];
+  composed_risk_cues?: ComposedRisk[];
   timing_cues?: TimingCues;
   stakeholder_roles: RoleDef[];
   stakeholder_stance: { supportive_cues: string[]; skeptical_cues: string[] };
 };
+
+/** Dynamic (compositional) risk match: a chunk qualifies only when EVERY token
+ * group is represented — e.g. a money term AND a non-approval term in the same
+ * sentence. This captures the SEMANTIC pattern ("funding … not approved",
+ * "the pool … cannot be transferred", "the envelope … is not an award")
+ * generally, instead of memorizing one transcript's exact phrasing. Prefers a
+ * complete, substantive sentence. */
+function firstComposedMatch(chunks: TranscriptChunk[], groups: string[][]): TranscriptChunk | null {
+  let firstAny: TranscriptChunk | null = null;
+  for (const chunk of chunks) {
+    const lower = chunk.text.toLowerCase();
+    if (!groups.every((group) => group.some((token) => lower.includes(token.toLowerCase())))) continue;
+    if (!firstAny) firstAny = chunk;
+    if (isSubstantiveStatement(chunk.text)) return chunk;
+  }
+  return firstAny;
+}
 
 // Business nouns that make a bare count meaningful as a headline metric.
 const METRIC_NOUNS = "minutes?|hours?|days?|weeks?|sessions?|users?|customers?|incidents?|outages?|tickets?|analysts?|people|endpoints?|sites?|locations?|branches?|stores?|percent|terabytes?|records?|transactions?|accounts?";
@@ -270,6 +289,11 @@ export function buildDealIntelligence(params: {
   // ── Risks / landmines ─────────────────────────────────────────────────────
   const risks: DealSignal[] = [];
   for (const group of cfg.risk_cues) pushSignal(risks, group.id, group.label, firstSubstantiveMatch(chunks, group.cues));
+  // Dynamic compositional risks (budget-not-approved, privacy-gate): a semantic
+  // co-occurrence, not a memorized phrase — generalizes to any wording.
+  for (const composed of cfg.composed_risk_cues ?? []) {
+    pushSignal(risks, composed.id, composed.label, firstComposedMatch(chunks, composed.all_of));
+  }
   // The economic buyer being unestablished is a real risk even without a cue.
   const ebStatus = params.result.meddpicc?.economic_buyer?.status;
   if ((ebStatus === "MISSING" || ebStatus === "DISTRIBUTED") && !risks.some((r) => r.id === "no_single_eb")) {

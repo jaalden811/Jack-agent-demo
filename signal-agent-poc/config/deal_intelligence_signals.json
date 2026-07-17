@@ -19,9 +19,27 @@
     { "id": "sovereignty", "label": "Data sovereignty / residency is gating", "cues": ["data sovereignty is not theoretical", "data sovereignty", "data-location", "data location and access"] },
     { "id": "cost_governance", "label": "Cost governance sensitivity", "cues": ["overlapping tools", "increases the licensing cost", "ingest everything", "cost governance later"] },
     { "id": "skills_gap", "label": "Skills / operating-model constraint", "cues": ["engineering backlog", "permanent integration project", "unlimited number of people", "explain the results to the business"] },
-    { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["become fiction", "black-box", "black box", "correlation is not causation", "pretending the answer"] },
-    { "id": "budget_not_approved", "label": "Funding not approved — placeholder/pool only", "cues": ["not been approved", "has not been approved", "not yet approved", "budget placeholder", "placeholder", "not a budget", "no new funding", "not been discussed", "not permission to spend", "not approved funding"] },
-    { "id": "privacy_gate", "label": "Privacy / data-access approval can block", "cues": ["data sovereignty", "data residency", "privacy review", "privacy officer", "privacy approval", "covered entity", "raw phi", "attribute filtering", "sign the data handling", "privacy must", "privacy can block"] }
+    { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["black-box", "black box", "correlation is not causation", "not proof", "unproven", "on paper only", "in theory"] }
+  ],
+  "composed_risk_cues": [
+    {
+      "id": "budget_not_approved",
+      "label": "Funding not approved — placeholder/pool only",
+      "note": "Dynamic detection: a money/budget concept co-occurring with a non-approval/conditional concept in one sentence — generalizes past any specific funding-source wording.",
+      "all_of": [
+        ["budget", "funding", "fund", "allocation", "envelope", "pool", "capital", "placeholder", "spend", "investment", "money", "amount", "dollars", "not-to-exceed"],
+        ["not approved", "not been approved", "not yet approved", "no new funding", "not a budget", "not permission to spend", "cannot be transferred", "cannot be used", "subject to approval", "awaiting", "conditional", "not an award", "not proof", "not committed", "movable", "can move", "can remove", "not authorized"]
+      ]
+    },
+    {
+      "id": "privacy_gate",
+      "label": "Privacy / data-access approval can block",
+      "note": "Dynamic detection: a data-sensitivity concept co-occurring with a restriction/gating concept — generalizes past any specific data type or phrasing.",
+      "all_of": [
+        ["privacy", "phi", "pii", "personal data", "personal information", "subscriber", "identifier", "identifiers", "telemetry", "clinical", "patient", "workforce", "sensitive", "data access", "data-access", "raw data", "raw logs"],
+        ["cannot", "must not", "not leave", "does not leave", "masked", "mask", "filtered", "filtering", "blocked", "killed", "requires approval", "sign the data handling", "not approved", "restricted", "no raw", "residency", "sovereignty", "review", "attestation", "consent", "gate"]
+      ]
+    }
   ],
   "timing_cues": {
     "deadline_markers": ["freeze", "change freeze", "memo is due", "memo due", "review closes", "closes on", "committee reviews", "committee meets", "committee review", "due by", "due on", "deadline", "no later than", "target date", "go-live", "go live", "cutover", "renewal", "end of the quarter", "end of quarter", "end of the year", "fiscal year end"],

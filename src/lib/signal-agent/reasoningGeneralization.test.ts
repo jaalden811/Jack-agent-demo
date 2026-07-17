@@ -217,6 +217,34 @@ describe("account identity from shared participant org descriptors", () => {
   });
 });
 
+describe("dynamic compositional risks (budget-not-approved / privacy-gate)", () => {
+  it("detects the SEMANTIC co-occurrence, not a memorized phrase, and does not over-trigger", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const withRisks = [
+      "Dana — Customer, Ops Lead",
+      "Dana: I run reliability at Acme. Our innovation fund exists but has not been approved for this project. Subscriber identifiers cannot leave our region without a privacy review. I'd like a scenario-design working session next week."
+    ].join("\n");
+    const di = (await runSignalAgent({ customTranscript: withRisks })).deal_intelligence!;
+    const ids = di.risks.map((r) => r.id);
+    // Money-term × non-approval-term co-occurrence → budget risk (wording is
+    // NOT any of the pruned memorized phrases).
+    expect(ids).toContain("budget_not_approved");
+    // Sensitivity-term × restriction-term co-occurrence → privacy risk.
+    expect(ids).toContain("privacy_gate");
+
+    clearCatalogCache();
+    clearAccountsCache();
+    const noRisks = [
+      "Dana — Customer, Ops Lead",
+      "Dana: I run reliability at Acme. We approved the budget last quarter and the rollout is going well. I'd like a scenario-design working session next week."
+    ].join("\n");
+    const di2 = (await runSignalAgent({ customTranscript: noRisks })).deal_intelligence!;
+    // "approved the budget" must NOT trip the not-approved risk.
+    expect(di2.risks.map((r) => r.id)).not.toContain("budget_not_approved");
+  });
+});
+
 describe("timing driver honesty & procurement classification (deal-intel via runSignalAgent)", () => {
   it("skips locked-in / 'not under review' statements, picks the forward deadline, and flags real procurement", async () => {
     clearCatalogCache();
