@@ -86,6 +86,7 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
       meddpicc: Object.fromEntries(Object.entries(result.meddpicc ?? {}).map(([k, v]) => [k, (v as { status: string }).status])),
       decision_criteria: (dp?.decision_criteria ?? []).map((c) => ({ statement: c.statement, speaker: c.speaker, evidence_ids: c.evidence_ids }))
     },
+    current_environment: (result.specialist_handoffs?.technical?.current_environment ?? primaryMatch?.solution_decision?.retained_existing_platforms ?? []).slice(0, 6),
     stakeholders,
     deal_intelligence: {
       deal_shape: di?.deal_shape?.label ?? null,

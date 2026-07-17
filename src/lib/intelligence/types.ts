@@ -71,6 +71,8 @@ export type IntelligencePacket = {
     meddpicc: Record<string, string>;
     decision_criteria: PacketEvidenceItem[];
   };
+  /** Customer's current environment / retained platforms (technical lane). */
+  current_environment: string[];
   /** Customer-side buying committee ONLY (vendors/SEs are excluded upstream and
    * re-guarded here). */
   stakeholders: PacketStakeholder[];

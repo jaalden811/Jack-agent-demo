@@ -62,8 +62,12 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
     parts.push(`${upperFirst(account)}'s core problem is ${sentence(problem)}`);
     const stakes = firstMeaningful(stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? ""), packet.customer_evidence.business_impacts[0]?.statement);
     if (stakes) parts.push(sentence(`The stakes: ${clean(stakes, 160).replace(/[.]+$/, "")}`));
+    // Naming the current stack makes the technical read concrete and materially
+    // distinct from the commercial lane (it is what the validation must integrate).
+    const env = packet.current_environment.slice(0, 5);
+    if (env.length > 0) parts.push(`Validation must coexist with the current stack: ${clean(env.join(", "), 160)}.`);
     if (packet.deal_intelligence.existing_footprint) parts.push("The product already exists in pockets, so this validates an expansion, not a net-new deployment.");
-    return clean(parts.join(" "), 380);
+    return clean(parts.join(" "), 420);
   }
 
   // Sales / leadership: account importance + commercial framing.
@@ -163,7 +167,12 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
   }
 
   const champ = lane === "sales" ? packet.stakeholders.find((s) => /champion/i.test(s.role_label)) ?? null : null;
-  const environment = lane === "technical" && packet.opportunity.primary_solution_motion ? `Motion: ${packet.opportunity.primary_solution_motion}` : null;
+  const environment =
+    lane === "technical"
+      ? [packet.current_environment.length ? `Current stack: ${clean(packet.current_environment.slice(0, 5).join(", "), 150)}` : null, packet.opportunity.primary_solution_motion ? `Motion: ${packet.opportunity.primary_solution_motion}` : null]
+          .filter(Boolean)
+          .join(" · ") || null
+      : null;
 
   // Owner-only quota hook; goal alignment (named goals) is safe for any lane.
   const goalImpact = teaser?.goal_impact ?? null;

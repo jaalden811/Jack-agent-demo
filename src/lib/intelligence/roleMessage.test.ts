@@ -12,6 +12,7 @@ function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket 
     opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability and incident correlation", primary_solution_motion: "Splunk ITSI", is_actionable: true },
     customer_evidence: { pains: [], business_impacts: [{ statement: "hundreds of specialists unable to work when incidents hit", speaker: null, evidence_ids: [] }], objections: [], explicit_negations: ["not a SIEM replacement"], do_not_reask: [] },
     qualification: { meddpicc: { identify_pain: "CONFIRMED", metrics: "CONFIRMED" }, decision_criteria: [] },
+    current_environment: ["ServiceNow", "Okta", "CrowdStrike"],
     stakeholders: [{ name: "Jordan", role_label: "Business champion", stance: "supportive", play: "Arm them with exec-legible business-risk framing.", evidence: "I'd like a working session." }],
     deal_intelligence: {
       deal_shape: "Expansion / land-and-expand", deal_shape_tags: ["expansion"], why_real: [], momentum: [{ id: "requested_next_step", label: "Customer asked for the next step", evidence: null, speaker: "Jordan" }],
@@ -45,6 +46,10 @@ describe("generateRoleMessage — canonical content decision", () => {
     expect(sales).toContain("**Champion:**");
     expect(tech).not.toContain("**Champion:**");
     expect(tech).toContain("**Environment:**");
+    // The technical lane names the current stack (role-specific differentiation);
+    // the commercial lane does not lead with the stack.
+    expect(tech).toContain("ServiceNow");
+    expect(sales).not.toContain("Current stack:");
   });
 
   it("why-now is a concrete timing driver, else the customer-requested step — never a hedged impact quote", () => {
