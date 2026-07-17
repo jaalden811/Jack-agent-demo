@@ -174,6 +174,8 @@ describe("Webex message templates", () => {
       value_hypothesis: 'Frame value in their words: "hundreds of specialists unable to work"',
       power_map: [{ name: "Jordan", role_id: "business_champion", role_label: "Business champion", stance: "supportive", play: "Arm them with exec-legible business-risk framing.", evidence: "I'd like a working session." }],
       public_context: [{ id: "public_0", label: "AECOM is a global infrastructure firm expanding its AI portfolio", evidence: "investors.aecom.com", speaker: null }],
+      headline_metric: "96 → under 30 minutes",
+      timing: { label: "Committee memo is due September 4 (decision boundary, not procurement)", is_procurement: false, evidence: "committee memo is due September fourth" },
       headline: "Expansion play at Acme Retail — customer asked for the next step; watch: no single economic buyer."
     };
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });

@@ -85,20 +85,27 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     deal_watch_outs: (di?.risks ?? []).map((r) => r.label),
     value_hypothesis: di?.value_hypothesis ?? null,
     champion: championLine,
-    public_context: (di?.public_context ?? []).map((p) => `${p.label} — ${p.evidence}`)
+    public_context: (di?.public_context ?? []).map((p) => `${p.label} — ${p.evidence}`),
+    headline_metric: di?.headline_metric ?? null,
+    timing_driver: di?.timing ? { label: di.timing.label, is_procurement: di.timing.is_procurement } : null
   };
 
   // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
   // asked to produce, filled with real brief content. When a lane is too thin
   // the delivery quality gate rejects it and the trusted message builder is used.
-  const whyNow = firstMeaningful([...brief.why_now, timing]) ?? "The customer asked for a concrete next step.";
+  // Prefer the honest timing driver (decision boundary vs procurement) over a
+  // generic urgency clause for "why now".
+  const whyNow = firstMeaningful([di?.timing?.label ?? null, ...brief.why_now, timing]) ?? "The customer asked for a concrete next step.";
   const salesAction = firstMeaningful(sales_lane.actions) ?? "Confirm the next commercial step and owner with the customer.";
   const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
 
   const dealShapeLine = di?.deal_shape.label ? `**Deal shape:** ${di.deal_shape.label}` : null;
+  const metricLine = di?.headline_metric ? `**Metric:** ${di.headline_metric}` : null;
   const accountIntelLine = di?.public_context[0] ? `**Account intel:** ${di.public_context[0].label}` : null;
-  const salesWatch = di?.risks[0]?.label ? `**Watch-out:** ${di.risks[0].label}` : null;
-  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  // Commercial lane: funding/authority/privacy landmines first.
+  const salesRisk = di?.risks.find((r) => ["budget_not_approved", "no_single_eb", "privacy_gate", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  const salesWatch = salesRisk?.label ? `**Watch-out:** ${salesRisk.label}` : null;
+  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance", "privacy_gate"].includes(r.id)) ?? di?.risks[0] ?? null;
   const techWatch = techRisk?.label ? `**Watch-out:** ${techRisk.label}` : null;
 
   const salesWebex = [
@@ -108,6 +115,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     `**Why now:** ${whyNow}`,
     `**Recommended action:** ${salesAction}`,
     `**Expected outcome:** ${sales_lane.expected_output}`,
+    metricLine,
     championLine ? `**Champion:** ${championLine}` : null,
     accountIntelLine,
     salesWatch
@@ -122,6 +130,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     `**Why now:** ${whyNow}`,
     `**Recommended action:** ${technicalAction}`,
     `**Expected outcome:** ${technical_lane.expected_output}`,
+    metricLine,
     techWatch
   ]
     .filter((l): l is string => l !== null)

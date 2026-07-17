@@ -5,6 +5,9 @@ import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
+import { runSignalAgent } from "@/lib/signal-agent/runAgent";
+import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
+import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
 
 /**
  * Generalization regressions distilled from a reinforcement pass over a
@@ -100,6 +103,35 @@ describe("account coverage extraction (candidateExtractor)", () => {
     // "I cover the <Vendor> renewal for <account>" must NOT yield the vendor.
     const renewal = extractDialogueAccountCandidates(["I cover the Contoso renewal for the retailer."]).map((c) => c.name);
     expect(renewal).not.toContain("Contoso");
+  });
+});
+
+describe("deal-intelligence output quality (metric / honest timing / champion)", () => {
+  const TRANSCRIPT = [
+    "Rachel — Vendor, Account Executive",
+    "Rachel: I cover Acme Retail for our company. A possible path is to test whether the platform can help.",
+    "Dana — Customer, Reliability Lead",
+    "Dana: I run reliability at Acme Retail. Across incidents our mean time to isolate was ninety-six minutes and our board target is under thirty minutes. The review committee closes on October ninth, but that is a planning boundary, not procurement timing. I'd like to run a scenario-design working session next week."
+  ].join("\n");
+
+  it("distills a digit metric (baseline→target), an honest timing driver, and the next-step driver as champion", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const r = await runSignalAgent({ customTranscript: TRANSCRIPT });
+    const di = r.deal_intelligence!;
+    expect(di).toBeTruthy();
+    // Metric is distilled to digits, baseline→target (not a spelled-out quote).
+    expect(di.headline_metric).toContain("96");
+    expect(di.headline_metric).toContain("30");
+    // Timing is the forward decision boundary, framed HONESTLY (not procurement).
+    expect(di.timing?.label.toLowerCase()).toContain("october");
+    expect(di.timing?.is_procurement).toBe(false);
+    expect(di.timing?.label.toLowerCase()).toContain("not procurement");
+    // The customer who drives the accepted next step is the champion (Dana),
+    // not the vendor rep (Rachel) — and never a vendor.
+    const champ = di.power_map.find((p) => p.role_id === "business_champion");
+    expect(champ?.name.toLowerCase()).toContain("dana");
+    expect(di.power_map.some((p) => p.name.toLowerCase().includes("rachel"))).toBe(false);
   });
 });
 

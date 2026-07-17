@@ -20,8 +20,16 @@
     { "id": "sovereignty", "label": "Data sovereignty / residency is gating", "cues": ["data sovereignty is not theoretical", "data sovereignty", "data-location", "data location and access"] },
     { "id": "cost_governance", "label": "Cost governance sensitivity", "cues": ["overlapping tools", "increases the licensing cost", "ingest everything", "cost governance later"] },
     { "id": "skills_gap", "label": "Skills / operating-model constraint", "cues": ["engineering backlog", "permanent integration project", "unlimited number of people", "explain the results to the business"] },
-    { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["become fiction", "black-box", "black box", "correlation is not causation", "pretending the answer"] }
+    { "id": "credibility", "label": "High credibility bar — evidence, not black-box", "cues": ["become fiction", "black-box", "black box", "correlation is not causation", "pretending the answer"] },
+    { "id": "budget_not_approved", "label": "Funding not approved — placeholder/pool only", "cues": ["not been approved", "has not been approved", "not yet approved", "placeholder", "not a budget", "no new funding", "new funding has not", "not been discussed", "innovation allocation", "innovation pool", "not permission to spend", "can move or remove", "movable placeholder", "run-rate funding", "not approved for this"] },
+    { "id": "privacy_gate", "label": "Privacy / data-access approval can block", "cues": ["privacy killed", "attribute filtering", "before telemetry leaves", "sign the data handling", "no raw phi", "raw phi", "covered entity", "privacy officer", "cannot move raw", "no raw clinical", "data sovereignty", "data residency", "mask account", "identifier before export", "privacy review", "privacy must", "privacy can"] }
   ],
+  "timing_cues": {
+    "deadline_markers": ["freeze", "memo is due", "memo due", "review closes", "closes on", "closes october", "committee reviews", "committee meets", "committee review", "reviews the case", "due by", "due on", "deadline", "no later than", "target date", "go-live", "go live", "cutover", "renewal", "peak season", "peak change", "change freeze", "end of the quarter"],
+    "months": ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"],
+    "procurement_markers": ["procurement timing", "purchase order", "contract signing", "contract award", "sign the contract", "commercial close", "purchasing deadline", "buying deadline"],
+    "not_procurement_markers": ["planning boundary", "not procurement", "not a procurement", "not procurement timing", "not a commitment", "not a buying", "creates urgency for a recommendation", "decision urgency", "not permission to rush"]
+  },
   "stakeholder_roles": [
     { "id": "business_champion", "label": "Business champion", "cues": ["i'd like", "i would like", "working session", "material business risk", "client delivery", "business exposure", "resilience", "what we actually want", "that restraint is useful", "good answer"], "play": "Arm them with exec-legible business-risk framing and a tight next step they can carry internally." },
     { "id": "cost_gatekeeper", "label": "Cost / commercial gatekeeper", "cues": ["licensing cost", "overlapping tools", "cost governance", "ingest everything", "discretionary money", "expensive", "pay for two"], "play": "Lead with cost governance — data tiering, retention, and what data belongs where — before any commitment." },

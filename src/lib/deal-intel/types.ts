@@ -44,6 +44,14 @@ export type DealIntelligence = {
   /** Distilled public research (SerpAPI) that changes the account read — each
    * with its source. Context/narrative only; never scoring-eligible. */
   public_context: DealSignal[];
+  /** The single most compelling quantified metric, in DIGITS and (when the
+   * customer stated both) framed baseline→target — e.g. "from 96 to under 30
+   * minutes to isolate". Null when no quantified metric was stated. */
+  headline_metric: string | null;
+  /** The honest timing driver: the decision-relevant deadline/date and whether
+   * it is real procurement timing or only a decision/planning boundary. Lets
+   * the message say "why now" truthfully instead of manufacturing urgency. */
+  timing: { label: string; is_procurement: boolean; evidence: string } | null;
   /** A single honest, compelling read of the opportunity. */
   headline: string;
 };

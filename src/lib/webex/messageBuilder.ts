@@ -101,7 +101,18 @@ function firstMeaningful(candidates: Array<string | null | undefined>): string |
  * default — never a vague "follow up". */
 function actionLine(result: SecureNetworkingTriageResult, decision: LaneRoutingDecision, lane: "sales" | "technical"): string {
   const nba = result.next_best_action;
-  if (nba && nba.action_type !== "hold" && nba.action_type !== "suppress" && nba.summary?.trim()) return nba.summary.trim();
+  // Prefer the concise action title over the verbose summary — a push message
+  // needs one crisp imperative, not a paragraph that gets clipped mid-list.
+  // The recommended timing is appended when it is a real date/deadline.
+  if (nba && nba.action_type !== "hold" && nba.action_type !== "suppress") {
+    const title = nba.title?.trim();
+    if (title) {
+      const timing = nba.recommended_timing?.trim();
+      const hasDate = timing && /\d|\b(mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(timing);
+      return hasDate ? `${title} — ${clipAtWord(timing!, 80)}` : title;
+    }
+    if (nba.summary?.trim()) return nba.summary.trim();
+  }
   const first = decision.actions?.[0];
   if (first) return first;
   return lane === "sales" ? "Confirm the next commercial step and owner with the customer." : "Scope the technical validation and success criteria with the customer.";
@@ -153,16 +164,23 @@ export function buildSalesMessage(params: {
   // do-not-re-ask detail lives in the app (Decision Packet + Specialist
   // handoff) — the push message only has to make the recipient act.
   const opportunity = summary.primary_opportunity ?? result.matches[0]?.pain_category ?? "this opportunity";
-  const whyNow = firstMeaningful([...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a concrete next step.";
+  const di = result.deal_intelligence;
+  // "Why now" leads with the honest timing driver (a decision boundary, framed
+  // as such — never manufactured procurement urgency), then the accepted next
+  // step, then generic urgency.
+  const whyNow = firstMeaningful([di?.timing?.label ?? null, ...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a concrete next step.";
   const action = actionLine(result, decision, "sales");
   const expected = firstMeaningful([...(nba?.success_criteria ?? []), summary.business_impact]) ?? "A documented outcome and an agreed next step.";
-  const impact = meaningful(summary.business_impact);
+  // Prefer the distilled headline metric (digits, baseline→target) over a raw
+  // impact quote — the crisp number is what makes the recipient act.
+  const metricLine = di?.headline_metric ? `**Metric:** ${clipAtWord(di.headline_metric, 120)}` : meaningful(summary.business_impact) ? `**Business impact:** ${clipAtWord(meaningful(summary.business_impact)!, 200)}` : null;
   const scoring = result.opportunity_scoring;
   const pursuitLine =
     scoring && scoring.decision ? `**Pursuit:** ${scoring.decision} — ${Math.round(scoring.final_pursuit_score)}/100` : null;
-  const di = result.deal_intelligence;
   const dealShapeLine = di ? `**Deal shape:** ${clipAtWord(di.deal_shape.label, 120)}` : null;
-  const watchOutLine = di && di.risks[0] ? `**Watch-out:** ${clipAtWord(di.risks[0].label, 160)}` : null;
+  // Commercial lane cares most about funding/authority/privacy landmines.
+  const salesRisk = di?.risks.find((r) => ["budget_not_approved", "no_single_eb", "privacy_gate", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  const watchOutLine = salesRisk ? `**Watch-out:** ${clipAtWord(salesRisk.label, 160)}` : null;
   const champion = di?.power_map.find((p) => p.role_id === "business_champion");
   const championLine = champion ? `**Champion:** ${champion.name} — ${clipAtWord(champion.play, 160)}` : null;
   // Distilled public research (when it surfaced) — one punchy account fact.
@@ -177,11 +195,11 @@ export function buildSalesMessage(params: {
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: metricLine },
       { text: championLine },
       { text: accountIntelLine },
       { text: watchOutLine },
       { text: pursuitLine },
-      { text: impact ? `**Business impact:** ${clipAtWord(impact, 200)}` : null },
       { text: "" },
       { text: analysisLinkMarkdown(analysisLink, runId) }
     ],
@@ -218,13 +236,14 @@ export function buildTechnicalMessage(params: {
 
   // Concise, action-first technical nudge — distinct from sales (environment +
   // workshop scope, not the commercial framing). Detail lives in the app.
-  const whyNow = firstMeaningful([...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a scenario-based working session.";
+  const di = result.deal_intelligence;
+  const whyNow = firstMeaningful([di?.timing?.label ?? null, ...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a scenario-based working session.";
   const action = actionLine(result, decision, "technical");
   const expected = firstMeaningful([...(nba?.success_criteria ?? [])]) ?? "Validated data sources and pass/fail criteria for the scenarios.";
-  const di = result.deal_intelligence;
+  const metricLine = di?.headline_metric ? `**Metric:** ${clipAtWord(di.headline_metric, 120)}` : null;
   const dealShapeLine = di ? `**Deal shape:** ${clipAtWord(di.deal_shape.label, 120)}` : null;
   // The most technical landmine to respect (credibility/feasibility/sovereignty).
-  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
+  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance", "privacy_gate"].includes(r.id)) ?? di?.risks[0] ?? null;
   const watchOutLine = techRisk ? `**Watch-out:** ${clipAtWord(techRisk.label, 160)}` : null;
 
   const markdown = composeToByteBudget(
@@ -235,6 +254,7 @@ export function buildTechnicalMessage(params: {
       { text: `**Why now:** ${clipAtWord(whyNow, 240)}` },
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
+      { text: metricLine },
       { text: `**Environment:** ${clipAtWord(currentEnvironment, 140)} · **Motion:** ${clipAtWord(solutionMotion, 140)}` },
       { text: watchOutLine },
       { text: evidence ? `**Proof:** "${clipAtWord(evidence, 200)}"` : null },

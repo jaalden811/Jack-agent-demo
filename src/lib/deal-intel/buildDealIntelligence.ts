@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AccountRecord, IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
+import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
 import { isSubstantiveStatement } from "@/lib/signal-agent/evidenceQuality";
 import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@/lib/deal-intel/types";
 
@@ -18,14 +19,93 @@ import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@
 type ShapeTag = { id: string; label: string; cues: string[] };
 type CueGroup = { id: string; label: string; cues: string[] };
 type RoleDef = { id: string; label: string; cues: string[]; play: string };
+type TimingCues = { deadline_markers: string[]; months: string[]; procurement_markers: string[]; not_procurement_markers: string[] };
 type DealIntelConfig = {
   shape_tags: ShapeTag[];
   participant_role_terms: string[];
   momentum_cues: CueGroup[];
   risk_cues: CueGroup[];
+  timing_cues?: TimingCues;
   stakeholder_roles: RoleDef[];
   stakeholder_stance: { supportive_cues: string[]; skeptical_cues: string[] };
 };
+
+// Business nouns that make a bare count meaningful as a headline metric.
+const METRIC_NOUNS = "minutes?|hours?|days?|weeks?|sessions?|users?|customers?|incidents?|outages?|tickets?|analysts?|people|endpoints?|sites?|locations?|branches?|stores?|percent|terabytes?|records?|transactions?|accounts?";
+const DURATION_UNIT = /\b(\d[\d,.]*)\s*(minutes?|hours?|days?|weeks?)\b/i;
+const TARGET_MARKER = /\b(target|goal|under|below|less than|within|down to|to under|reduce|cut)\b/i;
+const BASELINE_MARKER = /\b(was|is|currently|today|average|averaged|mean|median|takes?|took|baseline|per incident)\b/i;
+
+/** Distills the single most compelling quantified metric from the customer's
+ * own sentences, in DIGITS (spelled numbers normalized). Prefers a
+ * baseline→target duration pair ("from 96 to under 30 minutes"); otherwise the
+ * largest business-relevant count. Returns null when nothing quantified. */
+function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
+  const normalized = chunks.map((c) => ({ raw: c.text, norm: normalizeSpelledNumbers(c.text) }));
+  let baseline: { value: number; unit: string } | null = null;
+  let target: { value: number; unit: string } | null = null;
+  // Scan EVERY duration (baseline and target can share one sentence), and
+  // classify each by the words immediately preceding it.
+  const durAll = new RegExp(DURATION_UNIT.source, "gi");
+  for (const { norm } of normalized) {
+    for (const d of norm.matchAll(durAll)) {
+      const value = Number(d[1].replace(/[,.]/g, ""));
+      if (!Number.isFinite(value)) continue;
+      const unit = d[2].toLowerCase().replace(/s$/, "");
+      const before = norm.slice(Math.max(0, (d.index ?? 0) - 28), d.index);
+      if (TARGET_MARKER.test(before)) {
+        if (!target || value < target.value) target = { value, unit };
+      } else if (BASELINE_MARKER.test(before)) {
+        if (!baseline || value > baseline.value) baseline = { value, unit };
+      }
+    }
+  }
+  if (baseline && target && baseline.unit === target.unit && baseline.value > target.value) {
+    return `${baseline.value} → under ${target.value} ${target.unit}s`;
+  }
+  // Otherwise the largest business-relevant count with its noun.
+  const countRe = new RegExp(`\\b(\\d[\\d,]{2,})\\s+(${METRIC_NOUNS})\\b`, "gi");
+  let best: { value: number; text: string } | null = null;
+  for (const { norm } of normalized) {
+    for (const m of norm.matchAll(countRe)) {
+      const value = Number(m[1].replace(/[,.]/g, ""));
+      if (Number.isFinite(value) && (!best || value > best.value)) best = { value, text: `${value.toLocaleString("en-US")} ${m[2].toLowerCase()}` };
+    }
+  }
+  return best?.text ?? null;
+}
+
+// Past-event markers — a timing driver must be forward-looking; a renewal that
+// "already happened" or a contract "signed in May" is not a reason to act now.
+const PAST_EVENT_RE = /\b(already|was signed|were signed|signed in|happened|renewed last|\bago\b|last (year|quarter|month|week))\b/i;
+// Decision-boundary words rank above a bare renewal/month as "why now".
+const DECISION_BOUNDARY_RE = /\b(freeze|memo|committee|review closes|closes|reviews the case|recommendation|deadline|go-?live|cutover|due (by|on|date))\b/i;
+
+/** Extracts the honest timing driver: the decision-relevant deadline, and
+ * whether it is real procurement timing or only a decision/planning boundary.
+ * Skips past events, prefers decision boundaries, and never manufactures
+ * urgency — returns null when no forward-looking dated driver was stated. */
+function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealIntelligence["timing"] {
+  const tc = cfg.timing_cues;
+  if (!tc) return null;
+  const monthRe = new RegExp(`\\b(${tc.months.join("|")})\\b`, "i");
+  let best: { chunk: TranscriptChunk; score: number } | null = null;
+  for (const chunk of chunks) {
+    const lower = chunk.text.toLowerCase();
+    if (PAST_EVENT_RE.test(lower)) continue;
+    const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
+    const hasDate = monthRe.test(lower);
+    if (!hasDeadlineWord && !hasDate) continue;
+    // Rank: decision boundary (3) > deadline word (2) > month only (1).
+    const score = DECISION_BOUNDARY_RE.test(lower) ? 3 : hasDeadlineWord ? 2 : 1;
+    if (!best || score > best.score) best = { chunk, score };
+  }
+  if (!best) return null;
+  const lower = best.chunk.text.toLowerCase();
+  const isProcurement = tc.procurement_markers.some((m) => lower.includes(m)) && !tc.not_procurement_markers.some((m) => lower.includes(m));
+  const label = isProcurement ? shortText(best.chunk.text, 160) : `${shortText(best.chunk.text, 150)} (decision boundary, not procurement)`;
+  return { label, is_procurement: isProcurement, evidence: shortText(best.chunk.text, 200) };
+}
 
 let cached: DealIntelConfig | null = null;
 
@@ -212,6 +292,30 @@ export function buildDealIntelligence(params: {
 
   const power_map = buildStakeholderPlaybook(chunks, params.result.stakeholder_analysis?.named_stakeholders ?? [], cfg);
 
+  // The customer who drives the accepted next step is the champion — a stronger,
+  // more general signal than keyword cues (which can misfire on an exec sponsor
+  // or a security owner). Promote that person to business_champion/supportive.
+  const nextStepText = (params.result.generic_diagnostics?.signals.next_steps ?? [])[0]?.text;
+  if (nextStepText) {
+    const driverChunk = chunks.find((c) => c.speaker && c.text && (c.text.includes(nextStepText.slice(0, 40)) || nextStepText.includes(c.text.slice(0, 40))));
+    const driver = driverChunk?.speaker ? firstName(driverChunk.speaker) : null;
+    const championRole = cfg.stakeholder_roles.find((r) => r.id === "business_champion");
+    if (driver && championRole) {
+      const entry = power_map.find((p) => firstName(p.name) === driver);
+      if (entry) {
+        entry.role_id = "business_champion";
+        entry.role_label = championRole.label;
+        entry.play = championRole.play;
+        // Driving the accepted next step is advancing behavior — read as
+        // supportive (conditional), not skeptical, unless purely neutral before.
+        entry.stance = "supportive";
+      }
+    }
+  }
+
+  const headline_metric = distillHeadlineMetric(chunks);
+  const timing = distillTiming(chunks, cfg);
+
   return {
     deal_shape,
     momentum: momentum.slice(0, 6),
@@ -219,6 +323,8 @@ export function buildDealIntelligence(params: {
     value_hypothesis,
     power_map,
     public_context,
+    headline_metric,
+    timing,
     headline
   };
 }
