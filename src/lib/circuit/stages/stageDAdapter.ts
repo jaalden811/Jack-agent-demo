@@ -40,35 +40,33 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const thesis = stageC.opportunity_thesis?.trim() ? stageC.opportunity_thesis : detBrief.opportunity_thesis;
   const doNotReask = stageC.do_not_reask.length > 0 ? stageC.do_not_reask : (result.specialist_handoffs?.sales?.questions_not_to_reask ?? []);
   const timing = resolveTiming(result, stageC);
-  const successCriteria = (stageC.next_best_action?.success_criteria ?? []).filter(Boolean);
-  const successText = successCriteria.length > 0 ? successCriteria.join("; ") : null;
 
-  // The delivered message's recommended action MUST be the one canonical Next
-  // Best Action (what the UI shows as "Recommended next action"), not a generic
-  // MEDDPICC-gap action — otherwise the message contradicts the analysis. Both
-  // lanes lead with the shared next step; each lane's own gap-actions follow as
-  // supporting context. Null only when the run is suppress/hold (no action).
-  const nba = result.next_best_action;
-  const nbaTitle = nba && nba.action_type !== "suppress" && nba.action_type !== "hold" ? (nba.title?.trim() || null) : null;
-  const salesActions = nbaTitle ? [nbaTitle, ...detBrief.sales_actions.filter((a) => a !== nbaTitle)] : detBrief.sales_actions;
-  const technicalActions = nbaTitle ? [nbaTitle, ...detBrief.technical_actions.filter((a) => a !== nbaTitle)] : detBrief.technical_actions;
+  // The Stage D brief is built FROM the one canonical RoleMessage (generated from
+  // the IntelligencePacket), so Circuit refines the SAME content the deterministic
+  // path renders: the synthesized "why this matters", the honest "why now", the
+  // canonical Next Best Action as the ONE action, and the clean expected outcome.
+  // A generic MEDDPICC-gap action or a fabricated urgency quote can no longer
+  // enter the message, because they are not in the material Circuit is given.
+  const packet = buildIntelligencePacket(result);
+  const salesRM = generateRoleMessage(packet, "sales");
+  const technicalRM = generateRoleMessage(packet, "technical");
 
   const sales_lane: StageDLane = {
     role_label: SALES_ROLE_LABEL,
-    why_selected: `You own the commercial lane for ${accountLabel}: qualification, buying-committee engagement, and the commercial next step.`,
+    why_selected: salesRM.why_this_matters,
     collaborator: `${TECHNICAL_ROLE_LABEL} (paired technical lane)`,
-    actions: salesActions,
+    actions: [salesRM.action],
     remaining_questions: stageC.commercial_handoff.remaining_questions,
-    expected_output: successText ? `A commercial outcome: ${successText}.` : "A qualified commercial next step (confirmed budget owner + booked follow-up)."
+    expected_output: salesRM.expected_outcome
   };
 
   const technical_lane: StageDLane = {
     role_label: TECHNICAL_ROLE_LABEL,
-    why_selected: `You own the technical lane for ${accountLabel}: architecture fit, current environment, and proof-of-value.`,
+    why_selected: technicalRM.why_this_matters,
     collaborator: `${SALES_ROLE_LABEL} (paired commercial lane)`,
-    actions: technicalActions,
+    actions: [technicalRM.action],
     remaining_questions: stageC.technical_handoff.remaining_questions,
-    expected_output: successText ? `A technical outcome: ${successText}.` : "A scoped technical validation (architecture workshop / POV with explicit success criteria)."
+    expected_output: technicalRM.expected_outcome
   };
 
   const di = result.deal_intelligence;
@@ -76,7 +74,9 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const championLine = championPlay ? `${championPlay.name} — ${championPlay.play}` : null;
   const brief: StageDBrief = {
     opportunity_thesis: thesis,
-    why_now: detBrief.why_now,
+    // Honest "why now" from the RoleMessage (a real timing driver, else the
+    // customer-requested step) — never a raw impact/retention quote.
+    why_now: [salesRM.why_now],
     meddpicc_lines: detBrief.meddpicc_lines,
     stakeholder_lines: detBrief.stakeholder_lines,
     top_risks: detBrief.top_risks,
@@ -91,15 +91,14 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     champion: championLine,
     public_context: (di?.public_context ?? []).map((p) => `${p.label} — ${p.evidence}`),
     headline_metric: di?.headline_metric ?? null,
-    timing_driver: di?.timing ? { label: di.timing.label, is_procurement: di.timing.is_procurement } : null
+    timing_driver: salesRM.why_now && /\bnot procurement\b|\bprocurement\b/i.test(salesRM.why_now) && di?.timing ? { label: salesRM.why_now, is_procurement: di.timing.is_procurement } : null
   };
 
-  // Deterministic fallback renders from the SAME canonical IntelligencePacket +
-  // RoleMessage that the delivered messages use — so Circuit's fallback is byte-
-  // for-byte the one canonical content decision, never a parallel interpretation.
-  const packet = buildIntelligencePacket(result);
-  const salesWebex = renderWebexMessage(generateRoleMessage(packet, "sales"));
-  const technicalWebex = renderWebexMessage(generateRoleMessage(packet, "technical"));
+  // Deterministic fallback renders from the SAME canonical RoleMessage that the
+  // brief above was built from — so Circuit's fallback is byte-for-byte the one
+  // canonical content decision, never a parallel interpretation.
+  const salesWebex = renderWebexMessage(salesRM);
+  const technicalWebex = renderWebexMessage(technicalRM);
 
   const deterministic: StageDOutput = {
     sales_webex: salesWebex,

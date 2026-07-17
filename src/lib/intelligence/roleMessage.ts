@@ -81,9 +81,15 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
 
 /** WHY NOW — strict priority: real timing driver, else the customer-requested
  * next step, else an honest early-stage line. Never a hedged impact quote. */
+/** Strips a leading enumeration/discourse marker ("First,", "Second,", "Also,",
+ * "And,") that the customer used mid-list — it reads as a fragment out of context. */
+function stripEnumeration(s: string): string {
+  return s.replace(/^(?:first|second|third|fourth|fifth|next|also|and|but|finally|lastly|then)\s*[,:]\s*/i, "").trim();
+}
+
 function whyNow(packet: IntelligencePacket): string {
   const timing = packet.deal_intelligence.timing_driver;
-  if (timing && timing.label && !HEDGED.test(timing.label)) return clean(timing.label, 200);
+  if (timing && timing.label && !HEDGED.test(timing.label)) return upperFirst(stripEnumeration(clean(timing.label, 200)));
   const requested = packet.deal_intelligence.momentum.some((m) => m.id === "requested_next_step") || packet.next_action.primary_action_type !== "hold";
   if (requested && packet.opportunity.is_actionable) {
     return "The customer requested a concrete next step to test whether the solution can address the stated business and technical gaps.";
@@ -91,11 +97,11 @@ function whyNow(packet: IntelligencePacket): string {
   return "Engage while the conversation is warm to shape the evaluation before it hardens.";
 }
 
-/** The ONE action, enriched with grounded scope (scenarios) — never fabricated. */
+/** The ONE action — the canonical Next Best Action, as one clean sentence. Raw
+ * workshop-scenario sentences are intentionally NOT spliced in (they are noisy
+ * transcript fragments); scenario scope lives in the workshop plan / UI. */
 function actionText(packet: IntelligencePacket): string {
   const base = packet.next_action.primary_action ?? packet.next_action.summary ?? "Confirm the next step and owner with the customer.";
-  const scenarios = packet.workshop.scenarios.slice(0, 2).map((s) => clean(s, 60)).filter(Boolean);
-  if (scenarios.length > 0) return clean(`${base} — cover: ${scenarios.join("; ")}`, 300);
   return clean(base, 300);
 }
 
