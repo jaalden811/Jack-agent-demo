@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AccountRecord, IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
+import { isSubstantiveStatement } from "@/lib/signal-agent/evidenceQuality";
 import type { DealIntelligence, DealShape, DealSignal, StakeholderPlay } from "@/lib/deal-intel/types";
 
 /**
@@ -45,6 +46,19 @@ function firstMatch(chunks: TranscriptChunk[], cues: string[]): TranscriptChunk 
     if (cues.some((c) => lower.includes(c.toLowerCase()))) return chunk;
   }
   return null;
+}
+
+/** Prefer a complete, substantive matching sentence over a context-free
+ * fragment, so cited evidence always reads as a real point. */
+function firstSubstantiveMatch(chunks: TranscriptChunk[], cues: string[]): TranscriptChunk | null {
+  let firstAny: TranscriptChunk | null = null;
+  for (const chunk of chunks) {
+    const lower = chunk.text.toLowerCase();
+    if (!cues.some((c) => lower.includes(c.toLowerCase()))) continue;
+    if (!firstAny) firstAny = chunk;
+    if (isSubstantiveStatement(chunk.text)) return chunk;
+  }
+  return firstAny;
 }
 
 function shortText(text: string, max = 200): string {
@@ -92,7 +106,13 @@ function buildStakeholderPlaybook(chunks: TranscriptChunk[], namedStakeholders: 
     const stance: StakeholderPlay["stance"] = skeptical > supportive && skeptical > 0 ? "skeptical" : supportive > skeptical && supportive > 0 ? "supportive" : "neutral";
 
     const roleCues = best?.cues ?? [];
-    const evidenceChunk = myChunks.find((c) => roleCues.some((cue) => c.text.toLowerCase().includes(cue.toLowerCase()))) ?? myChunks[0] ?? null;
+    const matchesRole = (c: TranscriptChunk) => roleCues.some((cue) => c.text.toLowerCase().includes(cue.toLowerCase()));
+    const evidenceChunk =
+      myChunks.find((c) => matchesRole(c) && isSubstantiveStatement(c.text)) ??
+      myChunks.find(matchesRole) ??
+      myChunks.find((c) => isSubstantiveStatement(c.text)) ??
+      myChunks[0] ??
+      null;
 
     plays.push({
       name,
@@ -121,12 +141,15 @@ export function buildDealIntelligence(params: {
   let shapeRationale: string | null = null;
   const retained = params.result.matches[0]?.solution_decision.retained_existing_platforms ?? [];
   for (const tag of cfg.shape_tags) {
-    const hit = firstMatch(chunks, tag.cues);
+    const anyHit = firstMatch(chunks, tag.cues);
     const expansionByPlatform = tag.id === "expansion" && retained.length > 0;
-    if (hit || expansionByPlatform) {
+    if (anyHit || expansionByPlatform) {
       shapeTags.push(tag.id);
       shapeLabels.push(tag.label);
-      if (!shapeRationale && hit) shapeRationale = shortText(hit.text);
+      if (!shapeRationale) {
+        const substantive = firstSubstantiveMatch(chunks, tag.cues);
+        if (substantive) shapeRationale = shortText(substantive.text);
+      }
     }
   }
   const deal_shape: DealShape = {
@@ -153,7 +176,7 @@ export function buildDealIntelligence(params: {
   });
   if (participantChunk) momentum.push({ id: "named_participants", label: "Named the required participants", evidence: shortText(participantChunk.text), speaker: participantChunk.speaker });
 
-  for (const group of cfg.momentum_cues) pushSignal(momentum, group.id, group.label, firstMatch(chunks, group.cues));
+  for (const group of cfg.momentum_cues) pushSignal(momentum, group.id, group.label, firstSubstantiveMatch(chunks, group.cues));
 
   // Structured account context (open opportunity / budget signal) — never a
   // transcript claim, so labeled as account context.
@@ -162,7 +185,7 @@ export function buildDealIntelligence(params: {
 
   // ── Risks / landmines ─────────────────────────────────────────────────────
   const risks: DealSignal[] = [];
-  for (const group of cfg.risk_cues) pushSignal(risks, group.id, group.label, firstMatch(chunks, group.cues));
+  for (const group of cfg.risk_cues) pushSignal(risks, group.id, group.label, firstSubstantiveMatch(chunks, group.cues));
   // The economic buyer being unestablished is a real risk even without a cue.
   const ebStatus = params.result.meddpicc?.economic_buyer?.status;
   if ((ebStatus === "MISSING" || ebStatus === "DISTRIBUTED") && !risks.some((r) => r.id === "no_single_eb")) {

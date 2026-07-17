@@ -39,6 +39,18 @@ describe("Decision Packet (additive analytical layer)", () => {
     }
   });
 
+  it("only surfaces substantive, complete quotes — no context-free fragments", async () => {
+    const result = await run();
+    const packet = result.decision_packet!;
+    const statements = [...packet.decision_criteria.map((c) => c.statement), ...packet.objections.map((o) => o.statement)];
+    for (const s of statements) {
+      expect(s.split(/\s+/).filter(Boolean).length).toBeGreaterThanOrEqual(4);
+    }
+    for (const fragment of ["So not zero.", "Then skills.", "Also internal politics.", "There are diagrams."]) {
+      expect(statements).not.toContain(fragment);
+    }
+  });
+
   it("types objections and attaches a generic (non-fabricated) response framing", async () => {
     const result = await run();
     const packet = result.decision_packet!;

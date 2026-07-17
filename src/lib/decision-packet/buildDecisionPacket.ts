@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { IngestedTranscript, SecureNetworkingTriageResult, TranscriptChunk } from "@/lib/signal-agent/types";
 import { selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { qualitativeImpactSentences } from "@/lib/signal-agent/intentExtraction";
+import { refineEvidenceItems } from "@/lib/signal-agent/evidenceQuality";
 import { buildWorkshopPlan } from "@/lib/decision-packet/workshopPlan";
 import type { DecisionCriterion, DecisionPacket, ImpactEntry, ObjectionEntry, ObjectionType, WorkshopPlan } from "@/lib/decision-packet/types";
 
@@ -173,8 +174,18 @@ export function buildDecisionPacket(params: {
   const taxonomy = loadTaxonomy();
   const chunks = selectRelevantChunks(params.transcript);
 
-  const decision_criteria = extractDecisionCriteria(chunks, taxonomy);
-  const objections = extractObjections(params.result, chunks, taxonomy);
+  // Refine so every surfaced quote is a complete, substantive, de-duplicated
+  // statement (no context-free fragments like "So not zero." / "Then skills.").
+  const decision_criteria = refineEvidenceItems(extractDecisionCriteria(chunks, taxonomy), {
+    text: (c) => c.statement,
+    category: (c) => c.category,
+    cap: 4
+  });
+  const objections = refineEvidenceItems(extractObjections(params.result, chunks, taxonomy), {
+    text: (o) => o.statement,
+    category: (o) => o.type,
+    cap: 3
+  });
   const business_impact = extractBusinessImpact(params.result, params.transcript);
   const workshop_plan = buildWorkshopPlan(params.result, chunks);
 
