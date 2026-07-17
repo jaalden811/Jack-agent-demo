@@ -7,6 +7,7 @@ import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
+import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
 import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
@@ -320,6 +321,20 @@ describe("timing driver honesty & procurement classification (deal-intel via run
     expect(di.timing!.is_procurement).toBe(true);
   });
 
+  it("does not treat the modal 'may' or a hedged/retention duration as a timing date", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rachel — Vendor, Account Executive",
+      "Rachel: A possible path is to validate the platform.",
+      "Dana — Customer, Director of Operations",
+      "Dana: We run operations here. Some project records may need to exist for years, other information only for ninety days. It may be a deadline becoming harder to meet, but there is no set date."
+    ].join("\n");
+    const di = (await runSignalAgent({ customTranscript: transcript })).deal_intelligence!;
+    // "may need", "for years/ninety days", and "it may be" are not timing drivers.
+    expect(di.timing).toBeNull();
+  });
+
   it("never surfaces a negated deadline ('it is not a procurement deadline') as why-now", async () => {
     clearCatalogCache();
     clearAccountsCache();
@@ -366,6 +381,51 @@ describe("account plausibility & explicit operating-entity declarations", () => 
     const names = candidates.map((c) => c.name);
     expect(names).toContain("PineRiver Water & Power");
     expect(candidates.find((c) => c.name === "PineRiver Water & Power")!.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+});
+
+describe("delivered message anchors to the canonical Next Best Action", () => {
+  it("Stage D recommended action is the NBA title, not a generic MEDDPICC-gap action", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rachel — Vendor, Account Executive",
+      "Rachel: I cover Beacon Freight for our company. A possible path is to validate the platform.",
+      "Dana — Customer, Director of Reliability",
+      "Dana: I run reliability at Beacon Freight. During the last staged failure it took us 47 minutes to isolate the bad dependency. I'd like a scenario-design working session next week to scope a proof of value."
+    ].join("\n");
+    const result = await runSignalAgent({ customTranscript: transcript });
+    const nba = result.next_best_action;
+    if (nba && nba.action_type !== "suppress" && nba.action_type !== "hold" && nba.title) {
+      const stageC = {
+        opportunity_thesis: "", do_not_reask: [], next_best_action: { success_criteria: [], timing_basis: "" },
+        commercial_handoff: { remaining_questions: [] }, technical_handoff: { remaining_questions: [] }
+      } as never;
+      const input = buildStageDInput(result, stageC);
+      expect(input.deterministic.sales_webex).toContain(nba.title);
+      expect(input.deterministic.technical_webex).toContain(nba.title);
+      // And never leads with a hedged/impact "why now".
+      expect(input.deterministic.sales_webex.toLowerCase()).not.toContain("it may be");
+    }
+  });
+});
+
+describe("speaker side — a vendor SE who pitches product capabilities", () => {
+  it("classifies product-capability pitches as vendor, but a customer describing their own environment stays customer", () => {
+    const se = inferSpeakerSide([
+      "Splunk can derive relationships from telemetry rather than relying on manual mapping.",
+      "Federated search and integrations can query data across environments.",
+      "ES provides security detections, investigations, and risk-based alerting.",
+      "They can share a data foundation while maintaining separate access."
+    ]);
+    expect(se.side).toBe("vendor");
+
+    const customer = inferSpeakerSide([
+      "Our environment is decentralized and we run several monitoring tools.",
+      "We need to correlate incidents faster; our team spends hours pivoting between tools.",
+      "Our budget for this sits with the resilience program."
+    ]);
+    expect(customer.side).toBe("customer");
   });
 });
 

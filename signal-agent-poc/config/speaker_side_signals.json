@@ -38,7 +38,14 @@
     { "pattern": "\\b(specialist|engineer|architect|consultant|rep|overlay) supporting\\b", "weight": 2 },
     { "pattern": "\\b(another|one|a second|a third|the other) (option|approach|path|possibility) (could|would|might) be\\b", "weight": 2 },
     { "pattern": "\\b(recipient list|follow[- ]up sequence|nurture sequence|outreach sequence|generic follow[- ]up sequence)\\b", "weight": 2 },
-    { "pattern": "\\b(product deck|price book|commercial model|pov plan|proof[- ]of[- ]value plan|joint pov plan)\\b", "weight": 1.5 }
+    { "pattern": "\\b(product deck|price book|commercial model|pov plan|proof[- ]of[- ]value plan|joint pov plan)\\b", "weight": 1.5 },
+    { "pattern": "\\bcan (derive|correlate|model|automate|enrich|ingest|unify|consolidate|normalize|orchestrate|surface|instrument)\\b", "weight": 2 },
+    { "pattern": "\\bquery (data )?across (environments|domains|sources|systems|tools)\\b", "weight": 1.5 },
+    { "pattern": "\\bprovides?\\b[\\w\\s]{0,25}(detections?|investigations?|risk[- ]based alerting|security content|correlation|analytics)\\b", "weight": 1.5 },
+    { "pattern": "\\breduce (dependence|reliance) on\\b", "weight": 1.5 },
+    { "pattern": "\\bshare a (common |single |unified )?data (foundation|layer|platform|fabric|store)\\b", "weight": 2 },
+    { "pattern": "\\bsupports (different|multiple|various|both) (storage|search|deployment|data|ingestion)\\b", "weight": 1.5 },
+    { "pattern": "\\bdoesn'?t have to be (uniform|perfect|complete)\\b", "weight": 1.5 }
   ],
   "customer_indicators": [
     { "pattern": "\\bour (environment|team|org|organization|company|infrastructure|stack|estate|business|systems?)\\b", "weight": 2 },

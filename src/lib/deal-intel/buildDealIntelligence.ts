@@ -102,6 +102,8 @@ const DECISION_BOUNDARY_RE = /\b(freeze|memo|committee|review closes|closes|revi
 // A sentence that NEGATES a deadline/date ("not a procurement deadline", "no
 // hard deadline", "not a purchase date") — the opposite of a reason to act now.
 const NEGATED_TIMING_RE = /\b(?:not|isn'?t|no)\s+(?:a\s+|an\s+|the\s+)?(?:hard\s+|firm\s+|real\s+|procurement\s+|purchase\s+|buying\s+|close\s+|commercial\s+|sign(?:ing|ature)?\s+)*(?:deadline|close date|purchase date|buying date)\b/i;
+// A hedged / hypothetical statement — speculative impact, not a concrete driver.
+const HEDGED_TIMING_RE = /\b(?:it may be|may be|might be|could be|would be|may become|might become|becoming harder|harder to meet|perhaps|possibly|hypothetically)\b/i;
 
 /** Extracts the honest timing driver: the decision-relevant deadline, and
  * whether it is real procurement timing or only a decision/planning boundary.
@@ -110,7 +112,20 @@ const NEGATED_TIMING_RE = /\b(?:not|isn'?t|no)\s+(?:a\s+|an\s+|the\s+)?(?:hard\s
 function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealIntelligence["timing"] {
   const tc = cfg.timing_cues;
   if (!tc) return null;
-  const monthRe = new RegExp(`\\b(${tc.months.join("|")})\\b`, "i");
+  // A month counts as a DATE only when it is part of an actual date — adjacent to
+  // a day number ("September 2", "18 August") or a date preposition ("in
+  // September", "by October"). This prevents the ambiguous month words "may" and
+  // "march" from matching the modal verb ("records that may need to exist") or the
+  // action ("march toward"), which would fabricate a timing driver.
+  const months = tc.months.join("|");
+  // A day is a digit (optionally ordinal) OR a spelled-out ordinal word.
+  const ordinalWord =
+    "first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[- ](?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirtieth|thirty[- ]first";
+  const day = `(?:\\d{1,2}(?:st|nd|rd|th)?|${ordinalWord})`;
+  const monthRe = new RegExp(
+    `\\b(?:${months})\\b\\.?\\s+${day}\\b|\\b${day}\\s+(?:of\\s+)?(?:${months})\\b|\\b(?:in|by|on|before|after|during|early|late|mid|end of|through|until)\\s+(?:${months})\\b`,
+    "i"
+  );
   const lockedIn = tc.locked_in_markers ?? [];
   let best: { chunk: TranscriptChunk; score: number } | null = null;
   for (const chunk of chunks) {
@@ -124,6 +139,10 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
     // never become the "why now" label. (Distinct from "the deadline is not until
     // September", which affirms a September deadline.)
     if (NEGATED_TIMING_RE.test(lower)) continue;
+    // A HEDGED / hypothetical statement ("it may be ... a deadline becoming
+    // harder to meet", "could be", "might become") is a speculative business
+    // impact, not a concrete timing driver — never manufacture urgency from it.
+    if (HEDGED_TIMING_RE.test(lower)) continue;
     const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
     const hasDate = monthRe.test(lower);
     if (!hasDeadlineWord && !hasDate) continue;

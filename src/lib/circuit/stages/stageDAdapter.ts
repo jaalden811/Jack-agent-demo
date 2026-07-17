@@ -49,11 +49,21 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const successCriteria = (stageC.next_best_action?.success_criteria ?? []).filter(Boolean);
   const successText = successCriteria.length > 0 ? successCriteria.join("; ") : null;
 
+  // The delivered message's recommended action MUST be the one canonical Next
+  // Best Action (what the UI shows as "Recommended next action"), not a generic
+  // MEDDPICC-gap action — otherwise the message contradicts the analysis. Both
+  // lanes lead with the shared next step; each lane's own gap-actions follow as
+  // supporting context. Null only when the run is suppress/hold (no action).
+  const nba = result.next_best_action;
+  const nbaTitle = nba && nba.action_type !== "suppress" && nba.action_type !== "hold" ? (nba.title?.trim() || null) : null;
+  const salesActions = nbaTitle ? [nbaTitle, ...detBrief.sales_actions.filter((a) => a !== nbaTitle)] : detBrief.sales_actions;
+  const technicalActions = nbaTitle ? [nbaTitle, ...detBrief.technical_actions.filter((a) => a !== nbaTitle)] : detBrief.technical_actions;
+
   const sales_lane: StageDLane = {
     role_label: SALES_ROLE_LABEL,
     why_selected: `You own the commercial lane for ${accountLabel}: qualification, buying-committee engagement, and the commercial next step.`,
     collaborator: `${TECHNICAL_ROLE_LABEL} (paired technical lane)`,
-    actions: detBrief.sales_actions,
+    actions: salesActions,
     remaining_questions: stageC.commercial_handoff.remaining_questions,
     expected_output: successText ? `A commercial outcome: ${successText}.` : "A qualified commercial next step (confirmed budget owner + booked follow-up)."
   };
@@ -62,7 +72,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     role_label: TECHNICAL_ROLE_LABEL,
     why_selected: `You own the technical lane for ${accountLabel}: architecture fit, current environment, and proof-of-value.`,
     collaborator: `${SALES_ROLE_LABEL} (paired commercial lane)`,
-    actions: detBrief.technical_actions,
+    actions: technicalActions,
     remaining_questions: stageC.technical_handoff.remaining_questions,
     expected_output: successText ? `A technical outcome: ${successText}.` : "A scoped technical validation (architecture workshop / POV with explicit success criteria)."
   };
@@ -95,7 +105,19 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   // the delivery quality gate rejects it and the trusted message builder is used.
   // Prefer the honest timing driver (decision boundary vs procurement) over a
   // generic urgency clause for "why now".
-  const whyNow = firstMeaningful([di?.timing?.label ?? null, ...brief.why_now, timing]) ?? "The customer asked for a concrete next step.";
+  // "Why now" = a concrete timing driver, else the fact that the customer asked
+  // for a next step — never a raw business-impact / data-retention quote ("it may
+  // be ... a deadline becoming harder to meet", "information needed for ninety
+  // days"), which reads as manufactured urgency. Impact belongs in the metric /
+  // value hypothesis, not "why now".
+  const HEDGED = /\b(?:it may be|may be|might be|could be|would be|may need|becoming harder|harder to meet|perhaps|possibly)\b/i;
+  const hasRequestedStep = (di?.momentum ?? []).some((m) => m.id === "requested_next_step");
+  const whyNow =
+    di?.timing?.label && !HEDGED.test(di.timing.label)
+      ? di.timing.label
+      : hasRequestedStep
+        ? "The customer asked for a concrete next step — engage while the conversation is warm."
+        : "Early-stage discovery — engage while the conversation is warm to shape the evaluation.";
   const salesAction = firstMeaningful(sales_lane.actions) ?? "Confirm the next commercial step and owner with the customer.";
   const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
 
