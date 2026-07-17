@@ -52,10 +52,29 @@ const TECHNICAL_EVALUATOR_PATTERNS = [/\b(integration|architecture|data flows?|t
 // "I am not authorizing a purchase"). So the "authorize/approve" verbs must
 // have a spend/budget/purchase/contract object.
 const MONEY_OBJECT = "(the )?(spend|spending|budget|funding|purchase|deal|contract|licen[cs]e|payment|investment|money|cost)";
+// A single confirmed economic buyer asserts their OWN authority, in the first
+// person, POSITIVELY. Committee/finance/board approval is DISTRIBUTED authority
+// (handled below), and a NEGATED statement ("I did not approve a purchase",
+// "not approve purchase") is the opposite of authority — see the negation guard.
 const ECONOMIC_AUTHORITY_PATTERNS = [
-  new RegExp(`\\b(controls? the budget|owns? the budget|budget owner|final (budget )?decision sits with|hold(s)? (final )?(budget|approval|spend) authority|we can fund|i can fund|i control the spend)\\b`, "i"),
-  new RegExp(`\\b(i can authorize|i can approve|i approve|we approve|approves?|authorize[sd]?) [\\w\\s]{0,20}${MONEY_OBJECT}\\b`, "i")
+  new RegExp(`\\b(i control the budget|i own the budget|i am the (economic )?buyer|final (budget )?decision sits with me|i hold (final )?(budget|approval|spend) authority|i can fund (it|this|that))\\b`, "i"),
+  new RegExp(`\\bi (?:can |will |personally )?(approve|authorize|sign off on|release)\\b[\\w\\s]{0,15}${MONEY_OBJECT}\\b`, "i")
 ];
+// Negation / disclaimer of authority — a sentence carrying one of these is NOT
+// an authority claim even if it lexically contains "approve … budget".
+const NEGATED_AUTHORITY_RE = /\b(not|n['’]t|no one|nobody|cannot|can['’]?t|do not|does not|did not|didn['’]?t|won['’]?t|will not|without|has not|have not|is not|are not|not permission|not authorized)\b/i;
+
+/** Counts POSITIVE first-person economic-authority claims, per sentence, so a
+ * negated/disclaimed statement never confirms an economic buyer. */
+function economicAuthorityHits(text: string): { hits: number; evidence: string[] } {
+  const evidence: string[] = [];
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    if (!ECONOMIC_AUTHORITY_PATTERNS.some((p) => p.test(sentence))) continue;
+    if (NEGATED_AUTHORITY_RE.test(sentence)) continue;
+    evidence.push(sentence.length > 160 ? `${sentence.slice(0, 159)}…` : sentence);
+  }
+  return { hits: evidence.length, evidence };
+}
 const CHAMPION_PATTERNS = [/\b(i (own|lead)|we (want|need) to fix|let'?s (do|build|run)|i(?:'ll| will) (bring|coordinate|pull together)|i(?:'d| would) like (a|to))\b/i];
 
 // Distributed-authority cues: multiple spending paths / no single approver /
@@ -102,7 +121,7 @@ export function inferAuthorityGraph(params: { stakeholderTurns: Array<{ name: st
 
   for (const [name, texts] of byName) {
     const joined = texts.join(" ");
-    const economic = countMatches(joined, ECONOMIC_AUTHORITY_PATTERNS);
+    const economic = economicAuthorityHits(joined);
     const process = countMatches(joined, DECISION_PROCESS_PATTERNS);
     const security = countMatches(joined, SECURITY_GATEKEEPER_PATTERNS);
     const technical = countMatches(joined, TECHNICAL_EVALUATOR_PATTERNS);

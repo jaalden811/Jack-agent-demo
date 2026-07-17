@@ -154,6 +154,35 @@ describe("committee / distributed economic authority (authorityGraph)", () => {
     const g2 = inferAuthorityGraph({ stakeholderTurns: spend, allCustomerText: spend.map((t) => t.text) });
     expect(g2.economic_authority.status).toBe("confirmed");
   });
+
+  it("a NEGATED authority statement never confirms an economic buyer", () => {
+    // "did not approve a purchase" / "not approve purchase" is the OPPOSITE of
+    // authority — must not be counted as an economic-buyer signal.
+    for (const text of ["It did not approve a purchase.", "The review can recommend discovery, not approve purchase.", "No one on this call can award the budget alone."]) {
+      const g = inferAuthorityGraph({ stakeholderTurns: [{ name: "Nessa", text }], allCustomerText: [text] });
+      expect(g.roles.some((r) => r.role_type === "economic_buyer" && r.status === "confirmed")).toBe(false);
+    }
+  });
+});
+
+describe("account signals: customer employer, explicit declaration, artifact/numbered speakers", () => {
+  it("captures the account from a customer stating their employer and from an explicit declaration", () => {
+    const employer = extractDialogueAccountCandidates(["I lead cyber operations for Stonepine."]).map((c) => c.name);
+    expect(employer).toContain("Stonepine");
+    // Explicit "X is the account" is the strongest dialogue signal (high confidence).
+    const explicit = extractDialogueAccountCandidates(["For clarity, Meridian Shield Insurance is the account."]);
+    const decl = explicit.find((c) => c.name === "Meridian Shield Insurance");
+    expect(decl).toBeTruthy();
+    expect(decl!.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("rejects document-artifact labels but allows anonymized numbered speakers", () => {
+    expect(isPlausibleSpeakerName("Action appendix")).toBe(false);
+    expect(isPlausibleSpeakerName("QBR appendix")).toBe(false);
+    expect(isPlausibleSpeakerName("Participant 4")).toBe(true);
+    expect(isPlausibleSpeakerName("Speaker 1")).toBe(true);
+    expect(isPlausibleSpeakerName("Mara Chen")).toBe(true);
+  });
 });
 
 describe("inline 'Name — Org:' parsing and bot/system accounts (parser)", () => {

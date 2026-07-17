@@ -92,8 +92,8 @@ const NAME_PARTICLES = new Set([
  * regexes (which require a padded em/en dash, never a bare mid-word
  * hyphen) are the primary defense; this is a second, independent one. */
 /** Splits an inline speaker segment into the person's name and the trailing
- * " — <Org/Title>" descriptor (em/en dash or " - "). "Laila Chen — NovaWave VP"
- * → { name: "Laila Chen", descriptor: "NovaWave VP" }. A plain name yields a
+ * " — <Org/Title>" descriptor (em/en dash or " - "). "Dana Lee — Acme VP"
+ * → { name: "Dana Lee", descriptor: "Acme VP" }. A plain name yields a
  * null descriptor. */
 export function splitSpeakerAndDescriptor(raw: string): { name: string; descriptor: string | null } {
   const parts = raw.split(/\s+[—–]\s+|\s+-\s+/);
@@ -156,6 +156,12 @@ export function isPlausibleSpeakerName(candidate: string): boolean {
   const trimmed = candidate.trim();
   if (trimmed.length < 1 || trimmed.length > 80) return false;
   if (BOT_ACCOUNT_RE.test(trimmed) || SYSTEM_ACCOUNT_WORDS.has(trimmed.toLowerCase())) return false;
+  // Document-artifact / section-header labels are never people ("Action
+  // appendix", "QBR appendix", "Addendum", "Attachment").
+  if (/\b(appendix|appended|addendum|annex|attachment|minutes)\b/i.test(trimmed)) return false;
+  // Anonymized numbered-speaker labels are legitimate speakers ("Participant 4",
+  // "Speaker 1", "Attendee 2") — allowed despite the trailing digit.
+  if (/^(participant|speaker|attendee|caller|panelist|panel|voice|person)\s*\d{1,3}$/i.test(trimmed)) return true;
   if (!/^[A-Za-z][A-Za-z\s'.-]*$/.test(trimmed)) return false;
   if (trimmed.includes("--") || trimmed.startsWith("-") || trimmed.endsWith("-")) return false;
   const words = trimmed.split(/\s+/).filter(Boolean);

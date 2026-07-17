@@ -35,7 +35,20 @@ const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
   // the token after "cover" is the vendor/product, not the account, so it is
   // correctly skipped).
   new RegExp(`\\b[Ii] (?:cover|look after|handle|carry)\\s+${NAME_CAPTURE}\\s+for\\b`, "g"),
-  new RegExp(`\\baccount (?:executive|manager|owner|lead|director)\\s+for\\s+${NAME_CAPTURE}`, "g")
+  new RegExp(`\\baccount (?:executive|manager|owner|lead|director)\\s+for\\s+${NAME_CAPTURE}`, "g"),
+  // A customer stating their own employer ("I lead cyber operations for Acme",
+  // "I work at Acme Retail") — the org after for/at is the account.
+  new RegExp(`\\b[Ii] (?:lead|run|manage|head|oversee|direct|work in|work at|work for)\\s+[\\w\\s,'&.-]{2,45}?\\s(?:for|at)\\s+${NAME_CAPTURE}`, "g")
+];
+
+// Explicit canonical-account declarations — the strongest dialogue signal
+// ("Acme Retail is the account", "the account is Acme Retail", "canonical
+// scope … is Acme Retail"). Confident enough to override a parent-company or
+// partial candidate.
+const EXPLICIT_ACCOUNT_PATTERNS: RegExp[] = [
+  new RegExp(`${NAME_CAPTURE}\\s+is\\s+(?:the|our)\\s+(?:canonical\\s+|scoped\\s+)?account\\b`, "g"),
+  new RegExp(`\\bthe\\s+(?:canonical\\s+|scoped\\s+)?account\\s+(?:is|should be)\\s+${NAME_CAPTURE}`, "g"),
+  new RegExp(`\\bcanonical\\s+(?:account|scope)[\\w\\s]{0,25}?\\bis\\s+${NAME_CAPTURE}`, "g")
 ];
 
 const DOMAIN_MENTION_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|co|health|biz))\b/gi;
@@ -44,25 +57,29 @@ export function extractDialogueAccountCandidates(dialogueText: string[]): Dialog
   const candidates: DialogueAccountCandidate[] = [];
   const seen = new Set<string>();
 
-  for (const sentence of dialogueText) {
-    for (const pattern of COMPANY_INTRODUCTION_PATTERNS) {
-      for (const match of sentence.matchAll(pattern)) {
-        const raw = match[1]?.trim();
-        if (!raw) continue;
-        const validation = validateAccountCandidateName(raw);
-        if (!validation.valid) continue;
-        const key = raw.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        // Explicit company self-identification / coverage framing is a
-        // reliable account signal — enough to reach "probable" on its own
-        // (0.7 floor), so a transcript that names its account only in
-        // dialogue is not discarded as unresolved. It still requires
-        // corroboration to reach "confirmed".
-        candidates.push({ name: raw, evidence_text: sentence, confidence: 0.72 });
+  const collect = (patterns: RegExp[], confidence: number) => {
+    for (const sentence of dialogueText) {
+      for (const pattern of patterns) {
+        for (const match of sentence.matchAll(pattern)) {
+          // Strip trailing sentence punctuation the capture may include
+          // ("Acme." → "Acme"); internal dots (St. Jude) are kept.
+          const raw = match[1]?.trim().replace(/[.,;:]+$/, "").trim();
+          if (!raw) continue;
+          const validation = validateAccountCandidateName(raw);
+          if (!validation.valid) continue;
+          const key = raw.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          candidates.push({ name: raw, evidence_text: sentence, confidence });
+        }
       }
     }
-  }
+  };
+
+  // Explicit declarations first (highest confidence, override parent/partial),
+  // then self-identification / coverage framing (probable on its own).
+  collect(EXPLICIT_ACCOUNT_PATTERNS, 0.92);
+  collect(COMPANY_INTRODUCTION_PATTERNS, 0.72);
 
   return candidates;
 }
