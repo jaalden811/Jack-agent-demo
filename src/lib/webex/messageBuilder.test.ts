@@ -113,7 +113,20 @@ function buildResult(): SecureNetworkingTriageResult {
     serpapi_signals: buildDefaultSerpApiSignals(),
     opportunity_scoring: buildDefaultOpportunityScoring(),
     buying_committee: { roles: [], economic_authority: { status: "missing", named_person: null, role_candidates: [], approval_paths: [], confidence: 0, known: [], gaps: [], next_question: "" } },
-    ...emptyActionAndHandoffFields("run-1")
+    ...emptyActionAndHandoffFields("run-1"),
+    // A HIGH_INTENT run has an ACTIVE next best action (not the empty "hold"
+    // default) — so the message builder exercises the pursue path.
+    next_best_action: {
+      ...emptyActionAndHandoffFields("run-1").next_best_action,
+      action_type: "architecture_workshop",
+      title: "Run a scenario-design workshop for Acme Retail",
+      summary: "Run a 90-minute scenario-design workshop to validate the fragmented-network-operations motion.",
+      owner_lane: "technical",
+      primary_owner: "Jack Alden",
+      recommended_timing: "this quarter",
+      why_now: ["Architecture decision needed this quarter."],
+      success_criteria: ["Agreed success criteria for the first scenario"]
+    }
   };
 }
 
@@ -256,6 +269,34 @@ describe("Webex message templates", () => {
     expect(salesMessage.markdown).toContain("Pursuit:");
     expect(salesMessage.markdown).toContain("PURSUE_WITH_DISCOVERY");
     expect(salesMessage.markdown).toContain("78/100");
+  });
+
+  it("a NOISE/suppress result produces an honest 'no action' message (not a pursue nudge) with the customer's boundary", () => {
+    const result = buildResult();
+    result.executive_summary.verdict = "NOISE";
+    result.next_best_action = {
+      ...result.next_best_action,
+      action_type: "suppress",
+      title: "Suppress — no internal action",
+      summary: "The transcript did not produce a qualified opportunity signal; no specialist action is recommended.",
+      owner_lane: "shared"
+    };
+    result.decision_packet = {
+      ...(result.decision_packet ?? ({} as NonNullable<typeof result.decision_packet>)),
+      objections: [
+        { objection_id: "ob_1", type: "disqualifier", label: "Not a buying motion / out of scope", statement: "We are not evaluating replacements or a new analytics layer.", speaker: "Dana", suggested_response: "Respect the boundary.", evidence_ids: ["ev_1"] }
+      ]
+    } as NonNullable<typeof result.decision_packet>;
+    const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
+    expect(sales.markdown).toContain("no action recommended");
+    expect(sales.markdown).toContain("not a qualified sales opportunity");
+    expect(sales.markdown).toContain("We are not evaluating replacements");
+    // Never a fabricated pursue nudge.
+    expect(sales.markdown).not.toContain("**Why you:**");
+    expect(sales.markdown).not.toContain("Pursuit:");
+    const tech = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
+    expect(tech.markdown).toContain("no action recommended");
+    expect(tech.markdown).not.toContain("**Recommended action:** Run");
   });
 
   it("Phase 3: uses the canonical resolved account name (never 'Unknown'/'Not resolved') when resolution is probable/confirmed", () => {

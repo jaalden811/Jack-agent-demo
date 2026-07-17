@@ -25,7 +25,8 @@
     { "id": "commercial", "label": "Commercial / cost", "cues": ["too expensive", "licensing cost", "overlapping tools", "pay for two", "cost governance later", "increase the licensing"] },
     { "id": "technical", "label": "Technical / feasibility", "cues": ["won't be uniform", "not be uniform", "instrumentation", "stays accurate", "depends on the source", "not zero", "how much is manual", "become fiction"] },
     { "id": "scope", "label": "Scope / boundaries", "cues": ["rip-and-replace", "rip and replace", "too broad", "so generalized", "everyone sees everything", "surrender control", "expensive explanation"] },
-    { "id": "political", "label": "Organizational / adoption", "cues": ["internal politics", "decentralized", "surrender control", "declaring a new enterprise view", "trust one system", "adoption"] }
+    { "id": "political", "label": "Organizational / adoption", "cues": ["internal politics", "decentralized", "surrender control", "declaring a new enterprise view", "trust one system", "adoption"] },
+    { "id": "disqualifier", "label": "Not a buying motion / out of scope", "cues": ["we are not evaluating", "not evaluating replacements", "not evaluating a", "not a project", "not in scope", "keep sales discovery out", "keep sales out", "no sales discovery", "not a sales", "do not pitch", "do not put", "did not commit", "have not committed", "not committing", "did not agree", "have not agreed", "never agreed", "not agreeing", "was agreed", "informational only", "support only", "not a purchase", "not interested", "no buying motion", "not a buying", "this is not approval", "not authorizing a purchase", "not authorizing a", "capability question", "not a current requirement", "not a proof of value", "not a pov", "we are not buying", "not buying it", "not sponsor or buyer", "do not create an opportunity", "not product selection", "not a requirement or product"] }
   ],
   "objection_responses": {
     "trust": "Acknowledge the credibility concern directly and plan to demonstrate it with the customer's own evidence and explicit confidence / data-gap reporting in the working session — never counter with unproven claims.",
@@ -33,6 +34,7 @@
     "technical": "Scope a bounded, credible test on one representative environment rather than promising uniform coverage; validate feasibility with real telemetry.",
     "scope": "Reaffirm the boundaries the customer set (no rip-and-replace; preserve specialist tools and systems of record) and frame the work within those constraints.",
     "political": "Respect the operating model the customer described (decentralized ownership, existing authoritative systems) and design for shared visibility without central control.",
+    "disqualifier": "Respect the stated boundary — this is not a qualified buying motion. Do not pursue a sales next step; resolve the actual (support or informational) request through the correct channel.",
     "general": "Acknowledge the concern and commit to addressing it with evidence during the agreed working session; do not overpromise."
   },
   "limitations": [

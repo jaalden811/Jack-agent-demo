@@ -19,7 +19,7 @@ export type DecisionCriterion = {
   evidence_ids: string[];
 };
 
-export type ObjectionType = "trust" | "commercial" | "technical" | "scope" | "political" | "general";
+export type ObjectionType = "trust" | "commercial" | "technical" | "scope" | "political" | "disqualifier" | "general";
 
 export type ObjectionEntry = {
   objection_id: string;

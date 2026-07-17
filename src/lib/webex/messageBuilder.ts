@@ -149,6 +149,56 @@ function whyNowEvidence(result: SecureNetworkingTriageResult): string {
 
 // ─── Webex direct messages ──────────────────────────────────────────────────
 
+/** Honest message for a NOISE/suppress or HOLD result — the deterministic
+ * engine found no qualified opportunity (or not enough signal), so the message
+ * must say exactly that, never a fabricated "why you / recommended action /
+ * champion / pursuit" nudge that would send the seller chasing a support case,
+ * a trap, or a low-signal mention. */
+function buildNoActionMessage(params: {
+  result: SecureNetworkingTriageResult;
+  decision: LaneRoutingDecision;
+  lane: "sales" | "technical";
+  runId: string;
+  analysisLink: AnalysisLink;
+}): WebexMessagePreview {
+  const { result, decision, lane, runId, analysisLink } = params;
+  const summary = result.executive_summary;
+  const nba = result.next_best_action;
+  const acct = getCanonicalAccount(result).name ?? "the account";
+  const isSuppress = nba?.action_type === "suppress";
+  const reason = firstMeaningful([nba?.summary, summary.business_problem]) ?? "No qualified opportunity signal was found in this conversation.";
+  // Prefer the customer's own disqualifying boundary ("we are not evaluating…",
+  // "keep sales out…") — the most honest, specific reason not to pursue.
+  const objections = result.decision_packet?.objections ?? [];
+  const boundary = (objections.find((o) => o.type === "disqualifier") ?? objections[0])?.statement ?? null;
+  const action = isSuppress
+    ? lane === "sales"
+      ? "No sales outreach — this is not a qualified sales opportunity."
+      : "No technical action — no workshop or validation is warranted."
+    : "Monitor only — revisit if a clearer buying signal appears; do not push a next step yet.";
+  const markdown = composeToByteBudget(
+    [
+      { text: `**${summary.verdict.replace(/_/g, " ")} · ${acct}** — ${lane}: no action recommended` },
+      { text: `**Assessment:** ${clipAtWord(nba?.title ?? (isSuppress ? "No internal action" : "Hold — insufficient signal"), 140)}` },
+      { text: `**Why:** ${clipAtWord(reason, 240)}` },
+      { text: `**Recommended action:** ${action}` },
+      { text: boundary ? `**Customer boundary:** "${clipAtWord(boundary, 180)}"` : null },
+      { text: "" },
+      { text: analysisLinkMarkdown(analysisLink, runId) }
+    ],
+    MAX_MESSAGE_BYTES
+  );
+  return {
+    lane,
+    recipient_name: decision.recipient_name,
+    recipient_email: decision.recipient_email,
+    subject: `${lane === "sales" ? "Sales" : "Technical"} — ${summary.verdict} — ${acct} — no action`,
+    markdown,
+    character_count: markdown.length,
+    synthesized_by_ai: false
+  };
+}
+
 export function buildSalesMessage(params: {
   result: SecureNetworkingTriageResult;
   decision: LaneRoutingDecision;
@@ -159,6 +209,10 @@ export function buildSalesMessage(params: {
   const summary = result.executive_summary;
   const account = getCanonicalAccount(result);
   const nba = result.next_best_action;
+  // A NOISE/suppress or HOLD result must never be dressed up as a pursue nudge.
+  if (nba && (nba.action_type === "suppress" || nba.action_type === "hold")) {
+    return buildNoActionMessage({ result, decision, lane: "sales", runId, analysisLink });
+  }
 
   // Concise, action-first commercial nudge. The full MEDDPICC / stakeholders /
   // do-not-re-ask detail lives in the app (Decision Packet + Specialist
@@ -170,7 +224,9 @@ export function buildSalesMessage(params: {
   // step, then generic urgency.
   const whyNow = firstMeaningful([di?.timing?.label ?? null, ...(nba?.why_now ?? []), summary.urgency]) ?? "The customer asked for a concrete next step.";
   const action = actionLine(result, decision, "sales");
-  const expected = firstMeaningful([...(nba?.success_criteria ?? []), summary.business_impact]) ?? "A documented outcome and an agreed next step.";
+  // Expected OUTCOME — never the raw pain quote (that is the metric/impact, not
+  // an outcome). Use concrete success criteria when present, else a clean goal.
+  const expected = firstMeaningful([...(nba?.success_criteria ?? [])]) ?? "A qualified go/no-go with an agreed owner and next step.";
   // Prefer the distilled headline metric (digits, baseline→target) over a raw
   // impact quote — the crisp number is what makes the recipient act.
   const metricLine = di?.headline_metric ? `**Metric:** ${clipAtWord(di.headline_metric, 120)}` : meaningful(summary.business_impact) ? `**Business impact:** ${clipAtWord(meaningful(summary.business_impact)!, 200)}` : null;
@@ -227,6 +283,9 @@ export function buildTechnicalMessage(params: {
   const primaryMatch = result.matches[0];
   const account = getCanonicalAccount(result);
   const nba = result.next_best_action;
+  if (nba && (nba.action_type === "suppress" || nba.action_type === "hold")) {
+    return buildNoActionMessage({ result, decision, lane: "technical", runId, analysisLink });
+  }
 
   const currentEnvironment = primaryMatch?.solution_decision.retained_existing_platforms.length
     ? primaryMatch.solution_decision.retained_existing_platforms.join(", ")
