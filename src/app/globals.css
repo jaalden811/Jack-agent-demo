@@ -1041,7 +1041,10 @@ button:disabled {
 /* ── Deal intelligence card ─────────────────────────────────────────────── */
 .deal-intel-card { border: 1px solid var(--accent); }
 .deal-intel-headline { font-size: 1.05rem; font-weight: 650; margin: 6px 0 10px; line-height: 1.45; }
-.deal-intel-shape { margin-bottom: 12px; }
+.deal-intel-shape { margin-bottom: 10px; }
+.deal-intel-glance { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.deal-intel-detail > summary { cursor: pointer; font-weight: 600; margin-top: 10px; color: var(--ink); }
+.deal-intel-detail[open] > summary { margin-bottom: 12px; }
 .deal-intel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .deal-intel-grid .meta-label { display: block; margin-bottom: 6px; }
 .deal-intel-value { margin-top: 12px; }

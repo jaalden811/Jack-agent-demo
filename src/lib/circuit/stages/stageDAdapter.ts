@@ -84,7 +84,8 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     deal_momentum: (di?.momentum ?? []).map((m) => m.label),
     deal_watch_outs: (di?.risks ?? []).map((r) => r.label),
     value_hypothesis: di?.value_hypothesis ?? null,
-    champion: championLine
+    champion: championLine,
+    public_context: (di?.public_context ?? []).map((p) => `${p.label} — ${p.evidence}`)
   };
 
   // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
@@ -95,6 +96,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
 
   const dealShapeLine = di?.deal_shape.label ? `**Deal shape:** ${di.deal_shape.label}` : null;
+  const accountIntelLine = di?.public_context[0] ? `**Account intel:** ${di.public_context[0].label}` : null;
   const salesWatch = di?.risks[0]?.label ? `**Watch-out:** ${di.risks[0].label}` : null;
   const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
   const techWatch = techRisk?.label ? `**Watch-out:** ${techRisk.label}` : null;
@@ -107,6 +109,7 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     `**Recommended action:** ${salesAction}`,
     `**Expected outcome:** ${sales_lane.expected_output}`,
     championLine ? `**Champion:** ${championLine}` : null,
+    accountIntelLine,
     salesWatch
   ]
     .filter((l): l is string => l !== null)

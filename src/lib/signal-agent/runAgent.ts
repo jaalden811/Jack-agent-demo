@@ -471,16 +471,6 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     technical: buildSpecialistHandoff({ result, lane: "technical", recipient: actionOwners.technical, action: result.next_best_action, questionIndex: result.question_index })
   };
 
-  // Deal Intelligence — the honest, evidence-cited "is this real, why now, what
-  // could kill it" read. Computed BEFORE Circuit so the message (Stage D +
-  // deterministic) and the handoff can lead with the deal shape / momentum /
-  // landmine. Additive — never changes scores, routing, or evidence identity.
-  try {
-    result.deal_intelligence = buildDealIntelligence({ result, account, transcript });
-  } catch {
-    result.deal_intelligence = null;
-  }
-
   // Resolve the active seller profile once, and build the SAFE recipient
   // personalization context (goals/lane/relevance) so Circuit Stage C/D can
   // prioritize salience + wording for the recipient. The profile is reused
@@ -523,6 +513,18 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     } catch {
       objectiveSearchTrace = null;
     }
+  }
+
+  // Deal Intelligence — the honest, evidence-cited "is this real, why now, what
+  // could kill it" read. Computed AFTER public enrichment so it can fuse the
+  // distilled public research (account scale/strategy) with the transcript,
+  // and BEFORE Circuit so Stage D + the deterministic message + the handoff can
+  // lead with the deal shape / momentum / landmine. Additive — never changes
+  // scores, routing, or evidence identity.
+  try {
+    result.deal_intelligence = buildDealIntelligence({ result, account, transcript });
+  } catch {
+    result.deal_intelligence = null;
   }
 
   // Circuit AI-enhancement: run Stage A→D, then PROMOTE each stage's

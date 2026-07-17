@@ -165,6 +165,9 @@ export function buildSalesMessage(params: {
   const watchOutLine = di && di.risks[0] ? `**Watch-out:** ${clipAtWord(di.risks[0].label, 160)}` : null;
   const champion = di?.power_map.find((p) => p.role_id === "business_champion");
   const championLine = champion ? `**Champion:** ${champion.name} — ${clipAtWord(champion.play, 160)}` : null;
+  // Distilled public research (when it surfaced) — one punchy account fact.
+  const publicIntel = di?.public_context[0];
+  const accountIntelLine = publicIntel ? `**Account intel:** ${clipAtWord(publicIntel.label, 170)}` : null;
 
   const markdown = composeToByteBudget(
     [
@@ -175,6 +178,7 @@ export function buildSalesMessage(params: {
       { text: `**Recommended action:** ${clipAtWord(action, 320)}` },
       { text: `**Expected outcome:** ${clipAtWord(expected, 200)}` },
       { text: championLine },
+      { text: accountIntelLine },
       { text: watchOutLine },
       { text: pursuitLine },
       { text: impact ? `**Business impact:** ${clipAtWord(impact, 200)}` : null },

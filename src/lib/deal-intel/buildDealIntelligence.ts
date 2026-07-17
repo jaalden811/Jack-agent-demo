@@ -192,6 +192,15 @@ export function buildDealIntelligence(params: {
     risks.push({ id: "no_single_eb", label: "No single economic buyer identified yet", evidence: params.result.meddpicc?.economic_buyer?.summary ?? "The economic buyer is not yet established.", speaker: null });
   }
 
+  // ── Public context (distilled SerpAPI research) ───────────────────────────
+  // Take advantage of the environment: when public research surfaced narrative-
+  // eligible facts (account scale, strategic priorities), distill the strongest
+  // few with their source. Context/narrative only — never scoring-eligible.
+  const public_context: DealSignal[] = (params.result.serpapi_signals?.signals ?? [])
+    .filter((s) => s.narrative_eligible)
+    .slice(0, 3)
+    .map((s, i) => ({ id: `public_${i}`, label: shortText(s.claim, 160), evidence: s.source_title || s.source_url, speaker: null }));
+
   // ── Value hypothesis (customer's own words) ───────────────────────────────
   const impact = qualitativeImpactSentences(params.transcript)[0] ?? params.result.commercial_signals?.quantified_impact?.[0] ?? null;
   const value_hypothesis = impact ? `Frame value in their words: "${shortText(impact, 220)}"` : null;
@@ -209,6 +218,7 @@ export function buildDealIntelligence(params: {
     risks: risks.slice(0, 6),
     value_hypothesis,
     power_map,
+    public_context,
     headline
   };
 }

@@ -173,6 +173,7 @@ describe("Webex message templates", () => {
       risks: [{ id: "no_single_eb", label: "No single economic buyer — budgets are separate", evidence: "There may not be one person.", speaker: "Jordan" }],
       value_hypothesis: 'Frame value in their words: "hundreds of specialists unable to work"',
       power_map: [{ name: "Jordan", role_id: "business_champion", role_label: "Business champion", stance: "supportive", play: "Arm them with exec-legible business-risk framing.", evidence: "I'd like a working session." }],
+      public_context: [{ id: "public_0", label: "AECOM is a global infrastructure firm expanding its AI portfolio", evidence: "investors.aecom.com", speaker: null }],
       headline: "Expansion play at Acme Retail — customer asked for the next step; watch: no single economic buyer."
     };
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
@@ -180,9 +181,12 @@ describe("Webex message templates", () => {
     expect(sales.markdown).toContain("**Deal shape:**");
     expect(sales.markdown).toContain("**Watch-out:**");
     expect(sales.markdown).toContain("**Champion:** Jordan");
+    // Distilled public research surfaces as one punchy commercial account line.
+    expect(sales.markdown).toContain("**Account intel:**");
     expect(technical.markdown).toContain("**Deal shape:**");
-    // The champion line is commercial-only.
+    // The champion + account-intel lines are commercial-only.
     expect(technical.markdown).not.toContain("**Champion:**");
+    expect(technical.markdown).not.toContain("**Account intel:**");
     // Still concise.
     expect(sales.markdown.length).toBeLessThanOrEqual(1100);
     expect(technical.markdown.length).toBeLessThanOrEqual(1100);

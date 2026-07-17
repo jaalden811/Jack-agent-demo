@@ -41,6 +41,9 @@ export type DealIntelligence = {
   value_hypothesis: string | null;
   /** Who to work, and how — the buying-committee power map (evidence-cited). */
   power_map: StakeholderPlay[];
+  /** Distilled public research (SerpAPI) that changes the account read — each
+   * with its source. Context/narrative only; never scoring-eligible. */
+  public_context: DealSignal[];
   /** A single honest, compelling read of the opportunity. */
   headline: string;
 };

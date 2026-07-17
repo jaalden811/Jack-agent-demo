@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
+import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
+import { ingestTranscript } from "@/lib/signal-agent/transcript";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
 import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
+import type { AccountRecord } from "@/lib/signal-agent/types";
+import type { NormalizedPublicSignal, SerpApiSignalsResult } from "@/lib/opportunity-fit/types";
 
 /**
  * Deal Intelligence — honest, evidence-cited read of the deal shape, momentum,
@@ -63,5 +67,26 @@ describe("Deal Intelligence", () => {
     expect(result.deal_intelligence).toBeTruthy();
     expect(result.opportunity_scoring.deal_maturity).toBe("SOLUTION_DISCOVERY");
     expect(result.account_resolution.name).toBe("CONTOSO");
+    // public_context is always present (empty when enrichment is off).
+    expect(Array.isArray(result.deal_intelligence!.public_context)).toBe(true);
+  });
+
+  it("distills narrative-eligible public research into public_context (with source)", async () => {
+    // Take advantage of the environment: when public research surfaces a
+    // narrative-eligible fact, it becomes a distilled, sourced deal-intel signal.
+    const text = readFileSync(FIXTURE, "utf8");
+    const result = await run();
+    const transcript = ingestTranscript(text);
+    const account = { openOpportunity: false, budgetSignal: null } as unknown as AccountRecord;
+
+    const eligible = { claim: "CONTOSO is a global firm expanding its AI resilience program", source_title: "CONTOSO investor update", source_url: "https://investors.contoso.com/ai", narrative_eligible: true } as unknown as NormalizedPublicSignal;
+    const rejected = { claim: "unrelated aggregator listing", source_title: "jobs.example", source_url: "https://jobs.example/x", narrative_eligible: false } as unknown as NormalizedPublicSignal;
+    result.serpapi_signals = { status: "completed", reason: null, queries: [], signals: [eligible, rejected], strong_signal_count: 1, supporting_signal_count: 0, weak_signal_count: 0, rejected_result_count: 1 } as SerpApiSignalsResult;
+
+    const di = buildDealIntelligence({ result, account, transcript });
+    // Only the narrative-eligible signal is distilled, and it carries its source.
+    expect(di.public_context.length).toBe(1);
+    expect(di.public_context[0].label).toContain("AI resilience program");
+    expect(di.public_context[0].evidence).toBe("CONTOSO investor update");
   });
 });
