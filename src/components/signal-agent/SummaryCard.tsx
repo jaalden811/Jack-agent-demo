@@ -44,10 +44,6 @@ export function SummaryCard({ result }: { result: SecureNetworkingTriageResult }
             <strong>Not routed</strong>
           )}
         </div>
-        <div>
-          <span className="muted">Next action</span>
-          <strong>{summary.recommended_next_action}</strong>
-        </div>
       </div>
 
       {summary.secondary_opportunities.length > 0 && (
