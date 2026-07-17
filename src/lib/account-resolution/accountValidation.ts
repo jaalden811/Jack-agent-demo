@@ -104,11 +104,18 @@ export function looksLikeApplicationOrEnvironmentName(candidate: string): boolea
   return !hasCompanySuffix;
 }
 
+/** A pluralized all-caps acronym ("IDs", "APIs", "URLs", "SLAs", "KPIs",
+ * "SOCs", "VPNs", "PDFs") is a common-noun, never a company name. A bare
+ * acronym company (IBM, SAP, AWS, GE) is NOT matched — only the lowercase
+ * plural 's' form is rejected. */
+const PLURAL_ACRONYM_RE = /^[A-Z]{2,}s$/;
+
 export function validateAccountCandidateName(name: string | null | undefined): AccountValidationResult {
   if (!name || !name.trim()) return { valid: false, reason: "empty" };
   const trimmed = name.trim();
   if (isGenericPlaceholderAccountName(trimmed)) return { valid: false, reason: "generic_placeholder" };
   if (trimmed.length > 120) return { valid: false, reason: "implausibly_long" };
+  if (PLURAL_ACRONYM_RE.test(trimmed)) return { valid: false, reason: "pluralized_acronym_not_a_company" };
   if (looksLikeApplicationOrEnvironmentName(trimmed)) return { valid: false, reason: "looks_like_application_or_environment_name" };
   return { valid: true, reason: null };
 }

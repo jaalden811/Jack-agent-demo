@@ -91,13 +91,58 @@ const NAME_PARTICLES = new Set([
  * from ever becoming a fabricated participant — the separator-shape
  * regexes (which require a padded em/en dash, never a bare mid-word
  * hyphen) are the primary defense; this is a second, independent one. */
-/** Strips a trailing " — <Org/Title>" (em/en dash) or " - <Org/Title>" suffix
- * from an inline speaker segment, so a "[time] Name — Org: text" or
- * "Name — Org: text" line yields just the person's name (the org/title is not
- * part of the name). Leaves a plain name untouched. */
-export function stripSpeakerDescriptor(raw: string): string {
+/** Splits an inline speaker segment into the person's name and the trailing
+ * " — <Org/Title>" descriptor (em/en dash or " - "). "Laila Chen — NovaWave VP"
+ * → { name: "Laila Chen", descriptor: "NovaWave VP" }. A plain name yields a
+ * null descriptor. */
+export function splitSpeakerAndDescriptor(raw: string): { name: string; descriptor: string | null } {
   const parts = raw.split(/\s+[—–]\s+|\s+-\s+/);
-  return (parts[0] ?? raw).trim();
+  const name = (parts[0] ?? raw).trim();
+  const descriptor = parts.length > 1 ? parts.slice(1).join(" - ").trim() || null : null;
+  return { name, descriptor };
+}
+
+export function stripSpeakerDescriptor(raw: string): string {
+  return splitSpeakerAndDescriptor(raw).name;
+}
+
+// Words that never START an organization name in a "Name — <Org> <role>"
+// descriptor — side tags and generic role/function words. This keeps a
+// role-only descriptor ("Reliability Lead", "Customer, Ops Lead") from being
+// mistaken for an organization; only a genuine leading proper noun survives.
+const NON_ORG_LEADING_WORDS = new Set([
+  "customer", "vendor", "partner", "internal", "reliability", "security", "operations", "ops",
+  "platform", "data", "network", "cloud", "finance", "legal", "privacy", "sales", "technical",
+  "solutions", "support", "account", "enterprise", "global", "regional", "senior", "principal",
+  "product", "program", "project", "engineering", "infrastructure", "application", "applications",
+  "digital", "information", "corporate", "field", "chief", "head", "director", "manager", "lead",
+  "vp", "svp", "evp", "ceo", "cto", "cio", "ciso", "coo", "cfo", "counsel", "architect", "analyst"
+]);
+const ORG_ROLE_STOP_WORDS = new Set([
+  ...NON_ORG_LEADING_WORDS,
+  "executive", "officer", "representative", "rep", "specialist", "owner", "consultant", "coordinator",
+  "supervisor", "administrator", "admin", "president", "deputy", "associate", "staff", "team"
+]);
+
+/** Extracts the organization from a "Name — <Org> <role>" descriptor: the
+ * leading run of Title-Case/all-caps proper-noun tokens before the first role
+ * word. Returns null for a role-only or side-tag descriptor — so it can only
+ * ever corroborate a real org, never invent one from a job title. */
+export function orgFromDescriptor(descriptor: string | null): string | null {
+  if (!descriptor) return null;
+  const firstSeg = descriptor.split(",")[0].trim();
+  const tokens = firstSeg.split(/\s+/);
+  if (tokens.length === 0) return null;
+  const first = tokens[0].replace(/[^\w&.'-]/g, "");
+  if (!first || !/^[A-Z]/.test(first) || NON_ORG_LEADING_WORDS.has(first.toLowerCase())) return null;
+  const org: string[] = [];
+  for (const tok of tokens) {
+    const clean = tok.replace(/[^\w&.'-]/g, "");
+    if (!clean || !/^[A-Z]/.test(clean) || ORG_ROLE_STOP_WORDS.has(clean.toLowerCase())) break;
+    org.push(clean);
+    if (org.length >= 4) break;
+  }
+  return org.length > 0 ? org.join(" ") : null;
 }
 
 // System/automation accounts that post in a channel but are not people — never
@@ -213,7 +258,7 @@ function splitSentences(text: string): string[] {
     .filter((sentence) => sentence.length >= MIN_SENTENCE_CHARS);
 }
 
-type DialogueLine = { timestamp: string | null; speaker: string; text: string };
+type DialogueLine = { timestamp: string | null; speaker: string; text: string; descriptor?: string | null };
 
 /** Detects the two timestamp-anchored speaker-header formats — these are
  * unambiguous (a line can only match if it literally begins with a
@@ -226,14 +271,14 @@ function hasTimestampedHeader(line: string): boolean {
 function parseDialogueLine(line: string, options: { allowPlainSpeaker: boolean }): DialogueLine | null {
   let match = line.match(BRACKETED_TIMESTAMP_SPEAKER_RE);
   if (match) {
-    const speaker = stripSpeakerDescriptor(match[2]);
-    if (isPlausibleSpeakerName(speaker)) return { timestamp: match[1], speaker, text: match[3].trim() };
+    const { name, descriptor } = splitSpeakerAndDescriptor(match[2]);
+    if (isPlausibleSpeakerName(name)) return { timestamp: match[1], speaker: name, text: match[3].trim(), descriptor };
   }
 
   match = line.match(DASH_TIMESTAMP_SPEAKER_RE);
   if (match) {
-    const speaker = stripSpeakerDescriptor(match[2]);
-    if (isPlausibleSpeakerName(speaker)) return { timestamp: match[1], speaker, text: match[3].trim() };
+    const { name, descriptor } = splitSpeakerAndDescriptor(match[2]);
+    if (isPlausibleSpeakerName(name)) return { timestamp: match[1], speaker: name, text: match[3].trim(), descriptor };
   }
 
   match = line.match(LEGACY_BRACKET_SPEAKER_RE);
@@ -465,6 +510,12 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
       headersDetected += 1;
       const record = ensureRecord(dialogue.speaker);
       record.turnCount += 1;
+      // Capture the org from an inline "Name — <Org> <role>:" descriptor —
+      // a strong customer-account identity signal when many speakers share it.
+      if (!record.organization && dialogue.descriptor) {
+        const org = orgFromDescriptor(dialogue.descriptor);
+        if (org) record.organization = org;
+      }
       openTurn = { record, timestamp: dialogue.timestamp, textParts: dialogue.text ? [dialogue.text] : [] };
       continue;
     }

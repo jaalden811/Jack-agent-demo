@@ -103,7 +103,8 @@ export async function runQualificationPipeline(params: {
     // product name (e.g. the recommended solutions) is never treated as
     // the account.
     productStoplist: Array.from(new Set(params.matches.flatMap((m) => [...m.recommended_solutions, m.pain_category]))),
-    participantFirstNames: params.transcript.participantRecords.map((p) => p.name.split(/\s+/)[0]).filter(Boolean)
+    participantFirstNames: params.transcript.participantRecords.map((p) => p.name.split(/\s+/)[0]).filter(Boolean),
+    participantOrganizations: params.transcript.participantRecords.map((p) => p.organization).filter((o): o is string => Boolean(o))
   });
 
   // Search-enrichment decision logic (Section 2/6).

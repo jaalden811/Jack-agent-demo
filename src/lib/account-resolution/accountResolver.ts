@@ -96,6 +96,34 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
     pushIfValid(guessed, mention.domain, 0.55, "transcript", ["domain_mention"]);
   }
 
+  // Participant-descriptor organization: when several speakers carry the SAME
+  // "Name — <Org> <role>" org, that org is the customer account ("us"). A clear
+  // majority is a strong, honest identity signal; a lone participant org is a
+  // weaker hint. Never invents — the org came from a real proper-noun
+  // descriptor, and product/vendor names are rejected by validation/stoplist.
+  const orgCounts = new Map<string, { display: string; count: number }>();
+  for (const org of inputs.participantOrganizations ?? []) {
+    const key = org.trim().toLowerCase();
+    if (!key) continue;
+    const existing = orgCounts.get(key);
+    if (existing) existing.count += 1;
+    else orgCounts.set(key, { display: org.trim(), count: 1 });
+  }
+  const stoplistLower = new Set((inputs.productStoplist ?? []).map((p) => p.toLowerCase()));
+  const isStoplisted = (name: string) => {
+    const l = name.toLowerCase();
+    return Array.from(stoplistLower).some((p) => p.length > 2 && (l === p || l.includes(p) || p.includes(l)));
+  };
+  const rankedOrgs = Array.from(orgCounts.values()).filter((o) => !isStoplisted(o.display)).sort((a, b) => b.count - a.count);
+  const topOrg = rankedOrgs[0];
+  if (topOrg) {
+    const total = inputs.participantOrganizations?.length ?? 0;
+    // Shared by a clear majority (>=2 and >=60% of org-bearing participants) →
+    // confident; shared by >=2 → probable; a single mention → weak hint.
+    const confidence = topOrg.count >= 2 && total > 0 && topOrg.count / total >= 0.6 ? 0.9 : topOrg.count >= 2 ? 0.82 : 0.6;
+    pushIfValid(topOrg.display, null, confidence, "transcript", ["participant_organization"]);
+  }
+
   for (const aiCandidate of inputs.aiAccountCandidates) {
     pushIfValid(aiCandidate.name, aiCandidate.domain, Math.min(0.65, aiCandidate.confidence), "combined", aiCandidate.evidence_ids);
   }

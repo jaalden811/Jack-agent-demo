@@ -58,6 +58,11 @@ export type AccountResolutionInputs = {
   /** Participant first names, so a single-token name that is a known
    * person is not mistaken for an organization. */
   participantFirstNames?: string[];
+  /** Organizations parsed from "Name — <Org> <role>" speaker descriptors —
+   * one per participant that carried one. When several participants share the
+   * same org, it is a strong customer-account identity signal (they are "us").
+   * Never fabricated: only a genuine leading proper noun is captured. */
+  participantOrganizations?: string[];
 };
 
 export type AccountOverride = {

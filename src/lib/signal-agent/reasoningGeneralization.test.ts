@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
-import { ingestTranscript, isPlausibleSpeakerName, stripSpeakerDescriptor } from "@/lib/signal-agent/transcript";
+import { ingestTranscript, isPlausibleSpeakerName, stripSpeakerDescriptor, orgFromDescriptor } from "@/lib/signal-agent/transcript";
+import { validateAccountCandidateName } from "@/lib/account-resolution/accountValidation";
 import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction";
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
@@ -178,6 +179,41 @@ describe("inline 'Name — Org:' parsing and bot/system accounts (parser)", () =
     expect(isPlausibleSpeakerName("Abbot")).toBe(true);
     expect(isPlausibleSpeakerName("IncidentBot")).toBe(false);
     expect(isPlausibleSpeakerName("System")).toBe(false);
+  });
+});
+
+describe("account identity from shared participant org descriptors", () => {
+  it("orgFromDescriptor captures a real leading proper-noun org, never a role/side fragment", () => {
+    expect(orgFromDescriptor("NovaWave VP, Security Operations")).toBe("NovaWave");
+    expect(orgFromDescriptor("Splunk Account")).toBe("Splunk");
+    expect(orgFromDescriptor("Aegis Ridge Systems")).toBe("Aegis Ridge Systems");
+    // Role-only / side-tag descriptors must NOT yield an org (never invent one).
+    expect(orgFromDescriptor("Reliability Lead")).toBeNull();
+    expect(orgFromDescriptor("Customer, Ops Lead")).toBeNull();
+    expect(orgFromDescriptor("Security Architect")).toBeNull();
+  });
+
+  it("a pluralized acronym is never a company; a bare acronym company still is", () => {
+    expect(validateAccountCandidateName("IDs").valid).toBe(false);
+    expect(validateAccountCandidateName("APIs").valid).toBe(false);
+    expect(validateAccountCandidateName("SLAs").valid).toBe(false);
+    expect(validateAccountCandidateName("IBM").valid).toBe(true);
+    expect(validateAccountCandidateName("AWS").valid).toBe(true);
+    expect(validateAccountCandidateName("Acme Retail").valid).toBe(true);
+  });
+
+  it("resolves the customer account when several speakers share a 'Name — <Org> role' descriptor", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "[09:00] Rae Lin — Beacon Freight VP, Operations: I run reliability here. Our mean time to isolate was ninety-six minutes.",
+      "[09:01] Omar Diaz — Beacon Freight director, SRE: A credible design must coexist with our existing tools; we need to cut isolation time.",
+      "[09:02] Priya Shah — Vendor, Account Executive: I cover Beacon Freight for our company. A possible path is to test the platform."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    expect(r.account_resolution?.name?.toLowerCase()).toContain("beacon freight");
+    // The vendor rep's "Vendor, Account Executive" descriptor contributes no org.
+    expect(["confirmed", "probable"]).toContain(r.account_resolution?.status);
   });
 });
 

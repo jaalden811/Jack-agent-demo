@@ -29,6 +29,8 @@ export type AccountResolutionInput = {
    * as an account. */
   productStoplist?: string[];
   participantFirstNames?: string[];
+  /** Orgs parsed from "Name — <Org> <role>" speaker descriptors. */
+  participantOrganizations?: string[];
 };
 
 function actionRequiredFor(status: AccountResolution["status"], confidence: number, source: AccountResolutionSource): string | null {
@@ -66,7 +68,8 @@ export async function resolveAccountIdentity(input: AccountResolutionInput): Pro
       ...(input.dialogueMentionedCompany ? [{ name: input.dialogueMentionedCompany, domain: null, confidence: 0.55, evidence_ids: ["dialogue_mention"] }] : [])
     ],
     productStoplist: input.productStoplist,
-    participantFirstNames: input.participantFirstNames
+    participantFirstNames: input.participantFirstNames,
+    participantOrganizations: input.participantOrganizations
   };
 
   // The transcript account line is already checked against the CRM
