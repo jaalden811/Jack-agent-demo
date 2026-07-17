@@ -1,6 +1,8 @@
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 import { getCanonicalAccount } from "@/lib/signal-agent/canonicalAccount";
 import { buildDeterministicBrief } from "@/lib/webex/opportunityBrief";
+import { buildIntelligencePacket } from "@/lib/intelligence/intelligencePacket";
+import { generateRoleMessage, renderWebexMessage } from "@/lib/intelligence/roleMessage";
 import type { StageCOutput } from "@/lib/circuit/stages/stageC";
 import type { StageDInput, StageDOutput, StageDBrief, StageDLane } from "@/lib/circuit/stages/stageD";
 import type { PersonalizationContext } from "@/lib/personalization/types";
@@ -19,14 +21,6 @@ import type { PersonalizationContext } from "@/lib/personalization/types";
 const DEFAULT_WEBEX_BYTE_BUDGET = 1400;
 const SALES_ROLE_LABEL = "Commercial / Sales owner";
 const TECHNICAL_ROLE_LABEL = "Technical / Specialist owner";
-
-function firstMeaningful(candidates: Array<string | null | undefined>): string | null {
-  for (const c of candidates) {
-    const t = (c ?? "").trim();
-    if (t && !/^(not stated|none|no quantified|no explicit|not yet|unknown|n\/a)\b/i.test(t)) return t;
-  }
-  return null;
-}
 
 function resolveTiming(result: SecureNetworkingTriageResult, stageC: StageCOutput): string {
   const nba = stageC.next_best_action as { timing_basis?: string } | undefined;
@@ -100,63 +94,12 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     timing_driver: di?.timing ? { label: di.timing.label, is_procurement: di.timing.is_procurement } : null
   };
 
-  // Deterministic fallback: the same CONCISE, action-first skeleton Circuit is
-  // asked to produce, filled with real brief content. When a lane is too thin
-  // the delivery quality gate rejects it and the trusted message builder is used.
-  // Prefer the honest timing driver (decision boundary vs procurement) over a
-  // generic urgency clause for "why now".
-  // "Why now" = a concrete timing driver, else the fact that the customer asked
-  // for a next step — never a raw business-impact / data-retention quote ("it may
-  // be ... a deadline becoming harder to meet", "information needed for ninety
-  // days"), which reads as manufactured urgency. Impact belongs in the metric /
-  // value hypothesis, not "why now".
-  const HEDGED = /\b(?:it may be|may be|might be|could be|would be|may need|becoming harder|harder to meet|perhaps|possibly)\b/i;
-  const hasRequestedStep = (di?.momentum ?? []).some((m) => m.id === "requested_next_step");
-  const whyNow =
-    di?.timing?.label && !HEDGED.test(di.timing.label)
-      ? di.timing.label
-      : hasRequestedStep
-        ? "The customer asked for a concrete next step — engage while the conversation is warm."
-        : "Early-stage discovery — engage while the conversation is warm to shape the evaluation.";
-  const salesAction = firstMeaningful(sales_lane.actions) ?? "Confirm the next commercial step and owner with the customer.";
-  const technicalAction = firstMeaningful(technical_lane.actions) ?? "Scope the technical validation and success criteria with the customer.";
-
-  const dealShapeLine = di?.deal_shape.label ? `**Deal shape:** ${di.deal_shape.label}` : null;
-  const metricLine = di?.headline_metric ? `**Metric:** ${di.headline_metric}` : null;
-  const accountIntelLine = di?.public_context[0] ? `**Account intel:** ${di.public_context[0].label}` : null;
-  // Commercial lane: funding/authority/privacy landmines first.
-  const salesRisk = di?.risks.find((r) => ["budget_not_approved", "no_single_eb", "privacy_gate", "cost_governance"].includes(r.id)) ?? di?.risks[0] ?? null;
-  const salesWatch = salesRisk?.label ? `**Watch-out:** ${salesRisk.label}` : null;
-  const techRisk = di?.risks.find((r) => ["credibility", "sovereignty", "skills_gap", "cost_governance", "privacy_gate"].includes(r.id)) ?? di?.risks[0] ?? null;
-  const techWatch = techRisk?.label ? `**Watch-out:** ${techRisk.label}` : null;
-
-  const salesWebex = [
-    `**Account:** ${accountLabel}`,
-    dealShapeLine,
-    `**Why you:** ${sales_lane.role_label} — own the commercial next step for ${accountLabel}.`,
-    `**Why now:** ${whyNow}`,
-    `**Recommended action:** ${salesAction}`,
-    `**Expected outcome:** ${sales_lane.expected_output}`,
-    metricLine,
-    championLine ? `**Champion:** ${championLine}` : null,
-    accountIntelLine,
-    salesWatch
-  ]
-    .filter((l): l is string => l !== null)
-    .join("\n");
-
-  const technicalWebex = [
-    `**Account:** ${accountLabel}`,
-    dealShapeLine,
-    `**Why you:** ${technical_lane.role_label} — scope the workshop and validate the environment for ${accountLabel}.`,
-    `**Why now:** ${whyNow}`,
-    `**Recommended action:** ${technicalAction}`,
-    `**Expected outcome:** ${technical_lane.expected_output}`,
-    metricLine,
-    techWatch
-  ]
-    .filter((l): l is string => l !== null)
-    .join("\n");
+  // Deterministic fallback renders from the SAME canonical IntelligencePacket +
+  // RoleMessage that the delivered messages use — so Circuit's fallback is byte-
+  // for-byte the one canonical content decision, never a parallel interpretation.
+  const packet = buildIntelligencePacket(result);
+  const salesWebex = renderWebexMessage(generateRoleMessage(packet, "sales"));
+  const technicalWebex = renderWebexMessage(generateRoleMessage(packet, "technical"));
 
   const deterministic: StageDOutput = {
     sales_webex: salesWebex,

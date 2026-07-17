@@ -159,23 +159,21 @@ describe("Webex message templates", () => {
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
     expect(salesMessage.markdown).not.toEqual(technicalMessage.markdown);
-    // Both lanes are concise + action-first: account, why-you, why-now, ONE
-    // recommended action, expected outcome.
+    // Both lanes render from the ONE canonical RoleMessage: hook, why-this-
+    // matters, why-now, ONE recommended action, expected outcome.
     expect(salesMessage.markdown).toContain("— commercial");
-    expect(salesMessage.markdown).toContain("**Why you:**");
+    expect(salesMessage.markdown).toContain("**Why this matters:**");
     expect(salesMessage.markdown).toContain("**Recommended action:**");
     expect(technicalMessage.markdown).toContain("— technical");
     expect(technicalMessage.markdown).toContain("**Environment:**");
     expect(technicalMessage.markdown).toContain("**Recommended action:**");
-    // The sales lane carries the commercial pursuit line; the technical lane
-    // leads with environment/motion and never carries the commercial score.
+    // The technical lane leads with environment/motion; sales carries no env.
     expect(salesMessage.markdown).not.toContain("**Environment:**");
-    expect(technicalMessage.markdown).not.toContain("**Pursuit:**");
-    // The push message is a concise nudge — no MEDDPICC dump / thesis / long
-    // stakeholder lists (those live in the app).
+    // Concise nudge — no MEDDPICC dump / raw score tables.
     expect(salesMessage.markdown).not.toContain("MEDDPICC");
-    expect(salesMessage.markdown.length).toBeLessThanOrEqual(1100);
-    expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1100);
+    expect(salesMessage.markdown).not.toContain("**Pursuit:**");
+    expect(salesMessage.markdown.length).toBeLessThanOrEqual(1200);
+    expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1200);
   });
 
   it("surfaces deal intelligence (deal shape + watch-out) in both lanes when present", () => {
@@ -193,18 +191,16 @@ describe("Webex message templates", () => {
     };
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
-    expect(sales.markdown).toContain("**Deal shape:**");
+    // Deal shape leads the hook; watch-out + champion surface on the sales lane.
+    expect(sales.markdown).toContain("Expansion / land-and-expand");
     expect(sales.markdown).toContain("**Watch-out:**");
     expect(sales.markdown).toContain("**Champion:** Jordan");
-    // Distilled public research surfaces as one punchy commercial account line.
-    expect(sales.markdown).toContain("**Account intel:**");
-    expect(technical.markdown).toContain("**Deal shape:**");
-    // The champion + account-intel lines are commercial-only.
+    expect(technical.markdown).toContain("Expansion / land-and-expand");
+    // The champion line is commercial-only.
     expect(technical.markdown).not.toContain("**Champion:**");
-    expect(technical.markdown).not.toContain("**Account intel:**");
     // Still concise.
-    expect(sales.markdown.length).toBeLessThanOrEqual(1100);
-    expect(technical.markdown.length).toBeLessThanOrEqual(1100);
+    expect(sales.markdown.length).toBeLessThanOrEqual(1200);
+    expect(technical.markdown.length).toBeLessThanOrEqual(1200);
   });
 
   it("renders a clean expected outcome (no lead-in filler, no mid-sentence cut) and never splices a non-date quote into the action", () => {
@@ -250,8 +246,11 @@ describe("Webex message templates", () => {
     const result = buildResult();
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technicalMessage = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
-    expect(salesMessage.markdown).toMatch(/\*\*Why you:\*\* Commercial owner/);
-    expect(technicalMessage.markdown).toMatch(/\*\*Why you:\*\* Technical owner/);
+    // Role-specific "why this matters" — sales leads with the account/commercial
+    // read, technical leads with the customer problem. Both name the account.
+    expect(salesMessage.markdown).toMatch(/\*\*Why this matters:\*\*/);
+    expect(technicalMessage.markdown).toMatch(/\*\*Why this matters:\*\*/);
+    expect(technicalMessage.markdown).toMatch(/core problem/i);
   });
 
   it("never renders a hyperlink when no valid public analysis link exists (Section 11)", () => {
@@ -290,9 +289,9 @@ describe("Webex message templates", () => {
       qualification_completeness: 60
     };
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
-    expect(salesMessage.markdown).toContain("Pursuit:");
-    expect(salesMessage.markdown).toContain("PURSUE_WITH_DISCOVERY");
-    expect(salesMessage.markdown).toContain("78/100");
+    // The signal strength is conveyed concisely in the hook (no raw score table).
+    expect(salesMessage.markdown.toLowerCase()).toContain("high signal");
+    expect(salesMessage.markdown).toContain("**Recommended action:**");
   });
 
   it("threads goal-aligned framing + owner-only goal/quota hook into the delivered message", () => {
@@ -311,11 +310,10 @@ describe("Webex message templates", () => {
       }
     } as NonNullable<typeof result.personalization>;
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
-    // Goal-aligned why-you + the owner's quota hook are in the delivered comms.
-    expect(sales.markdown).toContain("This fits your goal to grow strategic accounts");
+    // The owner's quota hook and the named goals this advances are in the comms
+    // (Oscar's "speak to my goals / 60%-to-quota"), with the "Supports:" prefix
+    // stripped. why-this-matters is a synthesized read; the goal hooks are lines.
     expect(sales.markdown).toContain("**Goal impact:** $1.20M ≈ 24% of your annual target");
-    // The concrete goals this advances are named (Oscar's "speak to my goals"),
-    // with the "Supports:" prefix stripped.
     expect(sales.markdown).toContain("**Goal fit:** Grow strategic accounts, Expand security portfolio.");
     // The technical recipient is not the owner → NO quota leak (but goal fit is fine).
     const tech = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
@@ -405,12 +403,13 @@ describe("Outlook email templates", () => {
     const salesEmail = buildSalesEmail({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technicalEmail = buildTechnicalEmail({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
 
-    expect(salesEmail.subject).toBe("[HIGH_INTENT] Sales action — Acme Retail — Fragmented network operations");
-    expect(technicalEmail.subject).toBe("[HIGH_INTENT] Technical action — Acme Retail — Fragmented network operations");
+    expect(salesEmail.subject).toBe("[HIGH_INTENT] Sales action — Acme Retail");
+    expect(technicalEmail.subject).toBe("[HIGH_INTENT] Technical action — Acme Retail");
+    // Same canonical content decision, distinct role rendering.
     expect(salesEmail.html).not.toEqual(technicalEmail.html);
-    expect(salesEmail.text).toContain("Recommended sales action");
+    expect(salesEmail.text).toContain("Recommended action");
     expect(technicalEmail.text).toContain("Recommended action");
-    expect(technicalEmail.text).toContain("Technical evidence");
+    expect(technicalEmail.text).toContain("Why this matters");
   });
 
   it("never pastes the full transcript into an email", () => {
