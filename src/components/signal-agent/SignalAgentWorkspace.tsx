@@ -229,15 +229,32 @@ export function SignalAgentWorkspace() {
           )}
           {result && !loading ? (
             <>
+              {/* Lead with the salient result: the opportunity + why + action,
+                  the action controls, and the delivery status. Everything
+                  else is progressive disclosure so the page is scannable, not
+                  a wall of stacked panels. */}
               <SignalToActionJourney result={result} />
               <PersonalizedOpportunityCard result={result} />
-              <RunAssistantPanel result={result} />
               <ActionCenter result={result} />
-              <ScoreSemanticsSummary result={result} />
-              <SummaryCard result={result} />
-              <CircuitRunDiagnostic result={result} />
               <DeliveryResultCard result={result} onResultUpdate={setResult} />
-              <ResultTabs result={result} status={agentStatus} onResultUpdate={setResult} />
+
+              <details className="section-group">
+                <summary>Ask about this call</summary>
+                <RunAssistantPanel result={result} />
+              </details>
+              <details className="section-group">
+                <summary>Scores &amp; summary</summary>
+                <ScoreSemanticsSummary result={result} />
+                <SummaryCard result={result} />
+              </details>
+              <details className="section-group">
+                <summary>AI run diagnostic</summary>
+                <CircuitRunDiagnostic result={result} />
+              </details>
+              <details className="section-group">
+                <summary>Full analysis</summary>
+                <ResultTabs result={result} status={agentStatus} onResultUpdate={setResult} />
+              </details>
             </>
           ) : (
             !loading && (

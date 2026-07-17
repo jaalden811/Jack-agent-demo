@@ -1038,6 +1038,32 @@ button:disabled {
 .topbar-pill.medium { background: var(--tint-warning); color: var(--warning); }
 .topbar-pill.low { background: var(--surface-2); color: var(--muted); }
 
+/* ── Progressive-disclosure result sections ─────────────────────────────── */
+.section-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: var(--panel);
+}
+.section-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 14px 18px;
+  list-style: revert;
+  color: var(--ink);
+}
+.section-group[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+/* Inner panels keep their own padding but drop their frame/margin so the
+   section-group is the single frame (no double border). */
+.section-group .panel {
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  background: transparent;
+}
+
 /* ── Decision Packet (additive analytical layer) ────────────────────────── */
 .decision-packet .dp-summary {
   display: flex;
