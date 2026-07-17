@@ -321,6 +321,27 @@ describe("timing driver honesty & procurement classification (deal-intel via run
   });
 });
 
+describe("account plausibility & explicit operating-entity declarations", () => {
+  it("rejects technical/telecom jargon acronyms as accounts but keeps company acronyms", () => {
+    for (const jargon of ["PSTN", "VPN", "SIEM", "APM", "MTTR", "SaaS"]) {
+      expect(validateAccountCandidateName(jargon).valid).toBe(false);
+    }
+    for (const company of ["IBM", "SAP", "AWS", "HPE"]) {
+      expect(validateAccountCandidateName(company).valid).toBe(true);
+    }
+  });
+
+  it("captures a full '& / and' company name from an explicit operating-entity declaration", () => {
+    const candidates = extractDialogueAccountCandidates([
+      "For the record, the operating utility is PineRiver Water & Power.",
+      "Barnes and Noble is the contracting entity."
+    ]);
+    const names = candidates.map((c) => c.name);
+    expect(names).toContain("PineRiver Water & Power");
+    expect(candidates.find((c) => c.name === "PineRiver Water & Power")!.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+});
+
 describe("hard-rejection trap guard (never chase a rejected motion)", () => {
   it("fires on an explicit customer rejection of the vendor's motion", () => {
     const r = detectHardRejection([

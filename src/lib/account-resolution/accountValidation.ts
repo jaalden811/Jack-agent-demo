@@ -110,12 +110,32 @@ export function looksLikeApplicationOrEnvironmentName(candidate: string): boolea
  * plural 's' form is rejected. */
 const PLURAL_ACRONYM_RE = /^[A-Z]{2,}s$/;
 
+// General technical / telecom / process jargon acronyms. These are common
+// domain vocabulary and are never company names, so a bare one-token candidate
+// that IS such an acronym cannot be an account. Deliberately EXCLUDES bare
+// company acronyms (IBM, SAP, AWS, GE, HPE, BT, TCS, HCL, EY) — those stay
+// valid. Whole-candidate, single-token match only ("PSTN Gateway" is handled by
+// the application/environment check instead).
+const TECH_JARGON_ACRONYMS = new Set([
+  "pstn", "voip", "pbx", "sip", "vpn", "wan", "lan", "sdwan", "sd-wan", "dns", "dhcp", "nat", "tls", "ssl", "http", "https", "url", "uri", "ip", "cli", "gui", "cpu", "gpu", "ram", "ssd", "hdd", "vm", "k8s",
+  "sla", "slo", "sli", "kpi", "roi", "tco", "sow", "rfp", "rfi", "rfq", "poc", "pov", "mvp", "uat", "sit", "mttr", "mttd", "mtbf", "rto", "rpo",
+  "siem", "xdr", "edr", "soar", "noc", "apm", "rum", "itsi", "itsm", "cmdb", "otel", "etl", "elt", "cdc",
+  "saas", "paas", "iaas", "sso", "mfa", "iam", "pii", "phi", "gdpr", "hipaa", "sox", "pci", "llm", "nlp"
+]);
+
+function isTechJargonAcronym(candidate: string): boolean {
+  const trimmed = candidate.trim();
+  if (/\s/.test(trimmed)) return false;
+  return TECH_JARGON_ACRONYMS.has(trimmed.toLowerCase().replace(/[.,;:]+$/, ""));
+}
+
 export function validateAccountCandidateName(name: string | null | undefined): AccountValidationResult {
   if (!name || !name.trim()) return { valid: false, reason: "empty" };
   const trimmed = name.trim();
   if (isGenericPlaceholderAccountName(trimmed)) return { valid: false, reason: "generic_placeholder" };
   if (trimmed.length > 120) return { valid: false, reason: "implausibly_long" };
   if (PLURAL_ACRONYM_RE.test(trimmed)) return { valid: false, reason: "pluralized_acronym_not_a_company" };
+  if (isTechJargonAcronym(trimmed)) return { valid: false, reason: "technical_jargon_acronym_not_a_company" };
   if (looksLikeApplicationOrEnvironmentName(trimmed)) return { valid: false, reason: "looks_like_application_or_environment_name" };
   return { valid: true, reason: null };
 }

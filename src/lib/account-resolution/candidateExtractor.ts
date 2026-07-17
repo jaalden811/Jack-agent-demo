@@ -20,7 +20,11 @@ export type DialogueAccountCandidate = { name: string; evidence_text: string; co
 // literal capital letter. That is what keeps an ordinary lowercase
 // word immediately following the phrase ("we are happy to...") from
 // ever being captured as a company name.
-const NAME_CAPTURE = "([A-Z][\\w&.'-]*(?:\\s+[A-Z][\\w&.'-]*){0,4})";
+// Title-case token run, allowing "&"/"and" connectors WITHIN a company name
+// ("PineRiver Water & Power", "Barnes and Noble", "AT&T") while still requiring
+// each part to start capitalized (so a trailing lowercase word is never pulled
+// into the name).
+const NAME_CAPTURE = "([A-Z][\\w&.'-]*(?:\\s+(?:&\\s+|and\\s+)?[A-Z][\\w&.'-]*){0,4})";
 const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
   new RegExp(`\\b[Ww]e(?:'re| are)\\s+${NAME_CAPTURE}\\b`, "g"),
   new RegExp(`\\b[Oo]ur company(?:'s| is)?\\s*,?\\s*${NAME_CAPTURE}\\b`, "g"),
@@ -48,7 +52,12 @@ const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
 const EXPLICIT_ACCOUNT_PATTERNS: RegExp[] = [
   new RegExp(`${NAME_CAPTURE}\\s+is\\s+(?:the|our)\\s+(?:canonical\\s+|scoped\\s+)?account\\b`, "g"),
   new RegExp(`\\bthe\\s+(?:canonical\\s+|scoped\\s+)?account\\s+(?:is|should be)\\s+${NAME_CAPTURE}`, "g"),
-  new RegExp(`\\bcanonical\\s+(?:account|scope)[\\w\\s]{0,25}?\\bis\\s+${NAME_CAPTURE}`, "g")
+  new RegExp(`\\bcanonical\\s+(?:account|scope)[\\w\\s]{0,25}?\\bis\\s+${NAME_CAPTURE}`, "g"),
+  // Operating / contracting entity declarations — a customer naming the legal
+  // operating or contracting entity that owns the work/subscription ("the
+  // operating utility is PineRiver Water & Power", "the contracting entity is
+  // Acme Retail"). As strong as an explicit account declaration.
+  new RegExp(`\\bthe\\s+(?:operating|contracting|prospective(?:\\s+contracting)?|legal|scoped|canonical)\\s+(?:account|entity|company|utility|business|customer|organi[sz]ation|org|party|subsidiary)\\s+(?:is|should be|will be|remains?)\\s+${NAME_CAPTURE}`, "g")
 ];
 
 const DOMAIN_MENTION_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|co|health|biz))\b/gi;
