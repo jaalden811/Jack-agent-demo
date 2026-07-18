@@ -27,7 +27,13 @@ import { inferSpeakerSides } from "@/lib/signal-agent/speakerSide";
 const ACCOUNT_LINE_RE = /^Account:\s*(.+)$/i;
 const PARTICIPANTS_LINE_RE = /^Participants:\s*(.+)$/i;
 const PARTICIPANT_ENTRY_RE = /([^,(]+?)\s*\(([^)]*)\)/g;
-const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+/;
+// Split on sentence punctuation OR a newline. The newline boundary rescues a
+// speaker-per-line transcript that carries little or no sentence punctuation
+// (an adversarial "missing punctuation" paste), where punctuation alone would
+// collapse the whole text into one giant "sentence". This only affects inputs
+// that still contain newlines when split (the freeform/no-speaker fallback);
+// the turn path splits already-joined single-line text, so it is unaffected.
+const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+|\n+/;
 const MIN_SENTENCE_CHARS = 8;
 
 const TIMESTAMP = "\\d{1,2}:\\d{2}(?::\\d{2})?";
@@ -63,6 +69,27 @@ const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
 // a speaker: the separator must be a padded em/en dash, and the descriptor
 // must actually read like a role/side descriptor (ROLE_DESCRIPTOR_RE).
 const INLINE_DESCRIPTOR_SPEAKER_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,3})\s+[—–]\s+([^:]{2,70}):\s+(.+)$/;
+// COLON-LESS side-tagged speaker line: "Name customer <text>", "First Last
+// vendor <text>", optionally led by a "[00:03]" timestamp. Real exports
+// sometimes drop the colon and all punctuation, stating the side word right
+// after the name. Captures name, side word, and the remaining text. Only used
+// when the whole transcript uses this shape (>=3 such lines) so it never fires
+// on ordinary prose ("Our customer base grew ...").
+const SIDE_WORD_ALT = "vendor|customer|partner|seller|buyer|prospect";
+const NO_COLON_SIDE_SPEAKER_RE = new RegExp(`^(?:\\[[^\\]]{1,16}\\]\\s*)?([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\s+(${SIDE_WORD_ALT})\\b\\s*(.*)$`);
+// A line that opens with a bare (optionally timestamped) leading Title-Case
+// word — used only in no-colon-side mode to attribute a follow-up turn to an
+// ALREADY-established speaker referenced by first name ("Alex who owns ...").
+const LEADING_NAME_RE = /^(?:\[[^\]]{1,16}\]\s*)?([A-Z][a-z]+)\b\s*(.*)$/;
+// Pronouns / determiners that can start a line but are never a speaker name.
+const NON_NAME_LEADERS = new Set(["our", "the", "this", "that", "these", "those", "their", "we", "they", "it", "a", "an", "his", "her", "your", "my", "no", "yes"]);
+
+function normalizeSideWord(side: string): "vendor" | "customer" | "partner" {
+  const s = side.toLowerCase();
+  if (s === "vendor" || s === "seller") return "vendor";
+  if (s === "partner") return "partner";
+  return "customer";
+}
 const ROLE_DESCRIPTOR_RE =
   /\b(vendor|customer|partner|internal|external|seller|buyer|prospect|reseller|distributor|director|manager|lead|owner|engineer|architect|specialist|executive|officer|procurement|security|finance|operations|sales|marketing|product|reliability|platform|network|infrastructure|application|data|cloud|risk|clinical|digital|account|solutions?|vp|svp|evp|cio|ciso|cto|ceo|cfo|coo|cro|head|chair|sponsor|analyst|administrator|consultant|president|principal|associate|representative|rep)\b/i;
 
@@ -592,6 +619,24 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
   const usesTimestampedHeaders = lines.some((line) => hasTimestampedHeader(line.trim()));
   const allowPlainSpeaker = !usesTimestampedHeaders;
 
+  // Detect a colon-less side-tagged transcript ("Name customer <text>"). Only
+  // enable when several lines share the shape and >=2 distinct speakers are
+  // established, so ordinary prose never triggers it. Establishes each speaker's
+  // side from the explicit side word, indexed by first name so later
+  // first-name-only turns ("Alex who owns ...") can be attributed.
+  const establishedSide = new Map<string, { fullName: string; side: "vendor" | "customer" | "partner" }>();
+  let noColonSideMatches = 0;
+  for (const line of lines) {
+    const m = line.trim().match(NO_COLON_SIDE_SPEAKER_RE);
+    if (!m) continue;
+    const name = m[1].trim();
+    if (!isPlausibleSpeakerName(name) || isNonSpeakerKey(name) || NON_NAME_LEADERS.has(name.split(/\s+/)[0].toLowerCase())) continue;
+    noColonSideMatches += 1;
+    const first = name.split(/\s+/)[0].toLowerCase();
+    if (!establishedSide.has(first)) establishedSide.set(first, { fullName: name, side: normalizeSideWord(m[2]) });
+  }
+  const noColonSideMode = noColonSideMatches >= 3 && establishedSide.size >= 2;
+
   let headersDetected = 0;
   const rejectedHeaderCandidates: string[] = [];
   const turns: Array<{ record: ParticipantRecord; timestamp: string | null; textParts: string[] }> = [];
@@ -608,6 +653,40 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
     const trimmed = line.trim();
     if (!trimmed) continue; // blank lines never close or start a turn — real transcripts wrap paragraphs across blank lines
     if (ACCOUNT_LINE_RE.test(trimmed) || PARTICIPANTS_LINE_RE.test(trimmed)) continue; // already consumed in Pass 1
+
+    // No-colon side-tagged mode: attribute "Name customer <text>" turns and
+    // follow-up "FirstName <text>" turns to established speakers, with the side
+    // stated by the transcript. Runs before the colon/plain parsers because this
+    // transcript has no colons for them to key on.
+    if (noColonSideMode) {
+      const sideMatch = trimmed.match(NO_COLON_SIDE_SPEAKER_RE);
+      let ncName: string | null = null;
+      let ncSide: "vendor" | "customer" | "partner" | null = null;
+      let ncText = "";
+      if (sideMatch && isPlausibleSpeakerName(sideMatch[1]) && !isNonSpeakerKey(sideMatch[1]) && !NON_NAME_LEADERS.has(sideMatch[1].split(/\s+/)[0].toLowerCase())) {
+        ncName = sideMatch[1].trim();
+        ncSide = normalizeSideWord(sideMatch[2]);
+        ncText = sideMatch[3].trim();
+      } else {
+        const leadMatch = trimmed.match(LEADING_NAME_RE);
+        const firstLower = leadMatch?.[1].toLowerCase();
+        if (leadMatch && firstLower && establishedSide.has(firstLower) && leadMatch[2].trim().length >= MIN_SENTENCE_CHARS) {
+          const est = establishedSide.get(firstLower)!;
+          ncName = est.fullName;
+          ncSide = est.side;
+          ncText = leadMatch[2].trim();
+        }
+      }
+      if (ncName && ncSide) {
+        closeOpenTurn();
+        headersDetected += 1;
+        const record = ensureRecord(ncName);
+        record.turnCount += 1;
+        if (record.classification === "unknown") record.classification = ncSide;
+        openTurn = { record, timestamp: null, textParts: ncText ? [ncText] : [] };
+        continue;
+      }
+    }
 
     const dialogue = parseDialogueLine(trimmed, { allowPlainSpeaker });
     if (dialogue) {

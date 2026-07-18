@@ -699,6 +699,52 @@ describe("objection typing does not confuse latent interest with disqualificatio
   });
 });
 
+describe("colon-less, side-tagged, low-punctuation transcript parsing", () => {
+  it("parses 'Name customer/vendor <text>' turns with correct sides even without colons or punctuation", () => {
+    const t = ingestTranscript(
+      [
+        "Jin Alvarez vendor account executive thanks everyone the purpose is to validate the cloud opportunity",
+        "Mara Vole customer director cloud economics no that is not the purpose the numbers are yours not ours",
+        "Cedra Yoon customer cloud platform lead the vendor tab is not our analysis",
+        "Olan Rusk customer procurement lead there is no requisition budget or evaluation for this",
+        "Siven Mora vendor specialist I will produce a product-neutral methodology note"
+      ].join("\n")
+    );
+    expect(t.diagnostics.turns_parsed).toBeGreaterThanOrEqual(4);
+    // A no-punctuation paste must not collapse into one giant sentence.
+    expect(t.diagnostics.sentences_parsed).toBeGreaterThanOrEqual(4);
+    const byName = new Map(t.participantRecords.map((r) => [r.name, r.classification]));
+    expect(byName.get("Jin Alvarez")).toBe("vendor");
+    expect(byName.get("Mara Vole")).toBe("customer");
+    expect(byName.get("Olan Rusk")).toBe("customer");
+  });
+
+  it("attributes a follow-up first-name-only turn to an established speaker (no-colon side mode)", () => {
+    const t = ingestTranscript(
+      [
+        "[00:00] Pax Ellis vendor seller contact center planning",
+        "[00:03] Mace Toll customer not approved planning discussion",
+        "[00:06] Kira Sen customer regional lead we volunteer to explore forty seats",
+        "[00:12] Kira calls transfer twice on average and agents retype case notes",
+        "[00:20] Pax who owns the regional budget"
+      ].join("\n")
+    );
+    const byName = new Map(t.participantRecords.map((r) => [r.name, r.classification]));
+    expect(byName.get("Kira Sen")).toBe("customer");
+    expect(byName.get("Pax Ellis")).toBe("vendor");
+    expect(t.diagnostics.turns_parsed).toBeGreaterThanOrEqual(4);
+  });
+
+  it("does NOT enter no-colon side mode on ordinary prose that mentions 'customer'", () => {
+    const t = ingestTranscript(
+      ["Dana: Our customer base grew and customer satisfaction improved.", "Rui: The customer wants faster onboarding this year."].join("\n")
+    );
+    const names = t.participantRecords.map((r) => r.name);
+    expect(names).not.toContain("Our");
+    expect(names).not.toContain("The");
+  });
+});
+
 describe("inline 'Name — Role: text' turn parsing (single-line descriptor+utterance)", () => {
   it("parses speakers and sides from an inline em-dash descriptor before the colon", () => {
     // Descriptor AND the utterance are on ONE line — a very common export format
