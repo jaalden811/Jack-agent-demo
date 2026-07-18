@@ -50,48 +50,86 @@ function firstComposedMatch(chunks: TranscriptChunk[], groups: string[][]): Tran
 }
 
 // Business nouns that make a bare count meaningful as a headline metric.
-const METRIC_NOUNS = "minutes?|hours?|days?|weeks?|sessions?|users?|customers?|incidents?|outages?|tickets?|analysts?|people|endpoints?|sites?|locations?|branches?|stores?|percent|terabytes?|records?|transactions?|accounts?";
-const DURATION_UNIT = /\b(\d[\d,.]*)\s*(minutes?|hours?|days?|weeks?)\b/i;
-const TARGET_MARKER = /\b(target|goal|under|below|less than|within|down to|to under|reduce|cut)\b/i;
-const BASELINE_MARKER = /\b(was|is|currently|today|average|averaged|mean|median|takes?|took|baseline|per incident)\b/i;
+const METRIC_NOUNS = "minutes?|hours?|days?|weeks?|sessions?|incidents?|outages?|failures?|rollbacks?|tickets?|analysts?|responders?|users?|people|endpoints?|records?|transactions?";
+// Any improvement-bearing unit — durations AND percentages (a rollback/error
+// rate improving from 9.6% to <3% is as much a headline metric as a duration).
+const IMPROVE_UNITS = "minutes?|hours?|days?|weeks?|months?|percent|%";
+// Allow a single descriptive adjective between the number and the unit
+// ("21 calendar days", "median 42 minutes") so a real metric is not missed.
+const METRIC_WITH_UNIT = new RegExp(
+  `\\b(\\d[\\d,]*(?:\\.\\d+)?)\\s*(?:(?:calendar|business|working|elapsed|median|mean|average)\\s+)?(${IMPROVE_UNITS})\\b`,
+  "gi"
+);
+const TARGET_MARKER = /\b(target|goal|under|below|less than|or less|or fewer|within|down to|to under|reduce|cut|threshold)\b/i;
+const BASELINE_MARKER = /\b(was|is|currently|today|average|averaged|on average|mean|median|at the median|takes?|took|baseline|per incident|require|required)\b/i;
+
+function canonicalMetricUnit(u: string): string {
+  const l = u.toLowerCase();
+  return l === "%" || l.startsWith("percent") ? "percent" : l.replace(/s$/, "");
+}
+function formatMetricNumber(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(n);
+}
 
 /** Distills the single most compelling quantified metric from the customer's
  * own sentences, in DIGITS (spelled numbers normalized). Prefers a
  * baseline→target duration pair ("from 96 to under 30 minutes"); otherwise the
  * largest business-relevant count. Returns null when nothing quantified. */
 function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
-  const normalized = chunks.map((c) => ({ raw: c.text, norm: normalizeSpelledNumbers(c.text) }));
-  let baseline: { value: number; unit: string } | null = null;
-  let target: { value: number; unit: string } | null = null;
-  // Scan EVERY duration (baseline and target can share one sentence), and
-  // classify each by the words immediately preceding it.
-  const durAll = new RegExp(DURATION_UNIT.source, "gi");
-  for (const { norm } of normalized) {
-    for (const d of norm.matchAll(durAll)) {
-      const value = Number(d[1].replace(/[,.]/g, ""));
+  const normalized = chunks.map((c) => normalizeSpelledNumbers(c.text));
+  // Track a baseline (largest) and target (smallest) PER UNIT, so a
+  // "42 → under 10 minutes" duration pair and a "9.6% → under 3%" rate pair
+  // are each recognized instead of being cross-contaminated into one broken
+  // pair (mixing minutes with days). Preceding words classify each number as a
+  // baseline (current/median/average) or a target (under/below/threshold).
+  const byUnit = new Map<string, { baseline: number | null; target: number | null }>();
+  for (const norm of normalized) {
+    for (const m of norm.matchAll(METRIC_WITH_UNIT)) {
+      const value = Number(m[1].replace(/,/g, ""));
       if (!Number.isFinite(value)) continue;
-      const unit = d[2].toLowerCase().replace(/s$/, "");
-      const before = norm.slice(Math.max(0, (d.index ?? 0) - 28), d.index);
-      if (TARGET_MARKER.test(before)) {
-        if (!target || value < target.value) target = { value, unit };
-      } else if (BASELINE_MARKER.test(before)) {
-        if (!baseline || value > baseline.value) baseline = { value, unit };
+      const unit = canonicalMetricUnit(m[2]);
+      // Classify from BOTH sides — a baseline qualifier often trails the number
+      // ("42 minutes at the median", "eight days or less"). The trailing window
+      // is deliberately SHORT (~14 chars) so it catches an attached qualifier
+      // but NOT a qualifier for the next clause's number ("96 minutes and our
+      // board target is under 30" must keep 96 as the baseline, not the target).
+      const idx = m.index ?? 0;
+      const context = `${norm.slice(Math.max(0, idx - 30), idx)} ${norm.slice(idx + m[0].length, idx + m[0].length + 14)}`;
+      const entry = byUnit.get(unit) ?? { baseline: null, target: null };
+      if (TARGET_MARKER.test(context)) {
+        if (entry.target === null || value < entry.target) entry.target = value;
+      } else if (BASELINE_MARKER.test(context)) {
+        if (entry.baseline === null || value > entry.baseline) entry.baseline = value;
       }
+      byUnit.set(unit, entry);
     }
   }
-  if (baseline && target && baseline.unit === target.unit && baseline.value > target.value) {
-    return `${baseline.value} → under ${target.value} ${target.unit}s`;
+  // The most compelling improvement pair = the largest relative reduction.
+  let best: { unit: string; baseline: number; target: number; rel: number } | null = null;
+  for (const [unit, e] of byUnit) {
+    if (e.baseline !== null && e.target !== null && e.baseline > e.target) {
+      const rel = 1 - e.target / e.baseline;
+      if (!best || rel > best.rel) best = { unit, baseline: e.baseline, target: e.target, rel };
+    }
   }
-  // Otherwise the largest business-relevant count with its noun.
-  const countRe = new RegExp(`\\b(\\d[\\d,]{2,})\\s+(${METRIC_NOUNS})\\b`, "gi");
-  let best: { value: number; text: string } | null = null;
-  for (const { norm } of normalized) {
+  if (best) {
+    return best.unit === "percent"
+      ? `${formatMetricNumber(best.baseline)}% → under ${formatMetricNumber(best.target)}%`
+      : `${formatMetricNumber(best.baseline)} → under ${formatMetricNumber(best.target)} ${best.unit}s`;
+  }
+  // Fallback: the largest business-relevant COUNT with its noun — but never a
+  // hyphenated fragment ("408 customer-facing" must not yield "408 customer")
+  // and never a neutral scale word alone; require a problem/relevant noun
+  // immediately adjacent and NOT continuing into a compound.
+  const countRe = new RegExp(`\\b(\\d[\\d,]{2,})\\s+(${METRIC_NOUNS})(?![-\\w])`, "gi");
+  let bestCount: { value: number; text: string } | null = null;
+  for (const norm of normalized) {
     for (const m of norm.matchAll(countRe)) {
-      const value = Number(m[1].replace(/[,.]/g, ""));
-      if (Number.isFinite(value) && (!best || value > best.value)) best = { value, text: `${value.toLocaleString("en-US")} ${m[2].toLowerCase()}` };
+      const value = Number(m[1].replace(/[,]/g, ""));
+      if (Number.isFinite(value) && (!bestCount || value > bestCount.value)) bestCount = { value, text: `${value.toLocaleString("en-US")} ${m[2].toLowerCase()}` };
     }
   }
-  return best?.text ?? null;
+  return bestCount?.text ?? null;
 }
 
 // Past-event markers — a timing driver must be forward-looking; a renewal that
@@ -104,6 +142,10 @@ const DECISION_BOUNDARY_RE = /\b(freeze|memo|committee|review closes|closes|revi
 const NEGATED_TIMING_RE = /\b(?:not|isn'?t|no)\s+(?:a\s+|an\s+|the\s+)?(?:hard\s+|firm\s+|real\s+|procurement\s+|purchase\s+|buying\s+|close\s+|commercial\s+|sign(?:ing|ature)?\s+)*(?:deadline|close date|purchase date|buying date)\b/i;
 // A hedged / hypothetical statement — speculative impact, not a concrete driver.
 const HEDGED_TIMING_RE = /\b(?:it may be|may be|might be|could be|would be|may become|might become|becoming harder|harder to meet|perhaps|possibly|hypothetically)\b/i;
+// A media/production EVENT boundary (a screening, premiere, festival, broadcast)
+// is an operational calendar date, never a buying/decision timing driver — even
+// though it carries a date. Generic event nouns only; not tied to any account.
+const PRODUCTION_EVENT_RE = /\b(screenings?|premieres?|festivals?|red carpet|broadcasts?|air dates?|showcases?|galas?|matinees?)\b/i;
 
 /** Extracts the honest timing driver: the decision-relevant deadline, and
  * whether it is real procurement timing or only a decision/planning boundary.
@@ -146,6 +188,8 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
     // harder to meet", "could be", "might become") is a speculative business
     // impact, not a concrete timing driver — never manufacture urgency from it.
     if (HEDGED_TIMING_RE.test(lower)) continue;
+    // A production/media event date is an operational boundary, not buying timing.
+    if (PRODUCTION_EVENT_RE.test(lower)) continue;
     const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
     const hasDate = monthRe.test(lower);
     if (!hasDeadlineWord && !hasDate) continue;

@@ -101,6 +101,35 @@ const MULTIPLE_FUNDING_PATTERNS = [
 ];
 const PROCUREMENT_NOT_INVOLVED_PATTERNS = [/\bprocurement (does not|doesn'?t|won'?t) (need to )?(join|be involved)\b/i, /\bprocurement (is )?not (yet )?involved\b/i];
 
+// An economic buyer named in the THIRD person (often absent from the call):
+// "<Name> is the economic buyer", "the economic buyer is <Name>", "CFO <Name>
+// releases the program funds", "<Name> signs the capital release". A name is a
+// Title-Case word with a lowercase body (not an ALL-CAPS acronym).
+const NAME_TOKEN = "[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2}";
+const NAMED_EB_PATTERNS = [
+  new RegExp(`\\b(${NAME_TOKEN})\\s+is\\s+(?:the|our)\\s+economic\\s+buyer\\b`),
+  new RegExp(`\\bthe\\s+economic\\s+buyer\\s+is\\s+(${NAME_TOKEN})\\b`),
+  new RegExp(`\\b(?:cfo|chief financial officer|ceo|coo|cio)\\s+(${NAME_TOKEN})\\b[\\w\\s,'-]{0,40}?\\b(?:releases?|signs?|approves?|authoriz(?:es?|ing)|controls?)\\b[\\w\\s,'-]{0,25}?\\b(?:funds?|budget|capital|spend|the release|capital release)\\b`, "i"),
+  new RegExp(`\\b(${NAME_TOKEN})\\s+(?:releases?|signs?)\\s+(?:the\\s+)?(?:program\\s+|capital\\s+|budget\\s+)?(?:funds?|capital release|budget)\\b`)
+];
+const EB_NAMING_NEGATION_RE = /\b(not|isn'?t|no longer|won'?t be)\b/i;
+
+/** Detects an economic buyer named in the third person (typically an absent
+ * approver like a CFO). Returns the fullest name found, else null. */
+function detectNamedEconomicBuyer(text: string): { name: string; evidence: string } | null {
+  let best: { name: string; evidence: string } | null = null;
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    if (EB_NAMING_NEGATION_RE.test(sentence)) continue;
+    for (const p of NAMED_EB_PATTERNS) {
+      const m = sentence.match(p);
+      if (m && m[1] && (!best || m[1].length > best.name.length)) {
+        best = { name: m[1].trim(), evidence: sentence.length > 160 ? `${sentence.slice(0, 159)}…` : sentence };
+      }
+    }
+  }
+  return best;
+}
+
 function countMatches(text: string, patterns: RegExp[]): { hits: number; evidence: string[] } {
   const evidence: string[] = [];
   for (const pattern of patterns) {
@@ -166,6 +195,10 @@ export function inferAuthorityGraph(params: { stakeholderTurns: Array<{ name: st
   const multipleFunding = MULTIPLE_FUNDING_PATTERNS.some((p) => p.test(allText));
   const procurementOut = PROCUREMENT_NOT_INVOLVED_PATTERNS.some((p) => p.test(allText));
   const namedEconomic = roles.find((r) => r.role_type === "economic_buyer" && r.status === "confirmed");
+  // A CFO/approver named in the third person as the economic buyer is a
+  // confirmed, single, named EB — even when absent and even alongside a
+  // committee (the committee recommends; the named person releases funds).
+  const thirdPersonEb = namedEconomic ? null : detectNamedEconomicBuyer(allText);
 
   let economic_authority: EconomicAuthority;
   if (namedEconomic) {
@@ -178,6 +211,17 @@ export function inferAuthorityGraph(params: { stakeholderTurns: Array<{ name: st
       known: [`${namedEconomic.name} used explicit budget/approval-authority language.`],
       gaps: [],
       next_question: "Confirm the scope this authority can approve without escalation."
+    };
+  } else if (thirdPersonEb) {
+    economic_authority = {
+      status: "confirmed",
+      named_person: thirdPersonEb.name,
+      role_candidates: [],
+      approval_paths: extractApprovalPaths(allText),
+      confidence: 0.85,
+      known: [`${thirdPersonEb.name} is named as the economic buyer / capital-release authority.`],
+      gaps: [],
+      next_question: "Confirm the scope this authority can approve and the gate it follows."
     };
   } else if (multipleFunding) {
     economic_authority = {

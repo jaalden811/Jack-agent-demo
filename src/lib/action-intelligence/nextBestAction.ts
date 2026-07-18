@@ -177,7 +177,9 @@ function composeTitleSummary(params: {
       };
     case "account_confirmation":
       return {
-        title: `Confirm the account for ${accountLabel}`,
+        // When the account is unresolved, accountLabel is the generic "this
+        // account" — never splice it in ("Confirm the account for this account").
+        title: accountLabel === "this account" ? "Confirm the customer's account identity" : `Confirm the account: ${accountLabel}`,
         summary: `${ownerName} should confirm the customer's legal entity and official domain before broad enrichment or writeback, then re-run enrichment so the opportunity is attached to the correct account.`
       };
     case "executive_alignment":

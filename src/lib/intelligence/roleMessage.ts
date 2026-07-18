@@ -65,7 +65,10 @@ const NON_PROBLEM_RE =
  * was stated. `real` is false for the taxonomy fallback so the caller can add
  * the impact as a separate stakes line. */
 function pickProblem(packet: IntelligencePacket): { text: string; real: boolean } {
-  const impacts = packet.customer_evidence.business_impacts.map((b) => b.statement).filter(Boolean);
+  // Strip a leading discourse conjunction ("And we detect...", "But we...") so
+  // the problem sentence does not open mid-thought.
+  const stripLead = (s: string) => s.replace(/^(?:and|but|so|also|now|well|plus)\s+/i, "");
+  const impacts = packet.customer_evidence.business_impacts.map((b) => stripLead(b.statement)).filter(Boolean);
   const problem = impacts.find((s) => PROBLEM_HINT_RE.test(s) && !NON_PROBLEM_RE.test(s));
   if (problem) return { text: lowerFirst(clean(problem, 200)), real: true };
   const vh = stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? "");
@@ -75,12 +78,12 @@ function pickProblem(packet: IntelligencePacket): { text: string; real: boolean 
 
 /** The target half of a "baseline → target" headline metric ("84 → under 20
  * minutes" -> "under 20 minutes"), so "why this matters" can state the goal
- * without repeating the baseline already in the problem sentence. */
+ * without repeating the baseline. Returns null for a bare count metric ("4,800
+ * endpoints") — a scale count is not a target and must never be phrased as one. */
 function metricTarget(metric: string | null): string | null {
   if (!metric) return null;
   const arrow = metric.split(/→|->/);
-  const t = (arrow.length > 1 ? arrow[1] : metric).trim();
-  return t || null;
+  return arrow.length > 1 ? arrow[1].trim() || null : null;
 }
 
 /** WHY THIS MATTERS — a synthesized read of the opportunity, not a category tag.

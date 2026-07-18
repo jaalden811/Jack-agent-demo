@@ -78,6 +78,18 @@ const CONTEXT_PREFIX_ALT = CONTEXT_PREFIX_WORDS.map((word) =>
 const ALL_CAPS_ORG_RE = /\b([A-Z][A-Z0-9&.]{1,11})\b/g;
 const LEGAL_ENTITY_RE = new RegExp(`\\b([A-Z][A-Za-z0-9&.'\\-]*(?:\\s+[A-Za-z0-9&.'\\-]+){0,3}\\s+${LEGAL_SUFFIX})\\b`, "g");
 const CONTEXT_PHRASE_RE = new RegExp(`\\b(?:${CONTEXT_PREFIX_ALT})\\s+([A-Z][A-Za-z0-9&.'\\-]+(?:\\s+[A-Z][A-Za-z0-9&.'\\-]+){0,3})\\b`, "g");
+// A company named as the SUBJECT of a probing question about its own projects,
+// tools, or plans ("does <Org> have a consolidation project?", "is <Org>
+// running an evaluation?"). The captured name must be followed by a
+// possession/activity verb or an article, which keeps it from firing on a
+// generic capitalized word after "is/does". Products/people/common words are
+// still rejected downstream.
+// Case-SENSITIVE for the captured name (uppercase start) — the leading
+// interrogative is spelled in both cases explicitly, and the trailing verb is
+// an ACTIVITY verb only (never an article), so "Is <Person> the economic buyer?"
+// does not capture the person.
+const QUESTION_SUBJECT_RE =
+  /\b(?:[Dd]oes|[Dd]o|[Dd]id|[Ii]s|[Aa]re|[Hh]as|[Hh]ave|[Ww]ill)\s+([A-Z][A-Za-z0-9&.'-]+(?:\s+[A-Z][A-Za-z0-9&.'-]+){0,3})\s+(?:have|has|had|use|uses|using|run|runs|running|need|needs|plan|planning|own|owns|operate|operates|adopt|adopting|consider|considering|evaluat\w*)\b/g;
 
 function isProductOrVendor(name: string, productStoplist: Set<string>): boolean {
   const lower = name.toLowerCase().trim();
@@ -173,6 +185,10 @@ export function parseOrganizationEntities(
     // Company-context phrases ("at <Org>", "saying <Org>", "our client <Org>").
     for (const match of sentence.matchAll(CONTEXT_PHRASE_RE)) {
       acceptCandidate(match[1], "company_context_phrase", 0.78, sentence, ctx, candidates);
+    }
+    // Company named as the subject of a probing question about its own plans.
+    for (const match of sentence.matchAll(QUESTION_SUBJECT_RE)) {
+      acceptCandidate(match[1], "company_context_phrase", 0.74, sentence, ctx, candidates);
     }
   }
 

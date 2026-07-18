@@ -6,6 +6,7 @@ import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
 import { extractDialogueAccountCandidates, extractSubEntityNames } from "@/lib/account-resolution/candidateExtractor";
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
+import { parseOrganizationEntities } from "@/lib/account-resolution/organizationEntityParser";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
 import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
@@ -566,6 +567,52 @@ describe("account + qualified-deal rescue (funded program surfaced from a suppor
     expect(r.executive_summary.verdict).not.toBe("NOISE");
     expect(r.opportunity_scoring.decision).not.toBe("HOLD");
     expect(r.next_best_action?.action_type).not.toBe("suppress");
+  });
+});
+
+describe("output quality: headline metric, named EB, question-subject account, production dates", () => {
+  it("distills a baseline→target improvement pair, never a raw scale count", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Renewal review for the branch estate.",
+      "Lead — director of network platforms, Acme Rail: We run 408 branch locations. We detect a degrading circuit in forty-two minutes at the median; we need median recognition under ten minutes.",
+      "Lead — director of network platforms, Acme Rail: Please deliver a validation design by August 5."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    const metric = r.deal_intelligence?.headline_metric ?? "";
+    expect(metric).toContain("→");
+    expect(metric).toContain("10");
+    expect(metric).not.toMatch(/customer|location/i);
+  });
+
+  it("confirms a third-person named economic buyer (an absent CFO), not distributed", () => {
+    const text = "Chief financial officer Imogen Vale releases the program funds after the investment committee recommendation. Imogen is the economic buyer.";
+    const g = inferAuthorityGraph({ stakeholderTurns: [{ name: "Asha", text }], allCustomerText: [text] });
+    expect(g.economic_authority.status).toBe("confirmed");
+    expect(g.economic_authority.named_person).toContain("Imogen");
+  });
+
+  it("extracts the account named as a question subject ('does <Org> have a ... project')", () => {
+    const orgs = parseOrganizationEntities(["Nola, does Brightwave have a global consolidation project?"], { participantFirstNames: ["Nola"] });
+    expect(orgs.organization_candidates.map((o) => o.name)).toContain("Brightwave");
+  });
+
+  it("does NOT capture a person in 'is <Person> the economic buyer?' as an account", () => {
+    const orgs = parseOrganizationEntities(["Is Arden the economic buyer?"], { participantFirstNames: [] });
+    expect(orgs.organization_candidates.map((o) => o.name)).not.toContain("Arden");
+  });
+
+  it("never surfaces a media/production event date (screenings, premiere) as the timing driver", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: QBR.",
+      "Lead — customer: Toronto screenings begin September 9 and two launches are October 3. Those are production boundaries, not procurement dates."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    const timing = r.deal_intelligence?.timing?.label ?? "";
+    expect(timing.toLowerCase()).not.toContain("screening");
   });
 });
 
