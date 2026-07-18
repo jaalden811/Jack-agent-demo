@@ -138,10 +138,8 @@ const ORG_ROLE_STOP_WORDS = new Set([
  * leading run of Title-Case/all-caps proper-noun tokens before the first role
  * word. Returns null for a role-only or side-tag descriptor — so it can only
  * ever corroborate a real org, never invent one from a job title. */
-export function orgFromDescriptor(descriptor: string | null): string | null {
-  if (!descriptor) return null;
-  const firstSeg = descriptor.split(",")[0].trim();
-  const tokens = firstSeg.split(/\s+/);
+function orgFromSegment(segment: string): string | null {
+  const tokens = segment.trim().split(/\s+/);
   if (tokens.length === 0) return null;
   const first = tokens[0].replace(/[^\w&.'-]/g, "");
   if (!first || !/^[A-Z]/.test(first) || NON_ORG_LEADING_WORDS.has(first.toLowerCase())) return null;
@@ -153,6 +151,23 @@ export function orgFromDescriptor(descriptor: string | null): string | null {
     if (org.length >= 4) break;
   }
   return org.length > 0 ? org.join(" ") : null;
+}
+
+/** Extracts the organization from a participant descriptor. Handles BOTH the
+ * "Name — <Org> <role>" order ("Cisco account executive" -> "Cisco") and the
+ * "Name — <role>, <Org>" order ("director of network platforms, Acme Networks"
+ * -> "Acme Networks"), because real transcripts use either. Scans each segment
+ * for a leading run of Title-Case/all-caps proper-noun tokens before the first
+ * role word; returns the first segment that yields one. Returns null for a
+ * role-only or side-tag descriptor — it can only corroborate a real org, never
+ * invent one from a job title. */
+export function orgFromDescriptor(descriptor: string | null): string | null {
+  if (!descriptor) return null;
+  for (const segment of descriptor.split(",")) {
+    const org = orgFromSegment(segment);
+    if (org) return org;
+  }
+  return null;
 }
 
 // System/automation accounts that post in a channel but are not people — never

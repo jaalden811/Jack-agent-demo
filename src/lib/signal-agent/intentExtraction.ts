@@ -127,6 +127,18 @@ const RULES: PatternRule[] = [
     type: "next_step",
     pattern: /\bnext steps?\b[^.]{0,40}/gi,
     scoreContribution: 0.04
+  },
+  {
+    // An owner COMMITTING to deliver a concrete artifact BY A DATE is an
+    // accepted next step ("Kian owns a validation design by July 24", "Omi
+    // sends the authority matrix by July 23", "Edric sends a brief by July
+    // 24"). This is a generic commitment-verb + forward-date shape — the
+    // deliverable noun is intentionally not enumerated, so it generalizes past
+    // any specific artifact wording and is not tied to "workshop"/"session".
+    type: "next_step",
+    pattern:
+      /\b(owns?|sends?|sending|delivers?|delivering|provides?|providing|drafts?|drafting|prepares?|preparing|produces?|producing|obtains?|will (?:send|deliver|provide|own|draft|prepare|produce|obtain)|to (?:send|deliver|provide|draft|prepare|produce|obtain))\b[^.]{0,70}?\bby\b\s+(?:(?:january|february|march|april|may|june|july|august|september|october|november|december)\.?\s+\d{1,2}|\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2})/gi,
+    scoreContribution: 0.06
   }
 ];
 

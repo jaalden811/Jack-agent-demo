@@ -96,6 +96,41 @@ export function extractDialogueAccountCandidates(dialogueText: string[]): Dialog
   return candidates;
 }
 
+// Title-Case proper-noun run (1-3 tokens), reused for sub-entity detection.
+const SUBENT_NAME = "([A-Z][A-Za-z0-9&.'-]+(?:\\s+[A-Z][A-Za-z0-9&.'-]+){0,2})";
+// A candidate NAMED as a subordinate entity — an acquired estate, a division, a
+// subsidiary, or a business unit — is NOT the canonical account (the account is
+// the PARENT that owns it). Generic structural markers only; never a company
+// literal. Both orders are covered: "<Name> acquisition/division/subsidiary…"
+// and "acquired/subsidiary … <Name>", plus "<Name>, one of the N divisions".
+const SUBENTITY_PATTERNS: RegExp[] = [
+  new RegExp(`\\b${SUBENT_NAME}\\s+(?:acquisition|division|subsidiary|business unit|estate|unit)\\b`, "g"),
+  new RegExp(`\\b(?:acquired|acquisition of|subsidiary|division|business unit)\\b[\\w\\s,'-]{0,20}?\\b${SUBENT_NAME}\\b`, "g"),
+  new RegExp(`\\b${SUBENT_NAME},?\\s+(?:one|each|another)\\s+of\\s+(?:the\\s+)?(?:\\w+\\s+){0,2}(?:divisions?|subsidiar(?:y|ies)|units?|business units?)\\b`, "g")
+];
+
+/** Names the transcript explicitly frames as a subordinate entity (acquired
+ * estate / division / subsidiary / business unit). The resolver demotes these
+ * so a sub-entity mentioned frequently in dialogue never outranks the parent
+ * account it belongs to. Returns lowercased names. */
+export function extractSubEntityNames(dialogueText: string[]): Set<string> {
+  const names = new Set<string>();
+  for (const sentence of dialogueText) {
+    for (const re of SUBENTITY_PATTERNS) {
+      for (const m of sentence.matchAll(re)) {
+        // Strip a leading determiner ("The Meadowbrook subsidiary" -> "Meadowbrook")
+        // so the demoted name matches the extracted org candidate exactly.
+        const name = (m[1] ?? "")
+          .trim()
+          .replace(/^(?:the|a|an|our|their|its)\s+/i, "")
+          .replace(/[.,;:]+$/, "");
+        if (name) names.add(name.toLowerCase());
+      }
+    }
+  }
+  return names;
+}
+
 export function extractDomainMentions(dialogueText: string[]): Array<{ domain: string; evidence_text: string }> {
   const mentions: Array<{ domain: string; evidence_text: string }> = [];
   const seen = new Set<string>();

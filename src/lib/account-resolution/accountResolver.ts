@@ -1,5 +1,5 @@
 import { validateAccountCandidateName } from "@/lib/account-resolution/accountValidation";
-import { extractDialogueAccountCandidates, extractDomainMentions } from "@/lib/account-resolution/candidateExtractor";
+import { extractDialogueAccountCandidates, extractDomainMentions, extractSubEntityNames } from "@/lib/account-resolution/candidateExtractor";
 import { disambiguateAccount } from "@/lib/account-resolution/accountDisambiguation";
 import { parseOrganizationEntities } from "@/lib/account-resolution/organizationEntityParser";
 import { resolveDomainFromEmails } from "@/lib/account-resolution/domainResolver";
@@ -130,6 +130,22 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
 
   if (candidates.length === 0) {
     return { status: "unresolved", name: null, domain: null, confidence: 0, source: null, evidence_ids: [], alternatives: [], issues };
+  }
+
+  // Sub-entity demotion: a candidate the transcript names as an acquired estate,
+  // division, subsidiary, or business unit is NOT the canonical account (the
+  // account is the parent that owns it). Such a name is often mentioned MORE
+  // than the parent (e.g. "the twelve <Acquired> acquisition sites"), so without
+  // this it would win on dialogue frequency. Demote it below any non-sub-entity
+  // candidate while keeping it as a fallback if nothing else resolves.
+  const subEntities = extractSubEntityNames(inputs.transcriptDialogueText);
+  if (subEntities.size > 0) {
+    for (const candidate of candidates) {
+      if (subEntities.has(candidate.name.trim().toLowerCase())) {
+        candidate.confidence = Math.min(candidate.confidence, 0.35);
+        candidate.evidence_ids = Array.from(new Set([...candidate.evidence_ids, "sub_entity_demoted"]));
+      }
+    }
   }
 
   const sorted = [...candidates].sort((a, b) => b.confidence - a.confidence);

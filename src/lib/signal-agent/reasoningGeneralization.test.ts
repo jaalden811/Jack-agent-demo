@@ -4,7 +4,7 @@ import { ingestTranscript, isPlausibleSpeakerName, stripSpeakerDescriptor, orgFr
 import { validateAccountCandidateName } from "@/lib/account-resolution/accountValidation";
 import { extractBuyingIntentEvidence } from "@/lib/signal-agent/intentExtraction";
 import { inferSpeakerSide } from "@/lib/signal-agent/speakerSide";
-import { extractDialogueAccountCandidates } from "@/lib/account-resolution/candidateExtractor";
+import { extractDialogueAccountCandidates, extractSubEntityNames } from "@/lib/account-resolution/candidateExtractor";
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
 import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
@@ -506,6 +506,42 @@ describe("hard-rejection trap guard (never chase a rejected motion)", () => {
   });
 });
 
+describe("account resolution: parent/main account over a sub-entity; 'Role, Org' descriptors", () => {
+  it("reads the org from a 'Role, Org' descriptor, not only 'Org Role'", () => {
+    expect(orgFromDescriptor("director of network platforms, Acme Networks")).toBe("Acme Networks");
+    expect(orgFromDescriptor("vice president, branch operations, Acme Networks")).toBe("Acme Networks");
+    expect(orgFromDescriptor("Contoso account executive")).toBe("Contoso");
+    expect(orgFromDescriptor("systems architect")).toBeNull();
+  });
+
+  it("flags an acquired estate / division / subsidiary as a sub-entity (so it is demoted below the parent)", () => {
+    const subs = extractSubEntityNames([
+      "The program covers those sites plus twelve Riverbend acquisition sites still on the legacy stack.",
+      "I run Larkspur, one of the nine divisions, and we retain local control.",
+      "The Meadowbrook subsidiary keeps its own tooling."
+    ]);
+    expect(subs.has("riverbend")).toBe(true);
+    expect(subs.has("larkspur")).toBe(true);
+    expect(subs.has("meadowbrook")).toBe(true);
+  });
+
+  it("resolves the shared participant org over a more-frequent acquired estate", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: This is the Cortex Rail renewal review; branch standardization is the larger item.",
+      "Lena — director of network platforms, Cortex Rail: We keep renewal and transformation separate. The program covers our sites plus twelve Delta Freight acquisition sites still on the legacy stack.",
+      "Omar — vice president, operations, Cortex Rail: New sites take twenty-one days to open; our target is eight. We will validate before migrating the Delta Freight sites.",
+      "Rep — Vendor, Account Executive: For the twelve Delta Freight sites, do we replace immediately?",
+      "Lena — director of network platforms, Cortex Rail: No, coexistence until those contracts expire."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    // The acquired estate ("Delta Freight") is mentioned repeatedly but must not
+    // win over the org shared by the customer participants ("Cortex Rail").
+    expect(r.account_resolution?.name).toBe("Cortex Rail");
+  });
+});
+
 describe("account + qualified-deal rescue (funded program surfaced from a support-led call)", () => {
   it("extracts a customer's own employer from 'We run X for <Org>' (first-person plural)", () => {
     const cands = extractDialogueAccountCandidates([
@@ -530,6 +566,21 @@ describe("account + qualified-deal rescue (funded program surfaced from a suppor
     expect(r.executive_summary.verdict).not.toBe("NOISE");
     expect(r.opportunity_scoring.decision).not.toBe("HOLD");
     expect(r.next_best_action?.action_type).not.toBe("suppress");
+  });
+});
+
+describe("accepted next step: a committed dated deliverable, not only a workshop", () => {
+  it("detects an owner committing to a dated deliverable as a next_step", () => {
+    const t = ingestTranscript("Owner — Vendor, Solutions Engineer: I own the two-plane validation design by August 5.");
+    const ev = extractBuyingIntentEvidence(t);
+    expect(ev.some((e) => e.type === "next_step")).toBe(true);
+  });
+
+  it("does NOT match a negated activity as a next step ('we did not agree to send anything by Friday')", () => {
+    const t = ingestTranscript("Buyer — customer: We did not agree to send anything by August 5.");
+    const ev = extractBuyingIntentEvidence(t);
+    // A negated commitment must not be counted as an accepted next step.
+    expect(ev.some((e) => e.type === "next_step")).toBe(false);
   });
 });
 
