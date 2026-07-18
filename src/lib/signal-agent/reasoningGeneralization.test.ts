@@ -8,6 +8,7 @@ import { extractDialogueAccountCandidates, extractSubEntityNames } from "@/lib/a
 import { inferAuthorityGraph } from "@/lib/stakeholder-intelligence/authorityGraph";
 import { parseOrganizationEntities } from "@/lib/account-resolution/organizationEntityParser";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
+import { detectSatisfiedIncumbent } from "@/lib/signal-agent/satisfactionGuard";
 import { buildStageDInput } from "@/lib/circuit/stages/stageDAdapter";
 import { runSignalAgent } from "@/lib/signal-agent/runAgent";
 import { clearCatalogCache } from "@/lib/signal-agent/loadCatalog";
@@ -567,6 +568,58 @@ describe("account + qualified-deal rescue (funded program surfaced from a suppor
     expect(r.executive_summary.verdict).not.toBe("NOISE");
     expect(r.opportunity_scoring.decision).not.toBe("HOLD");
     expect(r.next_best_action?.action_type).not.toBe("suppress");
+  });
+});
+
+describe("satisfied incumbent is never pursued; decimal metrics count as impact", () => {
+  it("flags a satisfied incumbent (healthy metrics + no buying motion), not a painful constrained deal", () => {
+    const satisfied = detectSatisfiedIncumbent([
+      "For the trailing ninety days availability was 99.97 percent and we are inside all of them.",
+      "There is no performance gap that justifies a replacement.",
+      "There is no active requisition, RFP, or supplier comparison for monitoring."
+    ]);
+    expect(satisfied.satisfied).toBe(true);
+    // A real painful opportunity with a scope constraint must NOT read as satisfied.
+    const painful = detectSatisfiedIncumbent([
+      "Detection takes 42 minutes and we need under 10; this is hurting us.",
+      "Keep the incumbent tool alongside it — no rip-and-replace."
+    ]);
+    expect(painful.satisfied).toBe(false);
+  });
+
+  it("suppresses pursuit for a satisfied incumbent end-to-end (positive metrics are not pain)", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Executive briefing on your monitoring.",
+      "CTO — customer: We finished the migration in April. We are not starting a monitoring modernization and not comparing products.",
+      "SRE — customer: Availability was 99.97 percent, detection 3.8 minutes, change failure 2.1 percent. We are inside all of them. There is no performance gap that justifies a replacement.",
+      "Proc — customer: There is no active requisition, RFP, renewal, or supplier comparison for monitoring.",
+      "Spec — Vendor, Specialist: I can send a documentation compatibility brief by August 5."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    expect(r.executive_summary.verdict).toBe("NOISE");
+  });
+
+  it("counts a decimal duration ('5.4 days') as quantified impact", () => {
+    const t = ingestTranscript("Owner — customer: New joiners wait a median of 5.4 days for full access, which is too slow.");
+    const ev = extractBuyingIntentEvidence(t);
+    expect(ev.some((e) => e.type === "impact")).toBe(true);
+  });
+
+  it("distills a headline pair when the baseline qualifier TRAILS the number ('14 hours ... on average')", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Plant modernization review.",
+      "Lead — director of manufacturing IT, Acme Foods: Unplanned downtime cost us fourteen hours per plant last quarter on average, and our target is under four hours by year end.",
+      "Lead — director of manufacturing IT, Acme Foods: Please deliver a validation design by August 6."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    const metric = r.deal_intelligence?.headline_metric ?? "";
+    expect(metric).toContain("14");
+    expect(metric).toContain("4");
+    expect(metric).toMatch(/→/);
   });
 });
 

@@ -89,12 +89,15 @@ function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
       if (!Number.isFinite(value)) continue;
       const unit = canonicalMetricUnit(m[2]);
       // Classify from BOTH sides — a baseline qualifier often trails the number
-      // ("42 minutes at the median", "eight days or less"). The trailing window
-      // is deliberately SHORT (~14 chars) so it catches an attached qualifier
-      // but NOT a qualifier for the next clause's number ("96 minutes and our
-      // board target is under 30" must keep 96 as the baseline, not the target).
+      // ("42 minutes at the median", "14 hours per plant last quarter on
+      // average", "eight days or less"). The trailing context runs only to the
+      // next CLAUSE boundary (comma / "and" / "but" / sentence end), so a
+      // qualifier for the NEXT clause's number is excluded ("96 minutes and our
+      // board target is under 30" keeps 96 as the baseline, not the target),
+      // while a same-clause trailing qualifier is still captured.
       const idx = m.index ?? 0;
-      const context = `${norm.slice(Math.max(0, idx - 30), idx)} ${norm.slice(idx + m[0].length, idx + m[0].length + 14)}`;
+      const afterClause = norm.slice(idx + m[0].length, idx + m[0].length + 60).split(/[,;.]| and | but | while | whereas /i)[0];
+      const context = `${norm.slice(Math.max(0, idx - 30), idx)} ${afterClause}`;
       const entry = byUnit.get(unit) ?? { baseline: null, target: null };
       if (TARGET_MARKER.test(context)) {
         if (entry.target === null || value < entry.target) entry.target = value;

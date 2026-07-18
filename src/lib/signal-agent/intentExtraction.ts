@@ -84,8 +84,10 @@ const RULES: PatternRule[] = [
     scoreContribution: 0.08
   },
   {
+    // Allow a decimal ("5.4 days", "6.2 days", "4.3 minutes") — a fractional
+    // duration is a real quantified impact and must not be dropped.
     type: "impact",
-    pattern: /\b\d+\s?(minutes?|hours?|days?|weeks?)\b/gi,
+    pattern: /\b\d+(?:\.\d+)?\s?(minutes?|hours?|days?|weeks?)\b/gi,
     scoreContribution: 0.05
   },
   {

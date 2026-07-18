@@ -3,6 +3,7 @@ import path from "node:path";
 import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { ingestTranscript, selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
+import { detectSatisfiedIncumbent } from "@/lib/signal-agent/satisfactionGuard";
 import { findAccount, applyAccountOverride } from "@/lib/signal-agent/accountContext";
 import { embedTranscript } from "@/lib/signal-agent/semanticMatch";
 import { evaluateEntry, selectMultiLabelEvaluations } from "@/lib/signal-agent/scoring";
@@ -474,6 +475,23 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     result.opportunity_scoring.decision = "DO_NOT_PURSUE";
     result.opportunity_scoring.final_pursuit_score = Math.min(result.opportunity_scoring.final_pursuit_score, 15);
     result.executive_summary.verdict = "NOISE";
+  }
+
+  // Satisfied-incumbent guard: a customer whose current solution MEETS its
+  // targets (metrics inside thresholds / no gap that justifies change) AND who
+  // has no active buying motion is not pursuable — a healthy, positive metric
+  // must never be misread as pain and drive a pursuit. Gated so it never
+  // suppresses a genuinely funded deal (a CONFIRMED named EB with confirmed
+  // pain), which by definition is not a satisfied incumbent.
+  const ebConfirmed = result.meddpicc?.economic_buyer?.status === "CONFIRMED";
+  const painConfirmed = result.meddpicc?.identify_pain?.status === "CONFIRMED";
+  const satisfied = detectSatisfiedIncumbent(
+    transcript.sentences.filter((sentence) => sentence.isCustomer).map((sentence) => sentence.text)
+  );
+  if (satisfied.satisfied && !(ebConfirmed && painConfirmed) && result.executive_summary.verdict !== "NOISE") {
+    result.executive_summary.verdict = "NOISE";
+    if (!["DO_NOT_PURSUE"].includes(result.opportunity_scoring.decision)) result.opportunity_scoring.decision = "HOLD";
+    result.opportunity_scoring.final_pursuit_score = Math.min(result.opportunity_scoring.final_pursuit_score, 20);
   }
 
   // Qualified-deal rescue (inverse of the trap guard): a call with a CONFIRMED,

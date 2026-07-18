@@ -1,0 +1,29 @@
+{
+  "description": "Explicit CUSTOMER 'satisfied incumbent' signals — the current solution MEETS its targets and there is NO active buying motion. When a call pairs strong satisfaction (metrics inside thresholds / no gap that justifies change) with an explicit no-motion statement (no requisition/RFP/project, not comparing products, not starting a modernization), it is NOT a pursuable opportunity even if positive metrics are stated (a healthy metric must never be misread as pain). Generic linguistic shapes only — never a company/product/scenario literal. Logic: src/lib/signal-agent/satisfactionGuard.ts. This is DISTINCT from a scope constraint on a real, painful opportunity ('keep the incumbent tool' alongside a stated gap), which must NOT suppress.",
+  "satisfaction_cues": [
+    "\\bno (?:performance |material |measurable )?gap that (?:justifies|warrants|requires|would justify|supports)\\b",
+    "\\bno (?:performance |material |measurable )?gap in (?:those|these|the) measures\\b",
+    "\\b(?:we are|we're|are) (?:well )?(?:inside|within) all (?:of )?(?:them|the thresholds|four|our thresholds)\\b",
+    "\\b(?:inside|within) all (?:of )?(?:them|the thresholds|four)\\b",
+    "\\b(?:meets?|meeting|met|exceeds?|exceeding) (?:all )?(?:our |the )?(?:approved )?(?:thresholds|targets|requirements|objectives|slos?|operating threshold)\\b",
+    "\\bwithin (?:all )?(?:our )?(?:approved )?thresholds\\b",
+    "\\bno performance gap\\b",
+    "\\b(?:current|existing) (?:service map|stack|tooling|platform|architecture) meets (?:the )?(?:operating )?(?:threshold|requirement)\\b"
+  ],
+  "no_motion_cues": [
+    "\\bnot (?:starting|beginning|planning|opening) (?:a|an|any) (?:[\\w-]+ ){0,3}(?:modernization|replacement|evaluation|project|migration|initiative)\\b",
+    "\\bno (?:active )?(?:requisition|rfp|rfi|renewal|supplier comparison|contract event|buying motion)\\b",
+    "\\bno (?:active )?(?:requisition|rfp|rfi|renewal|legal review|supplier comparison)[\\w\\s,]{0,40}\\bfor\\b",
+    "\\bnot comparing (?:those|these)? ?products\\b",
+    "\\bnot (?:a|an) (?:replacement|buying) (?:conversation|motion|project)\\b",
+    "\\bno such (?:project|program|initiative) exists?\\b"
+  ],
+  "negation_of_satisfaction": [
+    "not within",
+    "not meeting",
+    "do not meet",
+    "does not meet",
+    "outside our thresholds",
+    "below target"
+  ]
+}

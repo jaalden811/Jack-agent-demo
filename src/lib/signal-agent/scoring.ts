@@ -40,8 +40,12 @@ import type { NegationConfig } from "@/lib/signal-agent/types";
 const TRANSCRIPT_ONLY_STRONG_INTENT_EVIDENCE = 0.55;
 const TRANSCRIPT_ONLY_MIN_EVIDENCE_TYPES = 4;
 // A genuine discovery (quantified pain + accepted next step) needs far
-// less than the 4-type commercial threshold to stay out of NOISE.
-const DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE = 0.15;
+// less than the 4-type commercial threshold to stay out of NOISE — one
+// quantified impact plus one accepted dated next step is enough. Satisfied
+// incumbents (healthy metrics, no motion) and explicit denials are suppressed
+// separately (satisfactionGuard / unresolved-negation), so this floor can be
+// this low without pursuing them.
+const DISCOVERY_MOMENTUM_MIN_INTENT_EVIDENCE = 0.1;
 
 export async function evaluateEntry(params: {
   entry: CatalogEntry;
