@@ -486,7 +486,14 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   if (!hardRejection.rejected && result.executive_summary.verdict === "NOISE") {
     const m = result.meddpicc;
     const confirmed = (f?: { status?: string }) => f?.status === "CONFIRMED";
-    if (confirmed(m?.economic_buyer) && confirmed(m?.identify_pain) && confirmed(m?.metrics) && confirmed(m?.decision_criteria)) {
+    const present = (f?: { status?: string }) => f?.status === "CONFIRMED" || f?.status === "PARTIAL";
+    // Anchor on the three hardest, rarest pillars — a CONFIRMED (named) economic
+    // buyer, CONFIRMED pain, and CONFIRMED quantified metrics — which a support/
+    // monitor/trap conversation never has together. Decision criteria only need
+    // to be PRESENT (a support-led call often states rich criteria in one turn
+    // that the deterministic detector rates PARTIAL, not CONFIRMED); requiring
+    // them CONFIRMED too was dropping genuinely qualified, funded programs.
+    if (confirmed(m?.economic_buyer) && confirmed(m?.identify_pain) && confirmed(m?.metrics) && present(m?.decision_criteria)) {
       result.executive_summary.verdict = "REVIEW";
       if (["HOLD", "DO_NOT_PURSUE", "NURTURE"].includes(result.opportunity_scoring.decision)) {
         result.opportunity_scoring.decision = "PURSUE_WITH_DISCOVERY";

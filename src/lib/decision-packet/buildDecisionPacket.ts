@@ -47,6 +47,13 @@ function includesAny(haystackLower: string, cues: string[]): boolean {
   return cues.some((cue) => haystackLower.includes(cue.toLowerCase()));
 }
 
+// Forward-looking exploratory-interest markers. A sentence carrying these is a
+// latent-interest / soft-expansion signal ("we've started wondering whether we
+// have enough visibility"), which must never be typed as a disqualifier even
+// when it also contains a soft deferral ("not committing today").
+const EXPLORATION_INTEREST_RE =
+  /\b(?:started wondering|begun wondering|began to wonder|started thinking about|exploring whether|looking into whether|curious (?:about|whether)|keen to (?:explore|understand)|open to exploring|wondering whether|wondering if)\b/i;
+
 /** Extract a decomposed decision-criteria ledger. One sentence listing several
  * criteria yields one entry per matched category (each citing that sentence),
  * so a dense "our criteria are A, B, C..." statement is decomposed rather than
@@ -92,7 +99,15 @@ export function extractObjections(
   const classify = (text: string): ObjectionTypeDef | null => {
     const lower = text.toLowerCase();
     for (const t of taxonomy.objection_types) {
-      if (includesAny(lower, t.cues)) return t;
+      if (!includesAny(lower, t.cues)) continue;
+      // A "disqualifier" (out of scope / not a buying motion) is the strongest
+      // negative type. Never assign it to a sentence that actually expresses
+      // forward-looking EXPLORATORY INTEREST ("I'm not committing to anything
+      // today, but we've started wondering whether ..."): that is a soft,
+      // latent-interest signal, not a scope rejection. Fall through to a weaker
+      // type if one also matches, else treat it as not an objection.
+      if (t.id === "disqualifier" && EXPLORATION_INTEREST_RE.test(lower)) continue;
+      return t;
     }
     return null;
   };

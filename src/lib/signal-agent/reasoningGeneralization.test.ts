@@ -506,6 +506,48 @@ describe("hard-rejection trap guard (never chase a rejected motion)", () => {
   });
 });
 
+describe("account + qualified-deal rescue (funded program surfaced from a support-led call)", () => {
+  it("extracts a customer's own employer from 'We run X for <Org>' (first-person plural)", () => {
+    const cands = extractDialogueAccountCandidates([
+      "We run nine member-facing journeys across web and mobile for Northwind Cooperative."
+    ]);
+    expect(cands.map((c) => c.name)).toContain("Northwind Cooperative");
+  });
+
+  it("lifts a funded program (named EB + confirmed pain + confirmed metrics, criteria present) out of NOISE", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Lena — Vendor, Support Engineer: I opened this for support case 12. Your synthetic check failed after an upgrade; I will return a fix by Friday.",
+      "Cara — Customer, Platform Engineer: The browser logs in, but the monitor fails at the token exchange step.",
+      "Owen — Customer, Director of Member Experience: The ticket and our broader program are separate. We run nine member journeys for Northwind Cooperative. Last quarter we had 19 customer-visible failures and median time to recognize a failure was 41 minutes.",
+      "Dana — Customer, VP Member Digital: I sponsor the assurance program and own the outcome. The leadership council approved a 500,000 dollar envelope this year for monitoring software, and I can approve a vendor within that envelope after the security gate. I have not approved a vendor.",
+      "Owen — Customer, Director of Member Experience: Our decision criteria: cover six journeys from three regions, detect a seeded failure within five minutes, and produce evidence of whether a failure is app, identity, or network.",
+      "Owen — Customer, Director of Member Experience: Can we get a comparative validation plan next week?"
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    // The support ticket must not bury a funded, EB-backed program.
+    expect(r.executive_summary.verdict).not.toBe("NOISE");
+    expect(r.opportunity_scoring.decision).not.toBe("HOLD");
+    expect(r.next_best_action?.action_type).not.toBe("suppress");
+  });
+});
+
+describe("objection typing does not confuse latent interest with disqualification", () => {
+  it("does not type a forward-looking exploratory musing as a disqualifier", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Tom — Vendor, Renewal Manager: This is the renewal review for your switching support at Rivergate.",
+      "Hugo — Customer, Network Manager: We intend to renew; the current term ends December 15.",
+      "Hugo — Customer, Network Manager: Separately, and I am not committing to anything today, we have started wondering whether we have enough visibility into network experience for our clinical applications."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    const disqualifiers = (r.decision_packet?.objections ?? []).filter((o) => o.type === "disqualifier");
+    expect(disqualifiers).toHaveLength(0);
+  });
+});
+
 describe("inline 'Name — Role: text' turn parsing (single-line descriptor+utterance)", () => {
   it("parses speakers and sides from an inline em-dash descriptor before the colon", () => {
     // Descriptor AND the utterance are on ONE line — a very common export format

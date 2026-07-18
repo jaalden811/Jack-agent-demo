@@ -40,9 +40,12 @@ const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
   // correctly skipped).
   new RegExp(`\\b[Ii] (?:cover|look after|handle|carry)\\s+${NAME_CAPTURE}\\s+for\\b`, "g"),
   new RegExp(`\\baccount (?:executive|manager|owner|lead|director)\\s+for\\s+${NAME_CAPTURE}`, "g"),
-  // A customer stating their own employer ("I lead cyber operations for Acme",
-  // "I work at Acme Retail") — the org after for/at is the account.
-  new RegExp(`\\b[Ii] (?:lead|run|manage|head|oversee|direct|work in|work at|work for)\\s+[\\w\\s,'&.-]{2,45}?\\s(?:for|at)\\s+${NAME_CAPTURE}`, "g")
+  // A customer stating their own employer, first-person singular OR plural
+  // ("I lead cyber operations for Acme", "We run nine member journeys for Acme
+  // Health", "I work at Acme Retail") — the org after for/at is the account. The
+  // object between the verb and for/at can be a longish noun phrase, so allow up
+  // to ~60 chars (still anchored by a Title-Case org name after for/at).
+  new RegExp(`\\b(?:[Ii]|[Ww]e) (?:lead|run|operate|manage|head|oversee|direct|support|work in|work at|work for)\\s+[\\w\\s,'&.-]{2,60}?\\s(?:for|at)\\s+${NAME_CAPTURE}`, "g")
 ];
 
 // Explicit canonical-account declarations — the strongest dialogue signal
