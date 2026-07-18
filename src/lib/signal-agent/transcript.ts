@@ -56,8 +56,8 @@ const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .']{0,59}):\s*(.+)$/;
 const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,4})\s+[—–]\s+(.+)$/;
 const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
 // Inline "Name — Descriptor: text" turn (descriptor AND utterance on ONE
-// line, e.g. "Priya — Customer, Director of Security Operations: We are not
-// renewing."). PLAIN_SPEAKER_RE can't see this because the pre-colon segment
+// line, e.g. "Alex — Customer, Director of Operations: We are not renewing
+// as-is."). PLAIN_SPEAKER_RE can't see this because the pre-colon segment
 // carries an em-dash and commas. Guarded two ways so an ordinary mid-sentence
 // em-dash aside ("Owen — the person I mentioned earlier: ...") does not become
 // a speaker: the separator must be a padded em/en dash, and the descriptor
