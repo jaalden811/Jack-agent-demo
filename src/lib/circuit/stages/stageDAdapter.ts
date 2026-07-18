@@ -91,7 +91,9 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
     champion: championLine,
     public_context: (di?.public_context ?? []).map((p) => `${p.label} — ${p.evidence}`),
     headline_metric: di?.headline_metric ?? null,
-    timing_driver: salesRM.why_now && /\bnot procurement\b|\bprocurement\b/i.test(salesRM.why_now) && di?.timing ? { label: salesRM.why_now, is_procurement: di.timing.is_procurement } : null
+    // Always forward the real, honest deal-intel timing driver (a dated
+    // milestone) when one exists, so Circuit can anchor "why now" on it.
+    timing_driver: di?.timing ? { label: di.timing.label, is_procurement: di.timing.is_procurement } : null
   };
 
   // Deterministic fallback renders from the SAME canonical RoleMessage that the

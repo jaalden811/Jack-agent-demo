@@ -149,15 +149,23 @@ function distillTiming(chunks: TranscriptChunk[], cfg: DealIntelConfig): DealInt
     const hasDeadlineWord = tc.deadline_markers.some((m) => lower.includes(m));
     const hasDate = monthRe.test(lower);
     if (!hasDeadlineWord && !hasDate) continue;
-    // Rank: decision boundary (3) > deadline word (2) > month only (1).
-    const score = DECISION_BOUNDARY_RE.test(lower) ? 3 : hasDeadlineWord ? 2 : 1;
+    // Rank so a CONCRETE DATE dominates: an actual dated milestone ("selection
+    // September 15") is a far better "why now" than a date-less meta statement
+    // that merely contains a deadline word ("this is a real evaluation, not a
+    // renewal formality" trips on "renewal"). Dates outrank everything; a
+    // decision-boundary word and a deadline word add secondary weight.
+    const score = (hasDate ? 4 : 0) + (DECISION_BOUNDARY_RE.test(lower) ? 2 : 0) + (hasDeadlineWord ? 1 : 0);
     if (!best || score > best.score) best = { chunk, score };
   }
   if (!best) return null;
   const lower = best.chunk.text.toLowerCase();
   const isProcurement = tc.procurement_markers.some((m) => lower.includes(m)) && !tc.not_procurement_markers.some((m) => lower.includes(m));
-  const label = isProcurement ? shortText(best.chunk.text, 160) : `${shortText(best.chunk.text, 150)} (decision boundary, not procurement)`;
-  return { label, is_procurement: isProcurement, evidence: shortText(best.chunk.text, 200) };
+  // The label is customer-facing prose — it carries ONLY the timing sentence.
+  // Whether this is procurement timing vs. a decision boundary is an internal
+  // classification exposed structurally via `is_procurement`, never spliced into
+  // the message text (an annotation like "(decision boundary, not procurement)"
+  // reads as debug output in a delivered message).
+  return { label: shortText(best.chunk.text, 180), is_procurement: isProcurement, evidence: shortText(best.chunk.text, 200) };
 }
 
 let cached: DealIntelConfig | null = null;

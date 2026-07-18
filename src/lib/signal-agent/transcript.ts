@@ -55,6 +55,16 @@ const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .']{0,59}):\s*(.+)$/;
 // that separator.
 const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,4})\s+[—–]\s+(.+)$/;
 const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
+// Inline "Name — Descriptor: text" turn (descriptor AND utterance on ONE
+// line, e.g. "Priya — Customer, Director of Security Operations: We are not
+// renewing."). PLAIN_SPEAKER_RE can't see this because the pre-colon segment
+// carries an em-dash and commas. Guarded two ways so an ordinary mid-sentence
+// em-dash aside ("Owen — the person I mentioned earlier: ...") does not become
+// a speaker: the separator must be a padded em/en dash, and the descriptor
+// must actually read like a role/side descriptor (ROLE_DESCRIPTOR_RE).
+const INLINE_DESCRIPTOR_SPEAKER_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,3})\s+[—–]\s+([^:]{2,70}):\s+(.+)$/;
+const ROLE_DESCRIPTOR_RE =
+  /\b(vendor|customer|partner|internal|external|seller|buyer|prospect|reseller|distributor|director|manager|lead|owner|engineer|architect|specialist|executive|officer|procurement|security|finance|operations|sales|marketing|product|reliability|platform|network|infrastructure|application|data|cloud|risk|clinical|digital|account|solutions?|vp|svp|evp|cio|ciso|cto|ceo|cfo|coo|cro|head|chair|sponsor|analyst|administrator|consultant|president|principal|associate|representative|rep)\b/i;
 
 // Words that never begin a real person's name but commonly begin an
 // ordinary sentence or mid-transcript continuation line — a
@@ -325,6 +335,17 @@ function parseDialogueLine(line: string, options: { allowPlainSpeaker: boolean }
   match = line.match(LEGACY_BRACKET_SPEAKER_RE);
   if (match && isPlausibleSpeakerName(match[1])) return { timestamp: null, speaker: match[1].trim(), text: match[2].trim() };
 
+  // Inline "Name — Role descriptor: utterance" (descriptor + text on one line).
+  match = line.match(INLINE_DESCRIPTOR_SPEAKER_RE);
+  if (
+    match &&
+    ROLE_DESCRIPTOR_RE.test(match[2]) &&
+    !isNonSpeakerKey(match[1]) &&
+    isPlausibleSpeakerName(match[1])
+  ) {
+    return { timestamp: null, speaker: match[1].trim(), text: match[3].trim(), descriptor: match[2].trim() };
+  }
+
   // The bare, untimestamped "Name: text" pattern is only trusted as a
   // speaker header when the transcript does NOT otherwise use an
   // explicit timestamped/bracketed header format. Real transcripts use
@@ -579,11 +600,21 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
       headersDetected += 1;
       const record = ensureRecord(dialogue.speaker);
       record.turnCount += 1;
-      // Capture the org from an inline "Name — <Org> <role>:" descriptor —
-      // a strong customer-account identity signal when many speakers share it.
-      if (!record.organization && dialogue.descriptor) {
-        const org = orgFromDescriptor(dialogue.descriptor);
-        if (org) record.organization = org;
+      // An inline "Name — Customer/Vendor, Title:" descriptor is the strongest
+      // possible side signal (the transcript states it outright), so it wins
+      // over later behavior-based inference. Also capture the org from the
+      // descriptor — a strong customer-account identity signal when shared.
+      if (dialogue.descriptor) {
+        if (record.classification === "unknown") {
+          const { title, organization, classification } = classifyDescriptor(dialogue.descriptor, "unknown");
+          if (classification !== "unknown") record.classification = classification;
+          if (!record.title && title) record.title = title;
+          if (!record.organization && organization) record.organization = organization;
+        }
+        if (!record.organization) {
+          const org = orgFromDescriptor(dialogue.descriptor);
+          if (org) record.organization = org;
+        }
       }
       openTurn = { record, timestamp: dialogue.timestamp, textParts: dialogue.text ? [dialogue.text] : [] };
       continue;

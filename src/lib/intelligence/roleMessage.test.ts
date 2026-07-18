@@ -52,6 +52,20 @@ describe("generateRoleMessage — canonical content decision", () => {
     expect(sales).not.toContain("Current stack:");
   });
 
+  it("why-this-matters leads with the real customer problem, not the taxonomy category, and frames the metric as a target", () => {
+    const p = makePacket({
+      opportunity: { ...makePacket().opportunity, primary_opportunity: "technology lifecycle, adoption, support, and operational readiness" },
+      customer_evidence: { ...makePacket().customer_evidence, business_impacts: [{ statement: "our median time to a defensible risk assessment is 84 minutes", speaker: null, evidence_ids: [] }] },
+      deal_intelligence: { ...makePacket().deal_intelligence, headline_metric: "84 → under 20 minutes" }
+    });
+    const why = generateRoleMessage(p, "sales").why_this_matters.toLowerCase();
+    // Opens with the real problem (the 84-minute impact) and the target — never
+    // the generic taxonomy label.
+    expect(why).toContain("84");
+    expect(why).toContain("under 20 minutes");
+    expect(why).not.toContain("technology lifecycle, adoption, support");
+  });
+
   it("why-now is a concrete timing driver, else the customer-requested step — never a hedged impact quote", () => {
     const hedged = makePacket({ deal_intelligence: { ...makePacket().deal_intelligence, timing_driver: { label: "It may be a deadline becoming harder to meet", is_procurement: false } } });
     expect(generateRoleMessage(hedged, "sales").why_now).not.toMatch(/it may be|becoming harder/i);

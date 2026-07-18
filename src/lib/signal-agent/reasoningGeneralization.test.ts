@@ -126,10 +126,13 @@ describe("deal-intelligence output quality (metric / honest timing / champion)",
     // Metric is distilled to digits, baseline→target (not a spelled-out quote).
     expect(di.headline_metric).toContain("96");
     expect(di.headline_metric).toContain("30");
-    // Timing is the forward decision boundary, framed HONESTLY (not procurement).
+    // Timing is the forward decision boundary, classified HONESTLY as a
+    // decision boundary (not procurement) via the structural flag. The label is
+    // the customer's own sentence (which here happens to say "not procurement
+    // timing"); what we must NEVER do is splice in our own debug annotation.
     expect(di.timing?.label.toLowerCase()).toContain("october");
     expect(di.timing?.is_procurement).toBe(false);
-    expect(di.timing?.label.toLowerCase()).toContain("not procurement");
+    expect(di.timing?.label.toLowerCase()).not.toContain("(decision boundary");
     // The customer who drives the accepted next step is the champion (Dana),
     // not the vendor rep (Rachel) — and never a vendor.
     const champ = di.power_map.find((p) => p.role_id === "business_champion");
@@ -502,3 +505,35 @@ describe("hard-rejection trap guard (never chase a rejected motion)", () => {
     expect(result.next_best_action?.action_type).toBe("suppress");
   });
 });
+
+describe("inline 'Name — Role: text' turn parsing (single-line descriptor+utterance)", () => {
+  it("parses speakers and sides from an inline em-dash descriptor before the colon", () => {
+    // Descriptor AND the utterance are on ONE line — a very common export format
+    // ("Priya — Customer, Director: We are not renewing."). The explicit
+    // Customer/Vendor tag is the strongest side signal and must win.
+    const t = ingestTranscript(
+      [
+        "Marcus — Vendor, Account Executive: I cover the account and brought our specialist.",
+        "Priya — Customer, Director of Operations: Our median recovery time is 84 minutes and we need it under 20.",
+        "Devon — Customer, VP and Budget Owner: I approved the program budget and can select a vendor within it.",
+        "Ada — Vendor, Solutions Engineer: What environment is in scope for a proof of value?"
+      ].join("\n")
+    );
+    expect(t.diagnostics.turns_parsed).toBeGreaterThanOrEqual(4);
+    const byName = new Map(t.participantRecords.map((r) => [r.name, r.classification]));
+    expect(byName.get("Marcus")).toBe("vendor");
+    expect(byName.get("Ada")).toBe("vendor");
+    expect(byName.get("Priya")).toBe("customer");
+    expect(byName.get("Devon")).toBe("customer");
+  });
+
+  it("does NOT treat an ordinary mid-sentence em-dash aside as a speaker", () => {
+    // "we — as a team — decided:" has an em-dash but no role descriptor, so it
+    // must not be mistaken for a "Name — Role:" turn header.
+    const t = ingestTranscript(
+      ["Nolan: We — as a team — decided: the checkout latency is the priority this quarter."].join("\n")
+    );
+    expect(t.participantRecords.map((r) => r.name)).toEqual(["Nolan"]);
+  });
+});
+

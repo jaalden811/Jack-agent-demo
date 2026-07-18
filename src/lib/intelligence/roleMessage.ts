@@ -50,18 +50,52 @@ function firstMeaningful(...cands: Array<string | null | undefined>): string | n
   return null;
 }
 
+// A business-impact statement reads like a PROBLEM (a metric, a loss, a
+// blind spot, a time/cost consequence) — as opposed to a budget-approval line
+// ("committee approved $1.4M") or a decision-criteria list, which appear in the
+// same business_impact array but are not the customer's problem.
+const PROBLEM_HINT_RE =
+  /\b(slow|delay|fail|failure|outage|downtime|risk|breach|incident|cost|lose|losing|lost|can'?t|cannot|unable|too long|minutes?|hours?|days?|%|percent|conversion|manual|blind|visibility|no way to|hard to|difficult|degrade|penal|punish|complexity|complex)\b/i;
+const NON_PROBLEM_RE =
+  /\b(approved|budget|envelope|decision criteria|our criteria|success criteria|criteria are|criteria:|authorize|approval authority)\b/i;
+
+/** The most decision-relevant customer PROBLEM, in their own words. Prefers a
+ * business impact that reads like a problem, then the value hypothesis; only
+ * falls back to the taxonomy category (a generic label) when nothing concrete
+ * was stated. `real` is false for the taxonomy fallback so the caller can add
+ * the impact as a separate stakes line. */
+function pickProblem(packet: IntelligencePacket): { text: string; real: boolean } {
+  const impacts = packet.customer_evidence.business_impacts.map((b) => b.statement).filter(Boolean);
+  const problem = impacts.find((s) => PROBLEM_HINT_RE.test(s) && !NON_PROBLEM_RE.test(s));
+  if (problem) return { text: lowerFirst(clean(problem, 200)), real: true };
+  const vh = stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? "");
+  if (vh && !/^(not stated|none|no quantified|no explicit)\b/i.test(vh)) return { text: lowerFirst(clean(vh, 200)), real: true };
+  return { text: lowerFirst(packet.opportunity.primary_opportunity), real: false };
+}
+
+/** The target half of a "baseline → target" headline metric ("84 → under 20
+ * minutes" -> "under 20 minutes"), so "why this matters" can state the goal
+ * without repeating the baseline already in the problem sentence. */
+function metricTarget(metric: string | null): string | null {
+  if (!metric) return null;
+  const arrow = metric.split(/→|->/);
+  const t = (arrow.length > 1 ? arrow[1] : metric).trim();
+  return t || null;
+}
+
 /** WHY THIS MATTERS — a synthesized read of the opportunity, not a category tag.
- * Composes the core problem, the expansion-vs-net-new framing, and the business
- * stakes, all from packet fields. */
+ * Leads with the real customer problem, frames the metric as a target, then adds
+ * expansion / exec framing (sales) or the current stack (technical). */
 function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
   const account = packet.identity.account_prose;
-  const problem = lowerFirst(packet.opportunity.primary_opportunity);
+  const { text: problem, real } = pickProblem(packet);
+  const target = metricTarget(packet.deal_intelligence.headline_metric);
+  const problemHasTarget = /→|->|\btarget\b|\bunder\b|\bwithin\b/i.test(problem);
   const parts: string[] = [];
 
   if (lane === "technical") {
-    parts.push(`${upperFirst(account)}'s core problem is ${sentence(problem)}`);
-    const stakes = firstMeaningful(stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? ""), packet.customer_evidence.business_impacts[0]?.statement);
-    if (stakes) parts.push(sentence(`The stakes: ${clean(stakes, 160).replace(/[.]+$/, "")}`));
+    parts.push(`${upperFirst(account)}'s core problem: ${sentence(problem)}`);
+    if (target && !problemHasTarget) parts.push(`The target is ${sentence(target)}`);
     // Naming the current stack makes the technical read concrete and materially
     // distinct from the commercial lane (it is what the validation must integrate).
     const env = packet.current_environment.slice(0, 5);
@@ -71,15 +105,20 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
   }
 
   // Sales / leadership: account importance + commercial framing.
-  parts.push(`${upperFirst(account)} is working to ${sentence(problem)}`);
+  parts.push(`${upperFirst(account)}: ${sentence(problem)}`);
+  if (target && !problemHasTarget) parts.push(`The target is ${sentence(target)}`);
   if (packet.deal_intelligence.existing_footprint) {
     parts.push(`${packet.opportunity.primary_solution_motion ?? "The platform"} already exists in pockets, so this is an expansion play rather than a net-new platform decision.`);
   }
   if (packet.deal_intelligence.exec_program) {
     parts.push("It attaches to an exec-sponsored program with senior attention.");
   }
-  const stakes = firstMeaningful(stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? ""), packet.customer_evidence.business_impacts[0]?.statement);
-  if (stakes) parts.push(sentence(`Business stakes are concrete: ${clean(stakes, 160).replace(/[.]+$/, "")}`));
+  // Only add a separate stakes line when the headline fell back to the generic
+  // category (otherwise the problem sentence already IS the concrete stake).
+  if (!real) {
+    const stakes = firstMeaningful(stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? ""), packet.customer_evidence.business_impacts[0]?.statement);
+    if (stakes) parts.push(sentence(`Business stakes: ${clean(stakes, 160).replace(/[.]+$/, "")}`));
+  }
   return clean(parts.join(" "), 400);
 }
 
