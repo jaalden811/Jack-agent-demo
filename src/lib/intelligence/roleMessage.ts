@@ -1,4 +1,6 @@
 import type { IntelligencePacket, MessageLane, RoleMessage } from "@/lib/intelligence/types";
+import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
+import { resolveGoalFrames } from "@/lib/personalization/goalMessageStrategy";
 
 /**
  * generateRoleMessage(packet, lane) -> the ONE content decision for a lane.
@@ -22,6 +24,24 @@ function upperFirst(s: string): string {
 }
 function stripValuePrefix(s: string): string {
   return s.replace(/^frame value in their words:\s*/i, "").replace(/^["']|["']$/g, "").trim();
+}
+/** Converts a first-person customer quote into attributed third-person prose so
+ * the system voice never speaks as the customer ("first, our average time ... is
+ * ninety-six minutes" -> "its average time ... is 96 minutes"). Strips leading
+ * enumerators/lead-ins and swaps first-person pronouns; spelled numbers are
+ * normalized to digits. Exact quotes remain untouched in the evidence/details. */
+function toThirdPerson(quote: string): string {
+  let t = normalizeSpelledNumbers(quote).trim();
+  t = t.replace(/^(?:first|second|third|fourth|fifth|next|also|and|but|finally|lastly|then|so|well|plus|now)\s*[,:]\s*/i, "");
+  t = t
+    .replace(/\bwe're\b/gi, "they are")
+    .replace(/\bwe've\b/gi, "they have")
+    .replace(/\bwe'll\b/gi, "they will")
+    .replace(/\bwe\b/gi, "they")
+    .replace(/\bour\b/gi, "its")
+    .replace(/\bours\b/gi, "theirs")
+    .replace(/\bus\b/gi, "them");
+  return t.charAt(0).toLowerCase() + t.slice(1);
 }
 /** Strips conversational lead-ins from a raw success-criteria/outcome quote. */
 function stripCriteriaFiller(s: string): string {
@@ -65,14 +85,13 @@ const NON_PROBLEM_RE =
  * was stated. `real` is false for the taxonomy fallback so the caller can add
  * the impact as a separate stakes line. */
 function pickProblem(packet: IntelligencePacket): { text: string; real: boolean } {
-  // Strip a leading discourse conjunction ("And we detect...", "But we...") so
-  // the problem sentence does not open mid-thought.
-  const stripLead = (s: string) => s.replace(/^(?:and|but|so|also|now|well|plus)\s+/i, "");
-  const impacts = packet.customer_evidence.business_impacts.map((b) => stripLead(b.statement)).filter(Boolean);
+  const impacts = packet.customer_evidence.business_impacts.map((b) => b.statement).filter(Boolean);
   const problem = impacts.find((s) => PROBLEM_HINT_RE.test(s) && !NON_PROBLEM_RE.test(s));
-  if (problem) return { text: lowerFirst(clean(problem, 200)), real: true };
+  // Normalize first-person customer quotes to attributed third person so the
+  // system voice never says "our" (the reported confusion).
+  if (problem) return { text: toThirdPerson(clean(problem, 200)), real: true };
   const vh = stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? "");
-  if (vh && !/^(not stated|none|no quantified|no explicit)\b/i.test(vh)) return { text: lowerFirst(clean(vh, 200)), real: true };
+  if (vh && !/^(not stated|none|no quantified|no explicit)\b/i.test(vh)) return { text: toThirdPerson(clean(vh, 200)), real: true };
   return { text: lowerFirst(packet.opportunity.primary_opportunity), real: false };
 }
 
@@ -97,7 +116,9 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
   const parts: string[] = [];
 
   if (lane === "technical") {
-    parts.push(`${upperFirst(account)}'s core problem: ${sentence(problem)}`);
+    // Attributed third-person (never the system speaking as the customer), while
+    // keeping the "core problem" technical framing.
+    parts.push(real ? `${upperFirst(account)}'s core problem: ${sentence(upperFirst(problem))}` : `${upperFirst(account)}'s core problem: ${sentence(problem)}`);
     if (target && !problemHasTarget) parts.push(`The target is ${sentence(target)}`);
     // Naming the current stack makes the technical read concrete and materially
     // distinct from the commercial lane (it is what the validation must integrate).
@@ -107,8 +128,10 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
     return clean(parts.join(" "), 420);
   }
 
-  // Sales / leadership: account importance + commercial framing.
-  parts.push(`${upperFirst(account)}: ${sentence(problem)}`);
+  // Sales / leadership: account importance + commercial framing. Attributed
+  // third-person opener — never the system speaking as the customer.
+  const opener = real ? `${upperFirst(account)} reports that ${problem}` : `${upperFirst(account)}: ${sentence(problem)}`;
+  parts.push(sentence(opener));
   if (target && !problemHasTarget) parts.push(`The target is ${sentence(target)}`);
   if (packet.deal_intelligence.existing_footprint) {
     parts.push(`${packet.opportunity.primary_solution_motion ?? "The platform"} already exists in pockets, so this is an expansion play rather than a net-new platform decision.`);
@@ -162,10 +185,13 @@ function expectedOutcome(packet: IntelligencePacket, lane: MessageLane): string 
 /** WATCH-OUT — the decisive constraint. Sales leads with commercial/adoption
  * landmines and any explicit "do not frame it as X" boundary; technical leads
  * with feasibility/sovereignty/coexistence. */
-function watchOut(packet: IntelligencePacket, lane: MessageLane): string | null {
+function watchOut(packet: IntelligencePacket, lane: MessageLane, goalPreferredRisks: string[] = []): string | null {
   const salesIds = ["not_a_competition", "budget_not_approved", "no_single_eb", "cost_governance", "decentralized_control", "privacy_gate"];
   const techIds = ["credibility", "sovereignty", "skills_gap", "cost_governance", "privacy_gate", "not_a_competition"];
-  const pref = lane === "technical" ? techIds : salesIds;
+  // The recipient's top goal decides which risk to LEAD the watch-out with
+  // (goal-driven emphasis); the lane order is the tiebreaker. This is the only
+  // way goals touch the watch-out — the landmines themselves are unchanged.
+  const pref = [...goalPreferredRisks, ...(lane === "technical" ? techIds : salesIds)];
   const ordered = [...packet.deal_intelligence.landmines].sort((a, b) => {
     const ai = pref.indexOf(a.id);
     const bi = pref.indexOf(b.id);
@@ -216,9 +242,30 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
           .join(" · ") || null
       : null;
 
-  // Owner-only quota hook; goal alignment (named goals) is safe for any lane.
+  // Resolve the recipient's top goal frame for this lane (goal → message
+  // strategy). Goals change emphasis (watch-out order, goal line) only.
+  const goalLane = lane === "leadership" ? "leadership" : lane === "technical" ? "technical" : "sales";
+  const goalFrames = resolveGoalFrames({
+    profileGoals: packet.personalization.profile_goal_ids.map((goal_id) => ({ goal_id })),
+    lane: goalLane,
+    matchedCategoryIds: packet.opportunity.matched_category_ids,
+    presentMomentumIds: packet.deal_intelligence.momentum.map((m) => m.id),
+    presentRiskIds: packet.deal_intelligence.landmines.map((r) => r.id)
+  });
+  const topGoal = goalFrames.frames[0] ?? null;
+  const profileGoalsResolved = packet.personalization.profile_goal_ids.length > 0 && topGoal;
+
+  // Owner-only quota hook; goal-alignment line names the aligned recipient goal.
+  // When the recipient has explicit profile goals that align, lead with the goal
+  // frame; otherwise keep the existing teaser line, then a role-default frame.
   const goalImpact = teaser?.goal_impact ?? null;
-  const goalAlignment = teaser?.goal_alignment ? teaser.goal_alignment.replace(/^Supports:\s*/i, "") : null;
+  // No profile → no "your goal" line (role-default frames still shape the
+  // watch-out emphasis, but must not fabricate a personal-goal claim).
+  const goalAlignment = profileGoalsResolved
+    ? `${topGoal.label} — ${topGoal.reason}`
+    : teaser?.goal_alignment
+      ? teaser.goal_alignment.replace(/^Supports:\s*/i, "")
+      : null;
 
   return {
     lane,
@@ -229,7 +276,7 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
     why_now: whyNow(packet),
     action: actionText(packet),
     expected_outcome: expectedOutcome(packet, lane),
-    watch_out: watchOut(packet, lane),
+    watch_out: watchOut(packet, lane, topGoal?.preferred_risk_types ?? []),
     goal_alignment: goalAlignment,
     goal_impact: goalImpact,
     champion: champ ? { name: champ.name, play: clean(champ.play, 160) } : null,

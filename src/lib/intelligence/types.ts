@@ -59,6 +59,8 @@ export type IntelligencePacket = {
     primary_opportunity: string;
     primary_solution_motion: string | null;
     is_actionable: boolean;
+    /** Taxonomy category IDs this run matched — used to align recipient goals. */
+    matched_category_ids: string[];
   };
   customer_evidence: {
     pains: PacketEvidenceItem[];
@@ -110,6 +112,8 @@ export type IntelligencePacket = {
   public_context: PacketSignal[];
   personalization: {
     profile_present: boolean;
+    /** Recipient profile goal IDs (drive goal-to-message strategy per lane). */
+    profile_goal_ids: string[];
     recipient_teasers: Partial<Record<MessageLane, { why_you: string; goal_alignment: string | null; goal_impact: string | null }>>;
   };
   provenance: {

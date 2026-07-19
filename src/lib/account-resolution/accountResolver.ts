@@ -132,6 +132,26 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
     return { status: "unresolved", name: null, domain: null, confidence: 0, source: null, evidence_ids: [], alternatives: [], issues };
   }
 
+  function mergeAliasVariants(cands: AccountCandidate[]): AccountCandidate[] {
+    const byLongest = [...cands].sort((a, b) => b.name.length - a.name.length);
+    const merged: AccountCandidate[] = [];
+    for (const c of byLongest) {
+      const cn = c.name.toLowerCase().trim();
+      const host = merged.find((m) => {
+        const mn = m.name.toLowerCase().trim();
+        return mn === cn || mn.startsWith(`${cn} `) || cn.startsWith(`${mn} `) || mn.includes(` ${cn} `) || mn.endsWith(` ${cn}`);
+      });
+      if (host) {
+        host.confidence = Math.max(host.confidence, c.confidence);
+        host.domain = host.domain ?? c.domain;
+        host.evidence_ids = Array.from(new Set([...host.evidence_ids, ...c.evidence_ids]));
+      } else {
+        merged.push({ ...c });
+      }
+    }
+    return merged;
+  }
+
   // Sub-entity demotion: a candidate the transcript names as an acquired estate,
   // division, subsidiary, or business unit is NOT the canonical account (the
   // account is the parent that owns it). Such a name is often mentioned MORE
@@ -148,7 +168,13 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
     }
   }
 
-  const sorted = [...candidates].sort((a, b) => b.confidence - a.confidence);
+  // Merge alias variants: a shorter name that is a leading word-subset of a
+  // longer one ("Acme" vs "Acme Mutual Bank") is the SAME account, not
+  // a conflict — prefer the longest explicit declaration and keep the max
+  // confidence. Processing longest-first makes the fuller name the canonical one.
+  const mergedCandidates = mergeAliasVariants(candidates);
+
+  const sorted = [...mergedCandidates].sort((a, b) => b.confidence - a.confidence);
   const best = sorted[0];
 
   // Conflict detection: two distinct names both from otherwise-reliable,

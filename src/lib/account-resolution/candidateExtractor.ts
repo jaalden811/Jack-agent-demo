@@ -38,7 +38,10 @@ const COMPANY_INTRODUCTION_PATTERNS: RegExp[] = [
   // (Acme Retail = account) from "I cover the [Cisco] renewal for Acme" (here
   // the token after "cover" is the vendor/product, not the account, so it is
   // correctly skipped).
-  new RegExp(`\\b[Ii] (?:cover|look after|handle|carry)\\s+${NAME_CAPTURE}\\s+for\\b`, "g"),
+  new RegExp(`\\b[Ii] (?:cover|look after|handle|carry|own|manage|support)\\s+${NAME_CAPTURE}\\s+(?:commercially|technically|directly|globally|regionally|nationally|strategically\\s+)?(?:commercially\\s+)?for\\b`, "g"),
+  // "I cover <Account> commercially/technically." with no trailing "for" — the
+  // adverb after the full account name still identifies the covered account.
+  new RegExp(`\\b[Ii] (?:cover|look after|handle|carry|own|manage|support)\\s+${NAME_CAPTURE}\\s+(?:commercially|technically|directly|globally|regionally|nationally|strategically)\\b`, "g"),
   new RegExp(`\\baccount (?:executive|manager|owner|lead|director)\\s+for\\s+${NAME_CAPTURE}`, "g"),
   // A customer stating their own employer, first-person singular OR plural
   // ("I lead cyber operations for Acme", "We run nine member journeys for Acme

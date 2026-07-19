@@ -17,6 +17,19 @@ const STOPWORDS = new Set([
   "do", "does", "did", "not", "no", "so", "just", "very", "can", "could", "would", "should", "will", "i"
 ]);
 
+// Pure SALES-PROCESS / meeting-logistics words. Every discovery, review, or
+// validation call contains these regardless of the customer's product need, so
+// they must not contribute semantic overlap — otherwise a security or network
+// conversation scores against the collaboration category simply because it is
+// *a meeting* ("workshop", "session", "participant", "agenda", "readout"). This
+// is a generic linguistic stoplist, not a product/category branch.
+const PROCESS_STOPWORDS = new Set([
+  "meeting", "meetings", "workshop", "workshops", "session", "sessions", "agenda", "agendas",
+  "participant", "participants", "attendee", "attendees", "readout", "readouts", "demo", "demos",
+  "walkthrough", "walkthroughs", "recap", "kickoff", "standup", "reconvene", "slide", "slides", "deck",
+  "discovery", "readiness", "cadence", "invite", "calendar"
+]);
+
 /** Very small suffix-stripping stemmer (not a full Porter stemmer) so that
  * e.g. "centralized"/"centralize"/"centralizing" or "collaboration"/
  * "collaborate" collapse to a shared token for overlap purposes, per the
@@ -37,7 +50,7 @@ function tokenize(text: string): string[] {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length > 2 && !STOPWORDS.has(token))
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token) && !PROCESS_STOPWORDS.has(token))
     .map(stem);
 }
 

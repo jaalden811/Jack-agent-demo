@@ -682,7 +682,9 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
         headersDetected += 1;
         const record = ensureRecord(ncName);
         record.turnCount += 1;
-        if (record.classification === "unknown") record.classification = ncSide;
+        // ParticipantClassification has no "partner" — a partner speaks from the
+        // vendor side of the table, so classify as vendor (never a customer).
+        if (record.classification === "unknown") record.classification = ncSide === "partner" ? "vendor" : ncSide;
         openTurn = { record, timestamp: null, textParts: ncText ? [ncText] : [] };
         continue;
       }

@@ -9,7 +9,7 @@ import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
 function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket {
   const base: IntelligencePacket = {
     identity: { run_id: "r1", account: "Acme Retail", account_label: "Acme Retail", account_prose: "Acme Retail", account_resolved: true, account_confidence: 0.9, participant_count: 4 },
-    opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability and incident correlation", primary_solution_motion: "Splunk ITSI", is_actionable: true },
+    opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability and incident correlation", primary_solution_motion: "Splunk ITSI", is_actionable: true, matched_category_ids: ["cloud_native_observability"] },
     customer_evidence: { pains: [], business_impacts: [{ statement: "hundreds of specialists unable to work when incidents hit", speaker: null, evidence_ids: [] }], objections: [], explicit_negations: ["not a SIEM replacement"], do_not_reask: [] },
     qualification: { meddpicc: { identify_pain: "CONFIRMED", metrics: "CONFIRMED" }, decision_criteria: [] },
     current_environment: ["ServiceNow", "Okta", "CrowdStrike"],
@@ -22,7 +22,7 @@ function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket 
     next_action: { primary_action: "Run a two-scenario working session", primary_action_type: "architecture_workshop", owner_lane: "technical", summary: "Run a scenario-design workshop.", success_criteria: ["Agree data sources and success criteria"], why_now: [], recommended_timing: null, evidence_ids: ["E1"] },
     workshop: { requested: true, format: "working session", scenarios: ["degraded engineering service", "suspicious identity activity"], data_sources: [], success_criteria: ["Agree data sources and success criteria"] },
     public_context: [],
-    personalization: { profile_present: false, recipient_teasers: {} },
+    personalization: { profile_present: false, profile_goal_ids: [], recipient_teasers: {} },
     provenance: { analysis_mode: "deterministic", message_source: "deterministic_fallback", limitations: [] }
   };
   return { ...base, ...over };
@@ -50,6 +50,36 @@ describe("generateRoleMessage — canonical content decision", () => {
     // the commercial lane does not lead with the stack.
     expect(tech).toContain("ServiceNow");
     expect(sales).not.toContain("Current stack:");
+  });
+
+  it("normalizes a first-person customer quote into attributed third person (never the system saying 'our')", () => {
+    const p = makePacket({
+      customer_evidence: { ...makePacket().customer_evidence, business_impacts: [{ statement: "first, our average time from alert to a defensible risk assessment is ninety-six minutes", speaker: null, evidence_ids: [] }] }
+    });
+    const why = generateRoleMessage(p, "sales").why_this_matters;
+    expect(why).toMatch(/reports that its average time/i);
+    expect(why).toContain("96");
+    expect(why).not.toMatch(/\bour\b/i);
+    expect(why).not.toMatch(/^first,/i);
+  });
+
+  it("recipient goals change the goal-alignment emphasis on the SAME opportunity (scores/facts unchanged)", () => {
+    const base = makePacket({
+      opportunity: { ...makePacket().opportunity, matched_category_ids: ["soc_detection_response"] },
+      personalization: { profile_present: true, profile_goal_ids: ["security_portfolio_growth"], recipient_teasers: {} }
+    });
+    const other = makePacket({
+      opportunity: { ...makePacket().opportunity, matched_category_ids: ["soc_detection_response"] },
+      personalization: { profile_present: true, profile_goal_ids: ["deal_velocity"], recipient_teasers: {} }
+    });
+    const a = generateRoleMessage(base, "sales");
+    const b = generateRoleMessage(other, "sales");
+    expect(a.goal_alignment).toMatch(/security portfolio growth/i);
+    expect(b.goal_alignment).toMatch(/deal velocity/i);
+    expect(a.goal_alignment).not.toEqual(b.goal_alignment);
+    // Goals never change the opportunity facts or scores.
+    expect(a.hook).toEqual(b.hook);
+    expect(base.opportunity.pursuit_score).toEqual(other.opportunity.pursuit_score);
   });
 
   it("why-this-matters leads with the real customer problem, not the taxonomy category, and frames the metric as a target", () => {
@@ -81,7 +111,7 @@ describe("generateRoleMessage — canonical content decision", () => {
   });
 
   it("surfaces the owner-only quota hook + named goals when a profile teaser exists", () => {
-    const p = makePacket({ personalization: { profile_present: true, recipient_teasers: { sales: { why_you: "x", goal_alignment: "Supports: Expand observability", goal_impact: "$300K ≈ 25% of your annual target" }, technical: { why_you: "y", goal_alignment: "Supports: Expand observability", goal_impact: null } } } });
+    const p = makePacket({ personalization: { profile_present: true, profile_goal_ids: [], recipient_teasers: { sales: { why_you: "x", goal_alignment: "Supports: Expand observability", goal_impact: "$300K ≈ 25% of your annual target" }, technical: { why_you: "y", goal_alignment: "Supports: Expand observability", goal_impact: null } } } });
     const sales = renderWebexMessage(generateRoleMessage(p, "sales"));
     expect(sales).toContain("**Goal impact:** $300K ≈ 25% of your annual target");
     expect(sales).toContain("**Goal fit:** Expand observability");

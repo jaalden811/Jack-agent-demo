@@ -95,7 +95,8 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
       deal_maturity: scoring?.deal_maturity ?? "PROBLEM_DISCOVERY",
       primary_opportunity: summary.primary_opportunity ?? primaryMatch?.pain_category ?? "the customer's stated priorities",
       primary_solution_motion: primaryMatch?.recommended_solutions?.[0] ?? null,
-      is_actionable: isActionable
+      is_actionable: isActionable,
+      matched_category_ids: (result.matches ?? []).map((m) => m.entry_id).filter(Boolean)
     },
     customer_evidence: {
       pains: [],
@@ -146,6 +147,7 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
     public_context: (di?.public_context ?? []).map(toSignal),
     personalization: {
       profile_present: Boolean(result.personalization?.profile_complete || result.personalization?.profile_id),
+      profile_goal_ids: (result.personalization?.goal_alignment ?? []).map((g) => g.goal_id).filter(Boolean),
       recipient_teasers: {
         sales: teaserFor("sales"),
         technical: teaserFor("technical"),

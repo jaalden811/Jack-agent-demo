@@ -699,6 +699,72 @@ describe("objection typing does not confuse latent interest with disqualificatio
   });
 });
 
+describe("goal-to-message taxonomy + account full-name + evidence-substance classification", async () => {
+  const { resolveGoalFrames } = await import("@/lib/personalization/goalMessageStrategy");
+
+  it("returns no goal frame when no evidence aligns (never a forced goal hook)", () => {
+    const res = resolveGoalFrames({
+      profileGoals: [{ goal_id: "security_portfolio_growth" }],
+      lane: "sales",
+      matchedCategoryIds: ["collaboration_productivity"],
+      presentMomentumIds: [],
+      presentRiskIds: []
+    });
+    expect(res.frames).toHaveLength(0);
+  });
+
+  it("selects an aligned goal frame and its preferred risks when evidence supports it", () => {
+    const res = resolveGoalFrames({
+      profileGoals: [{ goal_id: "security_portfolio_growth" }],
+      lane: "sales",
+      matchedCategoryIds: ["soc_detection_response"],
+      presentMomentumIds: ["active_stage", "eb_identified"],
+      presentRiskIds: ["no_single_eb"]
+    });
+    expect(res.source).toBe("profile");
+    expect(res.frames[0]?.goal_id).toBe("security_portfolio_growth");
+    expect(res.frames[0]?.preferred_risk_types).toContain("no_single_eb");
+  });
+
+  it("falls back to lane-default goal frames when no profile goals are given", () => {
+    const res = resolveGoalFrames({
+      profileGoals: [],
+      lane: "technical",
+      matchedCategoryIds: ["soc_detection_response"],
+      presentMomentumIds: ["requested_next_step", "clear_criteria"],
+      presentRiskIds: ["privacy_gate"]
+    });
+    expect(res.source).toBe("lane_default");
+    expect(res.frames.length).toBeGreaterThan(0);
+  });
+
+  it("resolves the full explicit account name over its short alias ('I cover <Full Name> commercially')", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: I cover Brightwater Mutual Bank commercially for us.",
+      "Dana — customer: We lead security operations. Our median time from a high-severity alert to a defensible risk assessment is 96 minutes; the target is under 30. We are evaluating a SIEM and XDR modernization.",
+      "Ely — customer: Please schedule the technical validation workshop next Thursday."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    expect(r.account_resolution?.name).toBe("Brightwater Mutual Bank");
+  });
+
+  it("does not classify a security conversation as a collaboration product just because it is a meeting", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Thanks for the workshop; several participants joined this session.",
+      "Dana — customer: We lead the SOC. Investigation across our SIEM and XDR takes too long; median time to a defensible risk assessment is 96 minutes against a target of 30.",
+      "Owen — customer: We are evaluating Splunk Enterprise Security and Cisco XDR for threat detection and investigation, with firewall events and identity context.",
+      "Ely — customer: Let us hold the technical design session next Thursday to confirm scenarios and pass/fail criteria."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    expect((r.executive_summary.primary_opportunity ?? "").toLowerCase()).not.toContain("collaboration");
+    expect((r.executive_summary.primary_opportunity ?? "").toLowerCase()).not.toContain("hybrid-work");
+  });
+});
+
 describe("colon-less, side-tagged, low-punctuation transcript parsing", () => {
   it("parses 'Name customer/vendor <text>' turns with correct sides even without colons or punctuation", () => {
     const t = ingestTranscript(

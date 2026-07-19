@@ -1,0 +1,312 @@
+{
+  "description": "Data-driven map from a recipient's GOAL to how a message is drafted. A recipient's goals change message EMPHASIS (which evidence, momentum, and risk to lead with; how to frame why-this-matters, the action, the outcome, and the watch-out) — never the underlying opportunity facts, scores, MEDDPICC, routing, or account identity. Logic: src/lib/personalization/goalMessageStrategy.ts. `compatible_opportunity_categories` uses existing taxonomy category IDs from cisco_painpoint_solution_map.json; `preferred_*_types` use existing deal-intelligence momentum/risk IDs from deal_intelligence_signals.json. Never a company/product/transcript literal.",
+  "version": "1.0",
+  "goals": [
+    {
+      "goal_id": "security_portfolio_growth",
+      "label": "Security portfolio growth",
+      "description": "Grow security/SIEM/XDR footprint via an active security evaluation.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["soc_detection_response", "identity_zero_trust", "threat_detection_investigation", "security_operations"],
+      "preferred_momentum_types": ["active_stage", "eb_identified", "existing_footprint", "quantified_metrics", "clear_criteria"],
+      "preferred_risk_types": ["no_single_eb", "budget_not_approved", "not_a_competition", "sovereignty", "privacy_gate"],
+      "message_strategy": {
+        "why_this_matters_focus": ["security_risk_outcome", "existing_footprint", "program_funding"],
+        "why_now_focus": ["decision_boundary", "committee_gate"],
+        "action_focus": ["single_commercial_action", "committee_path"],
+        "expected_outcome_focus": ["committee_ready_recommendation", "expansion_or_coexistence"],
+        "watch_out_focus": ["vendor_allocation_vs_program_funding", "distributed_authority"]
+      },
+      "research_intents": ["security_program", "regulatory_exposure"],
+      "forbidden_claims": ["rip_and_replace", "approved_vendor_allocation"],
+      "default_weight": 1.0,
+      "active": true
+    },
+    {
+      "goal_id": "funded_initiative_conversion",
+      "label": "Funded initiative conversion",
+      "description": "Convert an already-funded customer program into a committed evaluation/purchase.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["eb_identified", "active_stage", "clear_criteria", "requested_next_step"],
+      "preferred_risk_types": ["budget_not_approved", "no_single_eb"],
+      "message_strategy": {
+        "why_this_matters_focus": ["program_funding", "committee_gate"],
+        "why_now_focus": ["committee_gate", "decision_boundary"],
+        "action_focus": ["single_commercial_action", "committee_path"],
+        "expected_outcome_focus": ["committee_ready_recommendation"],
+        "watch_out_focus": ["vendor_allocation_vs_program_funding"]
+      },
+      "research_intents": ["program_funding"],
+      "forbidden_claims": ["approved_vendor_allocation"],
+      "default_weight": 0.9,
+      "active": true
+    },
+    {
+      "goal_id": "strategic_account_expansion",
+      "label": "Strategic account expansion",
+      "description": "Expand within a strategic account across products/motions.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["existing_footprint", "exec_program", "active_stage"],
+      "preferred_risk_types": ["decentralized_control", "no_single_eb"],
+      "message_strategy": {
+        "why_this_matters_focus": ["account_importance", "existing_footprint", "exec_program"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_commercial_action"],
+        "expected_outcome_focus": ["expansion_or_coexistence"],
+        "watch_out_focus": ["distributed_authority"]
+      },
+      "research_intents": ["company_scale", "strategic_objectives"],
+      "forbidden_claims": [],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "goal_id": "observability_portfolio_growth",
+      "label": "Observability portfolio growth",
+      "description": "Grow observability footprint via an active observability need.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["cloud_native_observability", "service_health_aiops", "digital_experience"],
+      "preferred_momentum_types": ["quantified_metrics", "active_stage", "existing_footprint"],
+      "preferred_risk_types": ["cost_governance", "skills_gap"],
+      "message_strategy": {
+        "why_this_matters_focus": ["reliability_outcome", "existing_footprint"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_commercial_action"],
+        "expected_outcome_focus": ["validated_outcome"],
+        "watch_out_focus": ["cost_governance"]
+      },
+      "research_intents": ["reliability_program"],
+      "forbidden_claims": [],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "goal_id": "networking_portfolio_growth",
+      "label": "Networking portfolio growth",
+      "description": "Grow networking footprint via an active network modernization need.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["network_modernization", "sdwan_sase", "branch_standardization", "digital_experience"],
+      "preferred_momentum_types": ["quantified_metrics", "active_stage", "existing_footprint"],
+      "preferred_risk_types": ["cost_governance", "skills_gap"],
+      "message_strategy": {
+        "why_this_matters_focus": ["operational_outcome", "existing_footprint"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_commercial_action"],
+        "expected_outcome_focus": ["validated_outcome"],
+        "watch_out_focus": ["cost_governance"]
+      },
+      "research_intents": ["network_modernization"],
+      "forbidden_claims": [],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "goal_id": "renewal_protection",
+      "label": "Renewal protection",
+      "description": "Protect and grow an upcoming renewal.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["existing_footprint", "active_stage"],
+      "preferred_risk_types": ["not_a_competition", "budget_not_approved"],
+      "message_strategy": {
+        "why_this_matters_focus": ["renewal_window", "existing_footprint"],
+        "why_now_focus": ["renewal_window", "decision_boundary"],
+        "action_focus": ["protect_renewal", "single_commercial_action"],
+        "expected_outcome_focus": ["renewal_secured", "expansion_or_coexistence"],
+        "watch_out_focus": ["competitive_pressure"]
+      },
+      "research_intents": ["renewal_context"],
+      "forbidden_claims": ["approved_replacement"],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "goal_id": "competitive_displacement",
+      "label": "Competitive displacement",
+      "description": "Displace a named competitor in an active evaluation.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["active_stage", "clear_criteria"],
+      "preferred_risk_types": ["not_a_competition", "credibility"],
+      "message_strategy": {
+        "why_this_matters_focus": ["competitive_alternative", "decision_criteria"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_commercial_action"],
+        "expected_outcome_focus": ["win_criteria"],
+        "watch_out_focus": ["competitive_pressure", "credibility"]
+      },
+      "research_intents": ["competitor_context"],
+      "forbidden_claims": [],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "goal_id": "deal_velocity",
+      "label": "Deal velocity",
+      "description": "Accelerate progression toward a decision.",
+      "allowed_lanes": ["sales", "leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["requested_next_step", "active_stage", "clear_criteria"],
+      "preferred_risk_types": ["no_single_eb", "credibility"],
+      "message_strategy": {
+        "why_this_matters_focus": ["momentum", "decision_criteria"],
+        "why_now_focus": ["decision_boundary", "requested_next_step"],
+        "action_focus": ["single_commercial_action", "tight_next_step"],
+        "expected_outcome_focus": ["accepted_next_step"],
+        "watch_out_focus": ["distributed_authority"]
+      },
+      "research_intents": [],
+      "forbidden_claims": [],
+      "default_weight": 0.6,
+      "active": true
+    },
+    {
+      "goal_id": "technical_validation_success",
+      "label": "Technical validation success",
+      "description": "Run a credible, bounded technical validation the customer trusts.",
+      "allowed_lanes": ["technical", "specialist"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["requested_next_step", "clear_criteria", "quantified_metrics"],
+      "preferred_risk_types": ["sovereignty", "privacy_gate", "skills_gap", "credibility"],
+      "message_strategy": {
+        "why_this_matters_focus": ["customer_problem", "agreed_scenarios"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_validation_action", "agreed_scenarios"],
+        "expected_outcome_focus": ["validated_scope", "pass_fail_criteria"],
+        "watch_out_focus": ["data_boundaries", "privacy_gate", "sovereignty"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["unbounded_data", "automatic_integration"],
+      "default_weight": 1.0,
+      "active": true
+    },
+    {
+      "goal_id": "architecture_credibility",
+      "label": "Architecture credibility",
+      "description": "Prove a bounded, honest architecture with explicit data flows.",
+      "allowed_lanes": ["technical", "specialist"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["clear_criteria", "quantified_metrics"],
+      "preferred_risk_types": ["credibility", "skills_gap"],
+      "message_strategy": {
+        "why_this_matters_focus": ["architecture_boundaries", "current_stack"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_validation_action", "architecture_boundaries"],
+        "expected_outcome_focus": ["bounded_architecture", "evidence_quality"],
+        "watch_out_focus": ["credibility", "maintainability"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["automatic_integration", "single_pane"],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "goal_id": "security_and_privacy_assurance",
+      "label": "Security and privacy assurance",
+      "description": "Guarantee privacy, residency, and access constraints in the validation.",
+      "allowed_lanes": ["technical", "specialist"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["clear_criteria"],
+      "preferred_risk_types": ["privacy_gate", "sovereignty"],
+      "message_strategy": {
+        "why_this_matters_focus": ["privacy_constraints", "data_boundaries"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_validation_action", "data_boundaries"],
+        "expected_outcome_focus": ["privacy_approved_scope"],
+        "watch_out_focus": ["privacy_gate", "sovereignty", "data_boundaries"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["unbounded_data"],
+      "default_weight": 0.9,
+      "active": true
+    },
+    {
+      "goal_id": "integration_risk_reduction",
+      "label": "Integration risk reduction",
+      "description": "Reduce integration/coexistence risk across the current stack.",
+      "allowed_lanes": ["technical", "specialist"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["clear_criteria", "existing_footprint"],
+      "preferred_risk_types": ["skills_gap", "credibility", "cost_governance"],
+      "message_strategy": {
+        "why_this_matters_focus": ["current_stack", "coexistence"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["single_validation_action", "coexistence"],
+        "expected_outcome_focus": ["integration_proof"],
+        "watch_out_focus": ["maintainability", "cost_governance"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["automatic_integration"],
+      "default_weight": 0.7,
+      "active": true
+    },
+    {
+      "goal_id": "proof_of_value_conversion",
+      "label": "Proof-of-value conversion",
+      "description": "Convert a scoped validation into a limited-data PoV.",
+      "allowed_lanes": ["technical", "specialist"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["requested_next_step", "clear_criteria"],
+      "preferred_risk_types": ["privacy_gate", "credibility"],
+      "message_strategy": {
+        "why_this_matters_focus": ["agreed_scenarios", "customer_problem"],
+        "why_now_focus": ["decision_boundary", "requested_next_step"],
+        "action_focus": ["single_validation_action", "pass_fail_criteria"],
+        "expected_outcome_focus": ["pov_scope", "pass_fail_criteria"],
+        "watch_out_focus": ["data_boundaries", "credibility"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["unbounded_data"],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "goal_id": "forecast_quality",
+      "label": "Forecast quality",
+      "description": "Improve the accuracy/honesty of the forecast.",
+      "allowed_lanes": ["leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["eb_identified", "active_stage", "clear_criteria"],
+      "preferred_risk_types": ["no_single_eb", "budget_not_approved"],
+      "message_strategy": {
+        "why_this_matters_focus": ["strategic_importance", "committee_gate"],
+        "why_now_focus": ["committee_gate", "decision_boundary"],
+        "action_focus": ["decision_needed"],
+        "expected_outcome_focus": ["decision_ready"],
+        "watch_out_focus": ["vendor_allocation_vs_program_funding", "distributed_authority"]
+      },
+      "research_intents": [],
+      "forbidden_claims": ["approved_vendor_allocation"],
+      "default_weight": 0.8,
+      "active": true
+    },
+    {
+      "goal_id": "risk_reduction",
+      "label": "Risk reduction",
+      "description": "Reduce strategic/operational risk for leadership.",
+      "allowed_lanes": ["leadership"],
+      "compatible_opportunity_categories": ["*"],
+      "preferred_momentum_types": ["quantified_metrics", "eb_identified"],
+      "preferred_risk_types": ["sovereignty", "privacy_gate", "credibility"],
+      "message_strategy": {
+        "why_this_matters_focus": ["risk_outcome", "strategic_importance"],
+        "why_now_focus": ["decision_boundary"],
+        "action_focus": ["decision_needed"],
+        "expected_outcome_focus": ["risk_mitigated"],
+        "watch_out_focus": ["distributed_authority"]
+      },
+      "research_intents": [],
+      "forbidden_claims": [],
+      "default_weight": 0.7,
+      "active": true
+    }
+  ],
+  "lane_default_goals": {
+    "sales": ["strategic_account_expansion", "deal_velocity"],
+    "technical": ["technical_validation_success", "architecture_credibility"],
+    "specialist": ["technical_validation_success", "security_and_privacy_assurance"],
+    "leadership": ["forecast_quality", "risk_reduction"]
+  }
+}

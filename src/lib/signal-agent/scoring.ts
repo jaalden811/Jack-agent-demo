@@ -221,9 +221,35 @@ function classifyIntent(params: {
  * top score and whose intent is not NOISE — implementing
  * multi_label_policy generically. Distinct domains are preferred so
  * genuinely different operational layers are not merged into one label. */
+// Near-tie window + incidental-keyword floor for the primary tiebreaker below.
+const PRIMARY_NEAR_TIE_WINDOW = 0.05;
+const INCIDENTAL_KEYWORD_FLOOR = 0.2;
+const SUBSTANTIVE_KEYWORD_FLOOR = 0.3;
+
 export function selectMultiLabelEvaluations(evaluations: EntryEvaluation[], config: ParsedMatchingConfig): EntryEvaluation[] {
   const sorted = [...evaluations].sort((a, b) => b.confidence - a.confidence || b.rawConfidence - a.rawConfidence);
   if (sorted.length === 0) return [];
+
+  // Primary near-tie tiebreaker: a category must not win the PRIMARY slot on
+  // diffuse semantic noise alone (generic tech/process words) when a
+  // near-tied category has explicit, product-specific KEYWORD evidence. If the
+  // confidence leader's keyword support is incidental (a single generic word)
+  // and another candidate within the near-tie window has substantive keyword
+  // evidence, promote the best-keyword-evidenced near-tied candidate. Generic
+  // and evidence-driven — never references a category id or product name.
+  if (sorted.length >= 2 && sorted[0].keywordScore <= INCIDENTAL_KEYWORD_FLOOR) {
+    const contenders = sorted.filter(
+      (e) => sorted[0].confidence - e.confidence <= PRIMARY_NEAR_TIE_WINDOW && e.intentLabel !== "NOISE" && e.keywordScore >= SUBSTANTIVE_KEYWORD_FLOOR
+    );
+    if (contenders.length > 0) {
+      const best = contenders.sort((a, b) => b.keywordScore - a.keywordScore || b.confidence - a.confidence)[0];
+      const idx = sorted.indexOf(best);
+      if (idx > 0) {
+        sorted.splice(idx, 1);
+        sorted.unshift(best);
+      }
+    }
+  }
 
   const primary = sorted[0];
   if (!config.multiLabel.enabled) return [primary];
