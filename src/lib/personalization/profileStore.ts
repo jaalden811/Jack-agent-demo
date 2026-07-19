@@ -71,6 +71,30 @@ export async function resolveActiveSellerProfile(): Promise<SellerProfile | null
   return active.sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))[0];
 }
 
+/**
+ * Resolve the profile for a specific MESSAGE RECIPIENT (a lane owner), so a
+ * lane's message is personalized to the person who receives it — Bella's goals
+ * drive the sales message, Jack's drive the technical message. Priority follows
+ * the spec: exact person_id, then normalized email, then a lane role default (an
+ * active profile whose own `lane` matches this lane), then none. Never resolves
+ * by display name alone. Returns the profile + how it was matched.
+ */
+export async function resolveProfileForLaneRecipient(input: {
+  personId?: string | null;
+  email?: string | null;
+  lane: "sales" | "technical" | "leadership" | "specialist";
+}): Promise<{ profile: SellerProfile | null; source: "recipient_match" | "role_default" | "none" }> {
+  const byRecipient = await resolveSellerProfile({ personId: input.personId, email: input.email });
+  if (byRecipient) return { profile: byRecipient, source: "recipient_match" };
+  // Lane role default: an active profile explicitly set to this lane.
+  const active = (await listSellerProfiles()).filter((p) => p.active && p.lane === input.lane);
+  if (active.length > 0) {
+    const chosen = active.sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))[0];
+    return { profile: chosen, source: "role_default" };
+  }
+  return { profile: null, source: "none" };
+}
+
 /** Resolve a profile by person_id first, then normalized internal email. */
 export async function resolveSellerProfile(input: { personId?: string | null; email?: string | null }): Promise<SellerProfile | null> {
   if (input.personId && input.personId.trim()) {

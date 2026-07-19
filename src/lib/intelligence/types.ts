@@ -112,8 +112,12 @@ export type IntelligencePacket = {
   public_context: PacketSignal[];
   personalization: {
     profile_present: boolean;
-    /** Recipient profile goal IDs (drive goal-to-message strategy per lane). */
-    profile_goal_ids: string[];
+    /** RECIPIENT-SCOPED goal IDs per lane — the goals of the profile resolved for
+     * THAT lane's recipient. Each lane's message uses its own recipient's goals
+     * (Bella's for sales, Jack's for technical), never one global profile. */
+    goal_ids_by_lane: Partial<Record<MessageLane, string[]>>;
+    /** How each lane's profile was resolved (for personalization explainability). */
+    profile_source_by_lane: Partial<Record<MessageLane, string>>;
     recipient_teasers: Partial<Record<MessageLane, { why_you: string; goal_alignment: string | null; goal_impact: string | null }>>;
   };
   provenance: {
@@ -149,4 +153,12 @@ export type RoleMessage = {
   /** "no_action" role messages render an honest no-pursuit note. */
   kind: "action" | "no_action";
   source: "circuit" | "deterministic";
+  /** Explainability trace: WHY this message reads the way it does — which
+   * recipient goals were applied and which fields they influenced (facts,
+   * scores, routing, and account identity are always unaffected). */
+  personalization: {
+    goals_used: string[];
+    profile_source: string;
+    fields_influenced: string[];
+  };
 };

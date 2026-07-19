@@ -230,7 +230,8 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
       confidence: packet.opportunity.pursuit_confidence,
       limitations: packet.provenance.limitations,
       kind: "no_action",
-      source: "deterministic"
+      source: "deterministic",
+      personalization: { goals_used: [], profile_source: "none", fields_influenced: [] }
     };
   }
 
@@ -242,18 +243,20 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
           .join(" · ") || null
       : null;
 
-  // Resolve the recipient's top goal frame for this lane (goal → message
-  // strategy). Goals change emphasis (watch-out order, goal line) only.
+  // Resolve THIS lane's recipient goals (Bella's for sales, Jack's for
+  // technical) → the goal → message strategy. Goals change emphasis (watch-out
+  // order, goal line) only, never facts/scores/routing.
   const goalLane = lane === "leadership" ? "leadership" : lane === "technical" ? "technical" : "sales";
+  const laneGoalIds = packet.personalization.goal_ids_by_lane[lane] ?? [];
   const goalFrames = resolveGoalFrames({
-    profileGoals: packet.personalization.profile_goal_ids.map((goal_id) => ({ goal_id })),
+    profileGoals: laneGoalIds.map((goal_id) => ({ goal_id })),
     lane: goalLane,
     matchedCategoryIds: packet.opportunity.matched_category_ids,
     presentMomentumIds: packet.deal_intelligence.momentum.map((m) => m.id),
     presentRiskIds: packet.deal_intelligence.landmines.map((r) => r.id)
   });
   const topGoal = goalFrames.frames[0] ?? null;
-  const profileGoalsResolved = packet.personalization.profile_goal_ids.length > 0 && topGoal;
+  const profileGoalsResolved = laneGoalIds.length > 0 && topGoal;
 
   // Owner-only quota hook; goal-alignment line names the aligned recipient goal.
   // When the recipient has explicit profile goals that align, lead with the goal
@@ -279,6 +282,11 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
     watch_out: watchOut(packet, lane, topGoal?.preferred_risk_types ?? []),
     goal_alignment: goalAlignment,
     goal_impact: goalImpact,
+    personalization: {
+      goals_used: goalFrames.frames.map((f) => f.label),
+      profile_source: packet.personalization.profile_source_by_lane[lane] ?? (profileGoalsResolved ? "recipient_match" : "role_default"),
+      fields_influenced: topGoal ? ["watch_out", ...(profileGoalsResolved ? ["goal_alignment"] : [])] : []
+    },
     champion: champ ? { name: champ.name, play: clean(champ.play, 160) } : null,
     environment,
     evidence_ids: packet.next_action.evidence_ids,

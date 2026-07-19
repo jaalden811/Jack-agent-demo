@@ -147,7 +147,16 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
     public_context: (di?.public_context ?? []).map(toSignal),
     personalization: {
       profile_present: Boolean(result.personalization?.profile_complete || result.personalization?.profile_id),
-      profile_goal_ids: (result.personalization?.goal_alignment ?? []).map((g) => g.goal_id).filter(Boolean),
+      // Per-lane recipient goals; when the run did not resolve per-lane profiles,
+      // fall back to the single active profile's goals for every lane so existing
+      // (single-profile) behavior is preserved.
+      goal_ids_by_lane: (() => {
+        const byLane = result.personalization?.goal_ids_by_lane;
+        if (byLane && Object.keys(byLane).length > 0) return byLane;
+        const globalGoals = (result.personalization?.goal_alignment ?? []).map((g) => g.goal_id).filter(Boolean);
+        return globalGoals.length > 0 ? { sales: globalGoals, technical: globalGoals, leadership: globalGoals } : {};
+      })(),
+      profile_source_by_lane: result.personalization?.profile_source_by_lane ?? {},
       recipient_teasers: {
         sales: teaserFor("sales"),
         technical: teaserFor("technical"),

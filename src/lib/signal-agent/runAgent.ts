@@ -27,7 +27,7 @@ import { buildPersonalizationBlock, buildPersonalizationContextForResult } from 
 import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
 import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
 import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
-import { resolveActiveSellerProfile } from "@/lib/personalization/profileStore";
+import { resolveActiveSellerProfile, resolveProfileForLaneRecipient } from "@/lib/personalization/profileStore";
 import { recordAndBuildThread } from "@/lib/opportunity-feedback/opportunityThread";
 import { latestPursuitFeedback } from "@/lib/opportunity-feedback/feedbackStore";
 import { runObjectiveEnrichment } from "@/lib/objective-search/runObjectiveEnrichment";
@@ -626,6 +626,28 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
       verifiedOpportunityValue,
       extras: { novelty: thread.novelty, duplicateOf: thread.duplicate_of, materialChange }
     });
+    // RECIPIENT-SCOPED goals: resolve a profile for EACH lane's actual recipient
+    // (from the routing config) so the sales owner's goals shape the sales
+    // message and the technical owner's goals shape the technical message —
+    // never one global profile applied to both. Goals only change emphasis, so
+    // this never touches scores, MEDDPICC, routing, or account identity.
+    try {
+      const routing = loadRoutingConfig();
+      const goalIdsByLane: Partial<Record<"sales" | "technical" | "leadership", string[]>> = {};
+      const sourceByLane: Partial<Record<"sales" | "technical" | "leadership", "recipient_match" | "role_default" | "none">> = {};
+      for (const lane of ["sales", "technical"] as const) {
+        const recipient = routing.recipients?.[lane];
+        const resolved = await resolveProfileForLaneRecipient({ email: recipient?.email ?? null, lane });
+        sourceByLane[lane] = resolved.source;
+        if (resolved.profile) goalIdsByLane[lane] = resolved.profile.goals.map((g) => g.goal_id);
+      }
+      if (result.personalization) {
+        result.personalization.goal_ids_by_lane = goalIdsByLane;
+        result.personalization.profile_source_by_lane = sourceByLane;
+      }
+    } catch {
+      /* per-lane personalization is additive — never blocks the run */
+    }
     const latestFb = await latestPursuitFeedback(result.run_id);
     result.feedback = { latest_decision: latestFb?.decision ?? null, action_status: latestFb?.action_status ?? "recommended" };
     result.assistant = { available: true, suggested_questions: SUGGESTED_QUESTIONS };

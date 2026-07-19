@@ -189,6 +189,15 @@ export type PersonalizationBlock = {
   /** Per-recipient teasers with lane-specific emphasis (owner-only goal
    * impact). Sales and technical are materially different. */
   recipient_teasers?: Record<"sales" | "technical" | "leadership", OpportunityTeaser>;
+  /** RECIPIENT-SCOPED goal IDs per lane: the goals of the profile resolved for
+   * THAT lane's recipient (Bella's goals drive the sales message; Jack's drive
+   * the technical message). A lane with no matched profile is absent → role
+   * default applies downstream. This is what makes goals affect the right
+   * person's message instead of one global profile applied everywhere. */
+  goal_ids_by_lane?: Partial<Record<"sales" | "technical" | "leadership", string[]>>;
+  /** How each lane's profile was resolved (explicit email/person match, lane
+   * role default, or none) — surfaced for personalization explainability. */
+  profile_source_by_lane?: Partial<Record<"sales" | "technical" | "leadership", "recipient_match" | "role_default" | "none">>;
   /** The single canonical objective-aware search trace (Section 9): what the
    * planner planned / executed / suppressed for live SerpAPI this run. */
   search_plan: SearchTrace;

@@ -22,7 +22,7 @@ function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket 
     next_action: { primary_action: "Run a two-scenario working session", primary_action_type: "architecture_workshop", owner_lane: "technical", summary: "Run a scenario-design workshop.", success_criteria: ["Agree data sources and success criteria"], why_now: [], recommended_timing: null, evidence_ids: ["E1"] },
     workshop: { requested: true, format: "working session", scenarios: ["degraded engineering service", "suspicious identity activity"], data_sources: [], success_criteria: ["Agree data sources and success criteria"] },
     public_context: [],
-    personalization: { profile_present: false, profile_goal_ids: [], recipient_teasers: {} },
+    personalization: { profile_present: false, goal_ids_by_lane: {}, profile_source_by_lane: {}, recipient_teasers: {} },
     provenance: { analysis_mode: "deterministic", message_source: "deterministic_fallback", limitations: [] }
   };
   return { ...base, ...over };
@@ -63,14 +63,35 @@ describe("generateRoleMessage — canonical content decision", () => {
     expect(why).not.toMatch(/^first,/i);
   });
 
+  it("recipient-scoped goals: each lane's message uses only that lane's recipient goals (no cross-leak)", () => {
+    const p = makePacket({
+      opportunity: { ...makePacket().opportunity, matched_category_ids: ["soc_detection_response"] },
+      personalization: {
+        profile_present: true,
+        goal_ids_by_lane: { sales: ["security_portfolio_growth"], technical: ["technical_validation_success"] },
+        profile_source_by_lane: { sales: "recipient_match", technical: "recipient_match" },
+        recipient_teasers: {}
+      }
+    });
+    const sales = generateRoleMessage(p, "sales");
+    const tech = generateRoleMessage(p, "technical");
+    expect(sales.goal_alignment).toMatch(/security portfolio growth/i);
+    expect(tech.goal_alignment).toMatch(/technical validation success/i);
+    // The sales owner's goals must never appear in the technical message, or vice versa.
+    expect(tech.goal_alignment ?? "").not.toMatch(/security portfolio growth/i);
+    expect(sales.goal_alignment ?? "").not.toMatch(/technical validation success/i);
+    expect(sales.personalization.goals_used).toContain("Security portfolio growth");
+    expect(tech.personalization.goals_used).toContain("Technical validation success");
+  });
+
   it("recipient goals change the goal-alignment emphasis on the SAME opportunity (scores/facts unchanged)", () => {
     const base = makePacket({
       opportunity: { ...makePacket().opportunity, matched_category_ids: ["soc_detection_response"] },
-      personalization: { profile_present: true, profile_goal_ids: ["security_portfolio_growth"], recipient_teasers: {} }
+      personalization: { profile_present: true, goal_ids_by_lane: { sales: ["security_portfolio_growth"] }, profile_source_by_lane: { sales: "recipient_match" }, recipient_teasers: {} }
     });
     const other = makePacket({
       opportunity: { ...makePacket().opportunity, matched_category_ids: ["soc_detection_response"] },
-      personalization: { profile_present: true, profile_goal_ids: ["deal_velocity"], recipient_teasers: {} }
+      personalization: { profile_present: true, goal_ids_by_lane: { sales: ["deal_velocity"] }, profile_source_by_lane: { sales: "recipient_match" }, recipient_teasers: {} }
     });
     const a = generateRoleMessage(base, "sales");
     const b = generateRoleMessage(other, "sales");
@@ -111,7 +132,7 @@ describe("generateRoleMessage — canonical content decision", () => {
   });
 
   it("surfaces the owner-only quota hook + named goals when a profile teaser exists", () => {
-    const p = makePacket({ personalization: { profile_present: true, profile_goal_ids: [], recipient_teasers: { sales: { why_you: "x", goal_alignment: "Supports: Expand observability", goal_impact: "$300K ≈ 25% of your annual target" }, technical: { why_you: "y", goal_alignment: "Supports: Expand observability", goal_impact: null } } } });
+    const p = makePacket({ personalization: { profile_present: true, goal_ids_by_lane: {}, profile_source_by_lane: {}, recipient_teasers: { sales: { why_you: "x", goal_alignment: "Supports: Expand observability", goal_impact: "$300K ≈ 25% of your annual target" }, technical: { why_you: "y", goal_alignment: "Supports: Expand observability", goal_impact: null } } } });
     const sales = renderWebexMessage(generateRoleMessage(p, "sales"));
     expect(sales).toContain("**Goal impact:** $300K ≈ 25% of your annual target");
     expect(sales).toContain("**Goal fit:** Expand observability");
