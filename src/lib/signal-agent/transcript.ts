@@ -61,6 +61,12 @@ const PLAIN_SPEAKER_RE = /^([A-Za-z][A-Za-z0-9 .']{0,59}):\s*(.+)$/;
 // that separator.
 const HEADER_NAME_TITLE_RE = /^([A-Za-z][\w'.-]*(?:\s+[A-Za-z][\w'.-]*){0,4})\s+[—–]\s+(.+)$/;
 const HEADER_NAME_PAREN_RE = /^([A-Za-z][\w'.\- ]*?)\s*\(([^)]+)\)\s*$/;
+// A speaker LABEL on its own line, with the utterance on the FOLLOWING line(s)
+// — a very common export format ("Dana:" / "Dana (VP, Acme Corp):" then the
+// text below). Requires a trailing colon and NOTHING after it, and an
+// OPTIONAL parenthesized descriptor. Distinct from PLAIN_SPEAKER_RE (which needs
+// same-line text) and HEADER_NAME_PAREN_RE (which forbids the trailing colon).
+const LABEL_ONLY_SPEAKER_RE = /^([A-Za-z][\w'.&\- ]*?)\s*(?:\(([^)]*)\))?\s*:\s*$/;
 // Inline "Name — Descriptor: text" turn (descriptor AND utterance on ONE
 // line, e.g. "Alex — Customer, Director of Operations: We are not renewing
 // as-is."). PLAIN_SPEAKER_RE can't see this because the pre-colon segment
@@ -153,7 +159,14 @@ const NON_ORG_LEADING_WORDS = new Set([
   "solutions", "support", "account", "enterprise", "global", "regional", "senior", "principal",
   "product", "program", "project", "engineering", "infrastructure", "application", "applications",
   "digital", "information", "corporate", "field", "chief", "head", "director", "manager", "lead",
-  "vp", "svp", "evp", "ceo", "cto", "cio", "ciso", "coo", "cfo", "counsel", "architect", "analyst"
+  "vp", "svp", "evp", "ceo", "cto", "cio", "ciso", "coo", "cfo", "counsel", "architect", "analyst",
+  // Function/department acronyms that lead a role descriptor ("SOC Director",
+  // "NOC Lead", "IT Manager", "HR Director") — a function, never the account.
+  "soc", "noc", "it", "hr", "grc", "sre", "dev", "devops", "qa",
+  // Generic function/role-prefix words that are capitalized inside a role title
+  // ("Site Reliability Engineering Lead", "Service Delivery Manager", "Change
+  // Management Lead") — the leading word is part of the ROLE, not a company.
+  "site", "service", "delivery", "change", "release", "quality", "content"
 ]);
 const ORG_ROLE_STOP_WORDS = new Set([
   ...NON_ORG_LEADING_WORDS,
@@ -721,6 +734,37 @@ export function ingestTranscript(rawText: string): IngestedTranscript {
       }
       openTurn = { record, timestamp: dialogue.timestamp, textParts: dialogue.text ? [dialogue.text] : [] };
       continue;
+    }
+
+    // Speaker LABEL on its own line ("Dana:" / "Dana (VP, Acme Corp):") with
+    // the utterance on the following line(s). Opens a turn whose text comes
+    // from the continuation lines below. Only when plain speakers are trusted (no
+    // timestamped header format is in use), and guarded by the same non-speaker /
+    // plausibility checks so an ordinary "Note:" / "Summary:" line is never a
+    // speaker.
+    if (allowPlainSpeaker) {
+      const labelMatch = trimmed.match(LABEL_ONLY_SPEAKER_RE);
+      if (labelMatch && !isNonSpeakerKey(labelMatch[1]) && isPlausibleSpeakerName(labelMatch[1].trim())) {
+        closeOpenTurn();
+        headersDetected += 1;
+        const record = ensureRecord(labelMatch[1].trim());
+        record.turnCount += 1;
+        const descriptor = labelMatch[2]?.trim() || null;
+        if (descriptor) {
+          if (record.classification === "unknown") {
+            const { title, organization, classification } = classifyDescriptor(descriptor, "unknown");
+            if (classification !== "unknown") record.classification = classification;
+            if (!record.title && title) record.title = title;
+            if (!record.organization && organization) record.organization = organization;
+          }
+          if (!record.organization) {
+            const org = orgFromDescriptor(descriptor);
+            if (org) record.organization = org;
+          }
+        }
+        openTurn = { record, timestamp: null, textParts: [] };
+        continue;
+      }
     }
 
     const header = parseHeaderLine(trimmed);

@@ -957,6 +957,46 @@ describe("RL pass — qualified-deal recall + coordination fidelity", () => {
     expect(r.internal_action_plan).not.toBeNull();
   });
 
+  it("parses speaker LABELS on their own line ('Name (Role):' / 'Name:' then text below)", () => {
+    const t = ingestTranscript(
+      [
+        "Reyes (Cisco Account Executive):",
+        "I cover the account for our team.",
+        "Dana (VP Security, Orion Systems):",
+        "We investigate incidents manually and it takes hours.",
+        "Dana:",
+        "Our internal target is under thirty minutes."
+      ].join("\n")
+    );
+    expect(t.diagnostics.turns_parsed).toBeGreaterThanOrEqual(3);
+    const names = t.participantRecords.map((r) => r.name);
+    expect(names).toContain("Reyes");
+    expect(names).toContain("Dana");
+  });
+
+  it("never resolves a VENDOR's own org as the account; uses the customer descriptor org instead", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Reyes (Cisco Account Executive):",
+      "I cover the account for our team.",
+      "Dana (VP Security, Orion Systems):",
+      "I own this budget at Orion Systems. Our investigation time has climbed to hours and our target is under thirty minutes. We're actively evaluating a fix."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    expect(r.account_resolution?.name).toMatch(/Orion Systems/i);
+    expect(r.account_resolution?.name).not.toMatch(/cisco/i);
+  });
+
+  it("does not extract a role/function prefix as an organization", () => {
+    // A leading generic function word inside a role title is NOT a company.
+    expect(orgFromDescriptor("SOC Director")).toBeNull();
+    expect(orgFromDescriptor("Site Reliability Engineering Lead")).toBeNull();
+    expect(orgFromDescriptor("Service Delivery Manager")).toBeNull();
+    // A real org in its own segment is still captured.
+    expect(orgFromDescriptor("VP Cybersecurity, Apex Manufacturing")).toBe("Apex Manufacturing");
+  });
+
   it("does NOT rescue a satisfied incumbent with no buying motion (stays NOISE, no internal plan)", async () => {
     clearCatalogCache();
     clearAccountsCache();

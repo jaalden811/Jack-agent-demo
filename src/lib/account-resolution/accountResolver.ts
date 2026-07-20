@@ -119,8 +119,12 @@ export function resolveAccount(inputs: AccountResolutionInputs): AccountResoluti
   if (topOrg) {
     const total = inputs.participantOrganizations?.length ?? 0;
     // Shared by a clear majority (>=2 and >=60% of org-bearing participants) →
-    // confident; shared by >=2 → probable; a single mention → weak hint.
-    const confidence = topOrg.count >= 2 && total > 0 && topOrg.count / total >= 0.6 ? 0.9 : topOrg.count >= 2 ? 0.82 : 0.6;
+    // confident; shared by >=2 → probable. A SINGLE customer-side participant
+    // naming their own employer in their descriptor ("Sarah (VP, Apex
+    // Manufacturing)") is still a direct, first-party identity statement — a
+    // reasonable "probable" (vendor orgs are already excluded upstream), not a
+    // weak hint that stays unresolved.
+    const confidence = topOrg.count >= 2 && total > 0 && topOrg.count / total >= 0.6 ? 0.9 : topOrg.count >= 2 ? 0.82 : 0.72;
     pushIfValid(topOrg.display, null, confidence, "transcript", ["participant_organization"]);
   }
 

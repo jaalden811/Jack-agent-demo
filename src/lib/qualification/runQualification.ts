@@ -105,7 +105,14 @@ export async function runQualificationPipeline(params: {
     // the account.
     productStoplist: Array.from(new Set(params.matches.flatMap((m) => [...m.recommended_solutions, m.pain_category]))),
     participantFirstNames: params.transcript.participantRecords.map((p) => p.name.split(/\s+/)[0]).filter(Boolean),
-    participantOrganizations: params.transcript.participantRecords.map((p) => p.organization).filter((o): o is string => Boolean(o))
+    // ONLY customer-side participant orgs are account candidates — a vendor's own
+    // org (e.g. the seller's company named in "Name (Vendor Account Executive)")
+    // must never be resolved as the customer account. Vendor-side records are
+    // excluded; unknown-side records are kept (behavior may confirm them later).
+    participantOrganizations: params.transcript.participantRecords
+      .filter((p) => p.classification !== "vendor")
+      .map((p) => p.organization)
+      .filter((o): o is string => Boolean(o))
   });
 
   // Search-enrichment decision logic (Section 2/6).
