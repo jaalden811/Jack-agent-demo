@@ -27,6 +27,7 @@ import { buildPersonalizationBlock, buildPersonalizationContextForResult } from 
 import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
 import { buildIntelligencePacket } from "@/lib/intelligence/intelligencePacket";
 import { buildInternalActionPlan } from "@/lib/intelligence/internalActionPlan";
+import { enrichInternalActionPlan } from "@/lib/intelligence/enrichInternalActionPlan";
 import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
 import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
 import { resolveActiveSellerProfile, resolveProfileForLaneRecipient } from "@/lib/personalization/profileStore";
@@ -685,7 +686,13 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   try {
     const packet = buildIntelligencePacket(result);
     const perspective = packet.owners.sales ? "sales" : result.next_best_action?.owner_lane === "technical" ? "technical" : "sales";
-    result.internal_action_plan = buildInternalActionPlan(packet, perspective);
+    const plan = buildInternalActionPlan(packet, perspective);
+    // Circuit enrichment: turn the generic coordination template into a
+    // deal-aware brief (deal-specific why/prepare + advisory extra coordination
+    // the fixed triggers miss), grounded strictly in evidence. No-op with a
+    // deterministic fallback when Circuit is unconfigured/unavailable — the WHO
+    // (owners/lanes) stays deterministic either way.
+    result.internal_action_plan = plan ? await enrichInternalActionPlan(plan, packet) : null;
   } catch {
     result.internal_action_plan = null;
   }

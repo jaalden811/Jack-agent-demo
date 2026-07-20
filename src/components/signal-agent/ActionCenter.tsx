@@ -95,6 +95,19 @@ export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
             </div>
           )}
 
+          {plan.suggested_coordination && plan.suggested_coordination.length > 0 && (
+            <div className="action-block">
+              <span className="meta-label">Consider also looping in <span className="chip chip-muted">AI suggested</span></span>
+              <ul className="action-list">
+                {plan.suggested_coordination.map((s, i) => (
+                  <li key={i}>
+                    <strong>{s.role}</strong> — {s.why} <span className="muted">({s.trigger})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="action-block">
             <span className="meta-label">Customer next step</span>
             <p className="action-summary">

@@ -74,6 +74,14 @@ export type InternalActionPlan = {
     next_step: string;
     champion: { name: string | null; role: string; why: string } | null;
   };
+  /** ADVISORY-only additional coordination the AI layer (Circuit) surfaced from
+   * the conversation that the deterministic sales/technical/executive triggers do
+   * not cover (e.g. legal on redlines, a product specialist on a named
+   * competitor). Role-only (never a named person); never authoritative routing. */
+  suggested_coordination?: Array<{ role: string; why: string; trigger: string }>;
+  /** Whether the deal-specific rationale/prep was written by Circuit or is the
+   * deterministic template. The WHO (owners/lanes) is always deterministic. */
+  source?: "circuit" | "deterministic";
 };
 
 export type IntelligencePacket = {

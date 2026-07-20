@@ -84,5 +84,21 @@
     "champion": "owns the internal recommendation and coordinates the customer participants",
     "economic_buyer": "controls the budget for the decision",
     "executive_sponsor": "owns strategic alignment on the customer side"
+  },
+  "suggested_roles": {
+    "purpose": "Canonical, public-safe roles the AI layer (Circuit) may PROPOSE as additional internal coordination when the conversation clearly warrants it (e.g. redlines → legal, a named competitor → product specialist, a deployment-timeline condition → delivery lead). Advisory only — these never replace the deterministic sales/technical/executive routing, are role-only (never a named person), and must be grounded in the conversation.",
+    "roles": [
+      "Partner / Channel Manager",
+      "Legal / Contract Specialist",
+      "Finance / Commercial Manager",
+      "Services / Delivery Lead",
+      "Customer Success Manager",
+      "Product Specialist",
+      "Industry Specialist",
+      "Architect / Consultant",
+      "Renewal Manager",
+      "Support / Escalation Lead",
+      "Executive Sponsor / Sales Leader"
+    ]
   }
 }

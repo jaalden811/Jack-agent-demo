@@ -192,6 +192,17 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
     routed_reason: rules.routed_reason[perspectiveLane] ?? rules.routed_reason[lane] ?? "You own this lane for the account.",
     your_move: clean(yourMove, 260),
     coordinate_with,
-    customer_engagement: { next_step: clean(customerStep, 220), champion }
+    customer_engagement: { next_step: clean(customerStep, 220), champion },
+    source: "deterministic"
   };
+}
+
+/** Loads the advisory suggested-role allow-list (from the coordination rules),
+ * used by the Circuit enrichment to constrain proposed extra coordination. */
+export function loadSuggestedRoles(): string[] {
+  try {
+    return (loadRules() as CoordinationRules & { suggested_roles?: { roles?: string[] } }).suggested_roles?.roles ?? [];
+  } catch {
+    return [];
+  }
 }
