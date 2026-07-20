@@ -1,0 +1,88 @@
+{
+  "metadata": {
+    "purpose": "Data-driven rules that turn a routed opportunity into an INTERNAL action plan: what the owner does internally, who they coordinate with, why, and what each person prepares — before the customer engagement. Generic and reusable: role labels are canonical, and the concrete internal people (names/emails) always come from the routing config at runtime, never from this file. No company, product, person, score, or message literal belongs here.",
+    "version": "1.0.0"
+  },
+  "role_responsibilities": {
+    "sales": [
+      "opportunity strategy and prioritization",
+      "customer and executive alignment",
+      "commercial progression and the business case"
+    ],
+    "technical": [
+      "solution architecture and validation scope",
+      "technical credibility and proof-of-value boundaries",
+      "integration and implementation risk"
+    ],
+    "executive": [
+      "strategic alignment and sponsorship",
+      "investment path and governance",
+      "escalation and deal unblock"
+    ]
+  },
+  "routed_reason": {
+    "sales": "You own the commercial motion for this account, so the opportunity strategy and customer alignment are yours to drive.",
+    "technical": "You own the technical validation for this account, so the architecture and proof-of-value boundaries are yours to shape.",
+    "leadership": "You own strategic sponsorship for this account, so the investment path and executive alignment are yours to steer."
+  },
+  "technical_trigger": {
+    "purpose": "When the sales owner should coordinate with the technical owner: the customer next step requires architecture / validation / integration work that a specialist must shape.",
+    "action_types": [
+      "technical_validation",
+      "technical_risk_validation",
+      "architecture_workshop",
+      "architecture_review",
+      "solution_validation",
+      "proof_of_value",
+      "proof_of_concept",
+      "demo",
+      "integration_review",
+      "technical_discovery",
+      "workshop"
+    ],
+    "motion_keywords": [
+      "validation",
+      "workshop",
+      "architecture",
+      "proof of value",
+      "proof of concept",
+      "pilot",
+      "integration",
+      "migration",
+      "telemetry",
+      "technical"
+    ]
+  },
+  "executive_trigger": {
+    "purpose": "When either owner should coordinate with an executive sponsor: an exec-sponsored program is in play, or there is no single economic buyer, so the investment path needs senior alignment.",
+    "momentum_ids": ["exec_program"],
+    "meddpicc_conditions": ["no_single_economic_buyer"]
+  },
+  "prepare": {
+    "technical": [
+      "architecture boundaries and required data sources",
+      "two proof-of-value scenarios and success criteria",
+      "integration, telemetry, and privacy constraints",
+      "the top technical risks to de-risk before the session"
+    ],
+    "sales": [
+      "customer and executive alignment for the session",
+      "commercial framing and the business case",
+      "the budget and procurement path"
+    ],
+    "executive": [
+      "strategic alignment on the investment path",
+      "sponsor-level air cover for the decision"
+    ]
+  },
+  "coordinate_reason": {
+    "sales_to_technical": "The customer next step needs architecture and proof-of-value boundaries defined before it is credible.",
+    "technical_to_sales": "They own customer alignment and commercial progression, so the validation ladders into a real commercial motion.",
+    "to_executive": "The investment path needs senior alignment before the commercial motion can close."
+  },
+  "customer_roles": {
+    "champion": "owns the internal recommendation and coordinates the customer participants",
+    "economic_buyer": "controls the budget for the decision",
+    "executive_sponsor": "owns strategic alignment on the customer side"
+  }
+}

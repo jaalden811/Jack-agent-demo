@@ -399,6 +399,13 @@ button:disabled {
   margin-bottom: 14px;
 }
 
+.internal-plan-lead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
 .action-list,
 .handoff-list {
   margin: 6px 0 0;

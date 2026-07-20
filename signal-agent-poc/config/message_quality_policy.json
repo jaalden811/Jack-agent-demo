@@ -13,10 +13,10 @@
     "density_char_budgets": { "concise": 700, "standard": 1200, "detailed": 2000 }
   },
   "delivery_message": {
-    "purpose": "Concise, action-first Webex/Outlook message budget + gate. The push message is a nudge to act — the full MEDDPICC/decision-packet detail lives in the app, not the notification. Circuit Stage D and the deterministic builder both target this budget.",
+    "purpose": "Concise, action-first Webex/Outlook message budget + gate. The push message is a nudge to act with an internal coordination plan (your move + who to loop in + the customer step) — the full MEDDPICC/decision-packet detail lives in the app, not the notification. Circuit Stage D and the deterministic builder both target this budget.",
     "min_chars": 80,
-    "max_chars": 1100,
-    "max_bytes": 1400,
+    "max_chars": 1600,
+    "max_bytes": 2000,
     "required_sections": ["account", "recommended action"],
     "require_why_now": true
   },

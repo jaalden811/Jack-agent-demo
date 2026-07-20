@@ -12,6 +12,7 @@ import type { PersonalizationBlock } from "@/lib/personalization/types";
 import type { ParticipationMatrix } from "@/lib/meeting-participation/participation";
 import type { DecisionPacket } from "@/lib/decision-packet/types";
 import type { DealIntelligence } from "@/lib/deal-intel/types";
+import type { InternalActionPlan } from "@/lib/intelligence/types";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
 export type CircuitStageTraceSummary = {
@@ -759,6 +760,11 @@ export type SecureNetworkingTriageResult = {
    * why now, what could kill it" synthesis that sharpens the message + handoff.
    * Never changes scores/verdict/routing/evidence identity. */
   deal_intelligence?: DealIntelligence | null;
+  /** Additive INTERNAL action plan (from the routed owner's perspective): who
+   * owns the internal next move, who to coordinate with and why, what each
+   * should prepare, and — kept separate — the customer-facing step. Drives the
+   * "Next Internal Move" primary card. Never changes scores/routing/evidence. */
+  internal_action_plan?: InternalActionPlan | null;
 };
 
 export type GenericDiagnostics = {

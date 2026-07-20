@@ -9,6 +9,7 @@ import { clearAccountsCache } from "@/lib/signal-agent/accountContext";
 function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket {
   const base: IntelligencePacket = {
     identity: { run_id: "r1", account: "Acme Retail", account_label: "Acme Retail", account_prose: "Acme Retail", account_resolved: true, account_confidence: 0.9, participant_count: 4 },
+    owners: { sales: { name: "Bella Robinson", role: "Sales / Commercial owner" }, technical: { name: "Jack Alden", role: "Technical / Specialist owner" } },
     opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability and incident correlation", primary_solution_motion: "Splunk ITSI", is_actionable: true, matched_category_ids: ["cloud_native_observability"] },
     customer_evidence: { pains: [], business_impacts: [{ statement: "hundreds of specialists unable to work when incidents hit", speaker: null, evidence_ids: [] }], objections: [], explicit_negations: ["not a SIEM replacement"], do_not_reask: [] },
     qualification: { meddpicc: { identify_pain: "CONFIRMED", metrics: "CONFIRMED" }, decision_criteria: [] },
@@ -42,14 +43,36 @@ describe("generateRoleMessage — canonical content decision", () => {
     expect(sales).not.toEqual(tech);
     expect(sales).toContain("— commercial");
     expect(tech).toContain("— technical");
-    // Champion is a commercial-only element; environment is technical-only.
-    expect(sales).toContain("**Champion:**");
-    expect(tech).not.toContain("**Champion:**");
+    // The customer champion is a commercial-only engagement cue; environment is technical-only.
+    expect(sales).toContain("Engage Jordan");
+    expect(tech).not.toContain("Engage Jordan");
     expect(tech).toContain("**Environment:**");
     // The technical lane names the current stack (role-specific differentiation);
     // the commercial lane does not lead with the stack.
     expect(tech).toContain("ServiceNow");
     expect(sales).not.toContain("Current stack:");
+  });
+
+  it("leads with an internal coordination move that differs from the customer step, and loops in the OTHER lane owner", () => {
+    const p = makePacket();
+    const sales = generateRoleMessage(p, "sales");
+    const tech = generateRoleMessage(p, "technical");
+    // Every routed lane gets an internal plan.
+    expect(sales.internal_action).not.toBeNull();
+    expect(tech.internal_action).not.toBeNull();
+    // Internal move is distinct from the customer next step.
+    expect(sales.internal_action!.your_move).not.toEqual(sales.internal_action!.customer_engagement.next_step);
+    // Commercial owner loops in the technical owner; technical loops in the commercial owner.
+    expect(sales.internal_action!.coordinate_with.map((c) => c.name)).toContain("Jack Alden");
+    expect(tech.internal_action!.coordinate_with.map((c) => c.name)).toContain("Bella Robinson");
+    // Rendered messages lead with the internal move before the customer step.
+    const salesMd = renderWebexMessage(sales);
+    expect(salesMd).toContain("**Your move (internal):**");
+    expect(salesMd).toContain("**Loop in Jack Alden:**");
+    expect(salesMd).toContain("**Customer next step:**");
+    expect(salesMd.indexOf("Your move (internal)")).toBeLessThan(salesMd.indexOf("Customer next step"));
+    // A customer participant is NEVER an internal coordination owner.
+    expect(tech.internal_action!.coordinate_with.map((c) => c.name)).not.toContain("Jordan");
   });
 
   it("normalizes a first-person customer quote into attributed third person (never the system saying 'our')", () => {

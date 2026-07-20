@@ -353,8 +353,8 @@ describe("runStageD", () => {
   it("returns distinct Circuit messages using the canonical account + required sections", async () => {
     configure();
     vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
-      sales_webex: "**Account:** Meridian\n**Why you:** Commercial owner.\n**Why now:** Budget approved this quarter.\n**Recommended action:** Validate the budget owner and book the review.\n**Expected outcome:** A confirmed owner and next step.",
-      technical_webex: "**Account:** Meridian\n**Why you:** Technical owner.\n**Why now:** Customer requested a scoped proof-of-value.\n**Recommended action:** Scope a proof-of-value with success criteria.\n**Expected outcome:** Validated architecture and data sources.",
+      sales_webex: "**Account:** Meridian\n**Why you:** Commercial owner.\n**Why now:** Budget approved this quarter.\n**Your move (internal):** Align with the technical owner before the customer review.\n**Loop in the technical owner:** They shape the validation. Ask them to prepare: architecture boundaries.\n**Customer next step:** Book the executive business review.\n**Expected outcome:** A confirmed owner and next step.",
+      technical_webex: "**Account:** Meridian\n**Why you:** Technical owner.\n**Why now:** Customer requested a scoped proof-of-value.\n**Your move (internal):** Define the validation architecture and sync with the commercial owner.\n**Loop in the commercial owner:** They own commercial progression. Ask them to prepare: the business case.\n**Customer next step:** Scope a proof-of-value with success criteria.\n**Expected outcome:** Validated architecture and data sources.",
       sales_email: { subject: "Commercial — Meridian", body: "b" },
       technical_email: { subject: "Technical — Meridian", body: "b" }
     }));
@@ -362,7 +362,8 @@ describe("runStageD", () => {
     expect(trace.succeeded).toBe(true);
     expect(output.sales_webex).not.toEqual(output.technical_webex);
     expect(output.sales_webex).toContain("Meridian");
-    expect(output.sales_webex.toLowerCase()).toContain("recommended action");
+    expect(output.sales_webex.toLowerCase()).toContain("customer next step");
+    expect(output.sales_webex.toLowerCase()).toContain("your move");
     expect(output.technical_webex.toLowerCase()).toContain("why now");
   });
 

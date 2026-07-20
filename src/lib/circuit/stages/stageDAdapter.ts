@@ -17,8 +17,10 @@ import type { PersonalizationContext } from "@/lib/personalization/types";
  */
 
 // Concise, action-first push budget (bytes) — matches the delivery quality
-// gate so Circuit Stage D's concise drafts are the delivered message.
-const DEFAULT_WEBEX_BYTE_BUDGET = 1400;
+// gate so Circuit Stage D's concise drafts are the delivered message. Sized to
+// carry the internal coordination plan (your move + loop-in + customer step)
+// while still staying far under the channel ceiling (a nudge, not a full brief).
+const DEFAULT_WEBEX_BYTE_BUDGET = 2000;
 const SALES_ROLE_LABEL = "Commercial / Sales owner";
 const TECHNICAL_ROLE_LABEL = "Technical / Specialist owner";
 
@@ -51,22 +53,31 @@ export function buildStageDInput(result: SecureNetworkingTriageResult, stageC: S
   const salesRM = generateRoleMessage(packet, "sales");
   const technicalRM = generateRoleMessage(packet, "technical");
 
+  // Internal coordination material (from the canonical plan on each RoleMessage)
+  // so Circuit leads with "here is what you do internally" before the customer step.
+  const coordFrom = (rm: typeof salesRM) =>
+    (rm.internal_action?.coordinate_with ?? []).map((p) => ({ who: p.name ?? p.role, why: p.why, prepare: p.prepare }));
+
   const sales_lane: StageDLane = {
     role_label: SALES_ROLE_LABEL,
     why_selected: salesRM.why_this_matters,
     collaborator: `${TECHNICAL_ROLE_LABEL} (paired technical lane)`,
-    actions: [salesRM.action],
+    actions: [salesRM.internal_action?.customer_engagement.next_step ?? salesRM.action],
     remaining_questions: stageC.commercial_handoff.remaining_questions,
-    expected_output: salesRM.expected_outcome
+    expected_output: salesRM.expected_outcome,
+    internal_move: salesRM.internal_action?.your_move,
+    coordinate_with: coordFrom(salesRM)
   };
 
   const technical_lane: StageDLane = {
     role_label: TECHNICAL_ROLE_LABEL,
     why_selected: technicalRM.why_this_matters,
     collaborator: `${SALES_ROLE_LABEL} (paired commercial lane)`,
-    actions: [technicalRM.action],
+    actions: [technicalRM.internal_action?.customer_engagement.next_step ?? technicalRM.action],
     remaining_questions: stageC.technical_handoff.remaining_questions,
-    expected_output: technicalRM.expected_outcome
+    expected_output: technicalRM.expected_outcome,
+    internal_move: technicalRM.internal_action?.your_move,
+    coordinate_with: coordFrom(technicalRM)
   };
 
   const di = result.deal_intelligence;

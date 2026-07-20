@@ -25,6 +25,8 @@ import { enhanceWithCircuit } from "@/lib/signal-agent/aiEnhancement";
 import { promoteCircuitIntoCanonical } from "@/lib/signal-agent/promoteCircuit";
 import { buildPersonalizationBlock, buildPersonalizationContextForResult } from "@/lib/personalization/buildPersonalization";
 import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
+import { buildIntelligencePacket } from "@/lib/intelligence/intelligencePacket";
+import { buildInternalActionPlan } from "@/lib/intelligence/internalActionPlan";
 import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
 import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
 import { resolveActiveSellerProfile, resolveProfileForLaneRecipient } from "@/lib/personalization/profileStore";
@@ -671,6 +673,21 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     );
   } catch {
     result.decision_packet = null;
+  }
+
+  // Additive INTERNAL action plan — the "conversation → internal coordination →
+  // customer action" spine. Built from the canonical IntelligencePacket for the
+  // PRIMARY card. The commercial owner (AE) is the account/opportunity owner who
+  // orchestrates internal coordination, so the card leads from that perspective
+  // (Owner: commercial, Technical partner: specialist) even when the immediate
+  // next action is technical. Falls back to the NBA owner lane when no commercial
+  // owner is configured. Never changes scores/routing/evidence identity.
+  try {
+    const packet = buildIntelligencePacket(result);
+    const perspective = packet.owners.sales ? "sales" : result.next_best_action?.owner_lane === "technical" ? "technical" : "sales";
+    result.internal_action_plan = buildInternalActionPlan(packet, perspective);
+  } catch {
+    result.internal_action_plan = null;
   }
 
   // Canonical search trace (Section 9) — the single source of truth for what

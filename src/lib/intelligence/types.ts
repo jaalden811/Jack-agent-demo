@@ -38,6 +38,44 @@ export type PacketEvidenceItem = {
   evidence_ids: string[];
 };
 
+/** An internal owner (from the routing config), OR a role-only slot (name null)
+ * when a role is implied but no concrete person is configured. Names are NEVER
+ * invented and NEVER a customer participant. */
+export type InternalOwner = { name: string | null; role: string };
+
+/** One internal coordination step: who to loop in, why (tied to the customer
+ * next step), and what they should prepare. `side` is always "internal" — the
+ * customer champion/sponsor live under `customer_engagement`, never here. */
+export type CoordinationPartner = {
+  name: string | null;
+  role: string;
+  lane: "sales" | "technical" | "executive";
+  why: string;
+  prepare: string[];
+};
+
+/**
+ * The INTERNAL action plan for one recipient perspective — the core value of the
+ * product: "conversation → internal coordination → customer action". It answers
+ * why this was routed to me, what I do internally first, who I coordinate with
+ * and why, and only then the customer-facing next step. Deterministic; owners
+ * come from the routing config, never from a stakeholder.
+ */
+export type InternalActionPlan = {
+  primary_owner: InternalOwner & { lane: "sales" | "technical" | "leadership" };
+  /** Why this opportunity was routed to this owner. */
+  routed_reason: string;
+  /** The internal next move — coordination/preparation, NOT the customer step. */
+  your_move: string;
+  /** Internal people/roles to coordinate with before the customer engagement. */
+  coordinate_with: CoordinationPartner[];
+  /** The customer-facing outcome — kept explicitly SEPARATE from internal work. */
+  customer_engagement: {
+    next_step: string;
+    champion: { name: string | null; role: string; why: string } | null;
+  };
+};
+
 export type IntelligencePacket = {
   identity: {
     run_id: string;
@@ -48,6 +86,9 @@ export type IntelligencePacket = {
     account_confidence: number;
     participant_count: number;
   };
+  /** Internal lane owners resolved from the routing config (never customer
+   * participants). Used to name coordination partners in the internal plan. */
+  owners: { sales: InternalOwner | null; technical: InternalOwner | null };
   opportunity: {
     verdict: string;
     signal_strength: number;
@@ -135,8 +176,12 @@ export type RoleMessage = {
   hook: string;
   why_this_matters: string;
   why_now: string;
-  /** The ONE next action (the canonical NBA), framed for this lane. */
+  /** The ONE next action (the canonical NBA), framed for this lane. This is the
+   * CUSTOMER-facing step; the internal work lives in `internal_action`. */
   action: string;
+  /** The internal coordination plan for this recipient — what they do
+   * internally and who to loop in BEFORE the customer step. Null for no_action. */
+  internal_action: InternalActionPlan | null;
   expected_outcome: string;
   watch_out: string | null;
   /** Owner-scoped goal framing (named goals) — null when no profile/goals. */

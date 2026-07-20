@@ -75,6 +75,15 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
 
   const isActionable = Boolean(nba && nba.action_type !== "suppress" && nba.action_type !== "hold");
 
+  // Internal lane owners from the routing config (surfaced on the handoff
+  // recipients) — the ONLY source of internal people for the coordination plan.
+  // A blank name collapses to null so a coordination partner is never invented.
+  const ownerFrom = (r: { name?: string | null; role?: string | null } | undefined): { name: string | null; role: string } | null => {
+    if (!r) return null;
+    const name = (r.name ?? "").trim();
+    return { name: name || null, role: (r.role ?? "").trim() };
+  };
+
   return {
     identity: {
       run_id: result.run_id,
@@ -84,6 +93,10 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
       account_resolved: account.status === "confirmed" || account.status === "probable",
       account_confidence: account.confidence,
       participant_count: (result.stakeholder_analysis?.participants ?? []).length
+    },
+    owners: {
+      sales: ownerFrom(result.specialist_handoffs?.sales?.recipient),
+      technical: ownerFrom(result.specialist_handoffs?.technical?.recipient)
     },
     opportunity: {
       verdict: summary.verdict,

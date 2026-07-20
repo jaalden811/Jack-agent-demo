@@ -1,6 +1,7 @@
 import type { IntelligencePacket, MessageLane, RoleMessage } from "@/lib/intelligence/types";
 import { normalizeSpelledNumbers } from "@/lib/signal-agent/numberWords";
 import { resolveGoalFrames } from "@/lib/personalization/goalMessageStrategy";
+import { buildInternalActionPlan } from "@/lib/intelligence/internalActionPlan";
 
 /**
  * generateRoleMessage(packet, lane) -> the ONE content decision for a lane.
@@ -220,6 +221,7 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
       why_this_matters: clean(firstMeaningful(packet.next_action.summary, "The transcript did not produce a qualified opportunity signal.") ?? "No qualified opportunity signal.", 300),
       why_now: "No timely buying signal — revisit only if a clearer signal appears.",
       action: lane === "technical" ? "No technical action — no workshop or validation is warranted." : "No sales outreach — this is not a qualified sales opportunity.",
+      internal_action: null,
       expected_outcome: "—",
       watch_out: boundary ? `Customer boundary: ${clean(boundary, 160)}` : null,
       goal_alignment: null,
@@ -278,6 +280,7 @@ export function generateRoleMessage(packet: IntelligencePacket, lane: MessageLan
     why_this_matters: whyThisMatters(packet, lane),
     why_now: whyNow(packet),
     action: actionText(packet),
+    internal_action: buildInternalActionPlan(packet, lane),
     expected_outcome: expectedOutcome(packet, lane),
     watch_out: watchOut(packet, lane, topGoal?.preferred_risk_types ?? []),
     goal_alignment: goalAlignment,
@@ -316,15 +319,33 @@ export function renderWebexMessage(rm: RoleMessage): string {
       .join("\n");
   }
   const laneLabel = rm.lane === "sales" ? "commercial" : rm.lane === "technical" ? "technical" : "leadership";
+  const ia = rm.internal_action;
+  // Lead with INTERNAL coordination ("here is what you do"), then the customer
+  // step — the product's core "conversation → internal coordination → customer
+  // action" spine. Coordination lines name who to loop in and what to prepare.
+  const coordinationLines = (ia?.coordinate_with ?? []).map((p) => {
+    const who = p.name ?? p.role;
+    const prep = p.prepare.length > 0 ? ` Ask them to prepare: ${p.prepare.join("; ")}.` : "";
+    return `**Loop in ${who}:** ${p.why}${prep}`;
+  });
+  const rawStep = ia ? ia.customer_engagement.next_step : rm.action;
+  const customerStep = /[.!?]$/.test(rawStep) ? rawStep : `${rawStep}.`;
+  // The customer champion is a commercial-lane engagement cue (who advocates
+  // internally); the technical lane stays focused on the validation + partner.
+  const championNote =
+    rm.lane === "sales" && ia?.customer_engagement.champion
+      ? ` Engage ${ia.customer_engagement.champion.name ?? ia.customer_engagement.champion.role} (${ia.customer_engagement.champion.role}), who ${ia.customer_engagement.champion.why}.`
+      : "";
   const lines = [
     `**${rm.hook}** — ${laneLabel}`,
     rm.goal_impact ? `**Goal impact:** ${rm.goal_impact}` : null,
     `**Why this matters:** ${rm.why_this_matters}`,
     `**Why now:** ${rm.why_now}`,
-    `**Recommended action:** ${rm.action}`,
+    ia ? `**Your move (internal):** ${ia.your_move}` : null,
+    ...coordinationLines,
+    `**Customer next step:** ${customerStep}${championNote}`,
     `**Expected outcome:** ${rm.expected_outcome}`,
     rm.goal_alignment ? `**Goal fit:** ${rm.goal_alignment}` : null,
-    rm.champion ? `**Champion:** ${rm.champion.name} — ${rm.champion.play}` : null,
     rm.environment ? `**Environment:** ${rm.environment}` : null,
     rm.watch_out ? `**Watch-out:** ${rm.watch_out}` : null
   ];
@@ -339,11 +360,12 @@ export function renderEmailMessage(rm: RoleMessage): { subject: string; body: st
   return { subject, body: renderWebexMessage(rm) };
 }
 
-export function renderInAppTeaser(rm: RoleMessage): { headline: string; why_you: string; why_now: string; action: string } {
+export function renderInAppTeaser(rm: RoleMessage): { headline: string; why_you: string; why_now: string; internal_move: string | null; action: string } {
   return {
     headline: rm.hook,
     why_you: rm.why_this_matters,
     why_now: rm.why_now,
-    action: rm.action
+    internal_move: rm.internal_action?.your_move ?? null,
+    action: rm.internal_action?.customer_engagement.next_step ?? rm.action
   };
 }

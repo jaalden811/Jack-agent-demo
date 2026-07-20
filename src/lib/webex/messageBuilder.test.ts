@@ -163,17 +163,20 @@ describe("Webex message templates", () => {
     // matters, why-now, ONE recommended action, expected outcome.
     expect(salesMessage.markdown).toContain("— commercial");
     expect(salesMessage.markdown).toContain("**Why this matters:**");
-    expect(salesMessage.markdown).toContain("**Recommended action:**");
+    // The message leads with internal coordination, then the customer step.
+    expect(salesMessage.markdown).toContain("**Your move (internal):**");
+    expect(salesMessage.markdown).toContain("**Customer next step:**");
     expect(technicalMessage.markdown).toContain("— technical");
     expect(technicalMessage.markdown).toContain("**Environment:**");
-    expect(technicalMessage.markdown).toContain("**Recommended action:**");
+    expect(technicalMessage.markdown).toContain("**Your move (internal):**");
+    expect(technicalMessage.markdown).toContain("**Customer next step:**");
     // The technical lane leads with environment/motion; sales carries no env.
     expect(salesMessage.markdown).not.toContain("**Environment:**");
     // Concise nudge — no MEDDPICC dump / raw score tables.
     expect(salesMessage.markdown).not.toContain("MEDDPICC");
     expect(salesMessage.markdown).not.toContain("**Pursuit:**");
-    expect(salesMessage.markdown.length).toBeLessThanOrEqual(1200);
-    expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1200);
+    expect(salesMessage.markdown.length).toBeLessThanOrEqual(1600);
+    expect(technicalMessage.markdown.length).toBeLessThanOrEqual(1600);
   });
 
   it("surfaces deal intelligence (deal shape + watch-out) in both lanes when present", () => {
@@ -191,16 +194,16 @@ describe("Webex message templates", () => {
     };
     const sales = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     const technical = buildTechnicalMessage({ result, decision: technicalDecision, runId: "run-1", analysisLink: noLink });
-    // Deal shape leads the hook; watch-out + champion surface on the sales lane.
+    // Deal shape leads the hook; watch-out + customer champion surface on the sales lane.
     expect(sales.markdown).toContain("Expansion / land-and-expand");
     expect(sales.markdown).toContain("**Watch-out:**");
-    expect(sales.markdown).toContain("**Champion:** Jordan");
+    expect(sales.markdown).toContain("Engage Jordan");
     expect(technical.markdown).toContain("Expansion / land-and-expand");
-    // The champion line is commercial-only.
-    expect(technical.markdown).not.toContain("**Champion:**");
+    // The customer-champion engagement cue is commercial-only.
+    expect(technical.markdown).not.toContain("Engage Jordan");
     // Still concise.
-    expect(sales.markdown.length).toBeLessThanOrEqual(1200);
-    expect(technical.markdown.length).toBeLessThanOrEqual(1200);
+    expect(sales.markdown.length).toBeLessThanOrEqual(1600);
+    expect(technical.markdown.length).toBeLessThanOrEqual(1600);
   });
 
   it("renders a clean expected outcome (no lead-in filler, no mid-sentence cut) and never splices a non-date quote into the action", () => {
@@ -221,8 +224,8 @@ describe("Webex message templates", () => {
     expect(outcomeLine).not.toContain("For success criteria, I suggest");
     expect(outcomeLine).toContain("diagnosis in under 15 minutes");
     expect(outcomeLine.trim().endsWith(" in")).toBe(false);
-    // The cost quote never becomes part of the action line.
-    const actionLine = sales.markdown.split("\n").find((l) => l.startsWith("**Recommended action:**"))!;
+    // The cost quote never becomes part of the customer-step line.
+    const actionLine = sales.markdown.split("\n").find((l) => l.startsWith("**Customer next step:**"))!;
     expect(actionLine).not.toContain("$116,000");
     expect(actionLine).toContain("Scope a proof of value for Acme Retail");
   });
@@ -291,7 +294,7 @@ describe("Webex message templates", () => {
     const salesMessage = buildSalesMessage({ result, decision: salesDecision, runId: "run-1", analysisLink: noLink });
     // The signal strength is conveyed concisely in the hook (no raw score table).
     expect(salesMessage.markdown.toLowerCase()).toContain("high signal");
-    expect(salesMessage.markdown).toContain("**Recommended action:**");
+    expect(salesMessage.markdown).toContain("**Customer next step:**");
   });
 
   it("threads goal-aligned framing + owner-only goal/quota hook into the delivered message", () => {
@@ -407,8 +410,9 @@ describe("Outlook email templates", () => {
     expect(technicalEmail.subject).toBe("[HIGH_INTENT] Technical action — Acme Retail");
     // Same canonical content decision, distinct role rendering.
     expect(salesEmail.html).not.toEqual(technicalEmail.html);
-    expect(salesEmail.text).toContain("Recommended action");
-    expect(technicalEmail.text).toContain("Recommended action");
+    expect(salesEmail.text).toContain("Customer next step");
+    expect(technicalEmail.text).toContain("Customer next step");
+    expect(salesEmail.text).toContain("Your move (internal)");
     expect(technicalEmail.text).toContain("Why this matters");
   });
 

@@ -26,6 +26,7 @@ const READINESS_TONE: Record<string, string> = { ready: "success", ready_with_ga
 
 export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
   const action = result.next_best_action;
+  const plan = result.internal_action_plan ?? null;
   const salesReady = result.specialist_handoffs?.sales?.readiness_status ?? "blocked";
   const techReady = result.specialist_handoffs?.technical?.readiness_status ?? "blocked";
   const [status, setStatus] = useState<string | null>(null);
@@ -61,15 +62,58 @@ export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
   return (
     <section className="panel action-center">
       <div className="action-center-head">
-        <span className="action-eyebrow">Recommended next action</span>
+        <span className="action-eyebrow">Next internal move</span>
         <div className="action-badges">
           <span className={`chip chip-${PRIORITY_TONE[action.priority] ?? "muted"}`}>{action.priority} priority</span>
           <span className="chip chip-info">{action.owner_lane}</span>
         </div>
       </div>
 
-      <h2 className="action-title">{action.title}</h2>
-      <p className="action-summary">{action.summary}</p>
+      {plan ? (
+        <div className="internal-plan">
+          <div className="internal-plan-lead">
+            <span className="chip chip-info">Owner: {plan.primary_owner.name ?? plan.primary_owner.role}</span>
+            {plan.coordinate_with.map((p, i) => (
+              <span key={i} className="chip chip-muted">Coordinate: {p.name ?? p.role}</span>
+            ))}
+          </div>
+          <h2 className="action-title">{plan.your_move}</h2>
+          <p className="action-summary">{plan.routed_reason}</p>
+
+          {plan.coordinate_with.length > 0 && (
+            <div className="action-block">
+              <span className="meta-label">Coordinate with</span>
+              <ul className="action-list">
+                {plan.coordinate_with.map((p, i) => (
+                  <li key={i}>
+                    <strong>{p.name ?? p.role}</strong>
+                    {p.name ? ` (${p.role})` : ""} — {p.why}
+                    {p.prepare.length > 0 && <div className="muted">Prepare: {p.prepare.join("; ")}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="action-block">
+            <span className="meta-label">Customer next step</span>
+            <p className="action-summary">
+              {/[.!?]$/.test(plan.customer_engagement.next_step) ? plan.customer_engagement.next_step : `${plan.customer_engagement.next_step}.`}
+              {plan.customer_engagement.champion && (
+                <>
+                  {" "}
+                  Engage {plan.customer_engagement.champion.name ?? plan.customer_engagement.champion.role} ({plan.customer_engagement.champion.role}), who {plan.customer_engagement.champion.why}.
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <h2 className="action-title">{action.title}</h2>
+          <p className="action-summary">{action.summary}</p>
+        </>
+      )}
 
       <div className="action-grid">
         <div className="action-meta">

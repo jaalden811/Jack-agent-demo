@@ -172,15 +172,27 @@ function roleMessageEmailBullets(rm: ReturnType<typeof generateRoleMessage>): Ar
       ...(rm.watch_out ? [{ label: "Customer boundary", value: rm.watch_out.replace(/^Customer boundary:\s*/, "") }] : [])
     ];
   }
+  const ia = rm.internal_action;
+  const coordinationBullets = (ia?.coordinate_with ?? []).map((p) => ({
+    label: `Loop in ${p.name ?? p.role}`,
+    value: `${p.why}${p.prepare.length > 0 ? ` Prepare: ${p.prepare.join("; ")}.` : ""}`
+  }));
+  const customerStep = ia ? ia.customer_engagement.next_step : rm.action;
+  const championBullet =
+    rm.lane === "sales" && ia?.customer_engagement.champion
+      ? [{ label: "Customer champion", value: `${ia.customer_engagement.champion.name ?? ia.customer_engagement.champion.role}, who ${ia.customer_engagement.champion.why}` }]
+      : [];
   return [
     { label: "Account", value: rm.account },
     { label: "Why this matters", value: rm.why_this_matters },
     { label: "Why now", value: rm.why_now },
-    { label: "Recommended action", value: rm.action },
+    ...(ia ? [{ label: "Your move (internal)", value: ia.your_move }] : []),
+    ...coordinationBullets,
+    { label: "Customer next step", value: customerStep },
+    ...championBullet,
     { label: "Expected outcome", value: rm.expected_outcome },
     ...(rm.goal_impact ? [{ label: "Goal impact", value: rm.goal_impact }] : []),
     ...(rm.goal_alignment ? [{ label: "Goal fit", value: rm.goal_alignment }] : []),
-    ...(rm.champion ? [{ label: "Champion", value: `${rm.champion.name} — ${rm.champion.play}` }] : []),
     ...(rm.environment ? [{ label: "Environment", value: rm.environment }] : []),
     ...(rm.watch_out ? [{ label: "Watch-out", value: rm.watch_out }] : [])
   ];
