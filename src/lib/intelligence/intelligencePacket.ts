@@ -98,6 +98,7 @@ export function buildIntelligencePacket(result: SecureNetworkingTriageResult): I
       sales: ownerFrom(result.specialist_handoffs?.sales?.recipient),
       technical: ownerFrom(result.specialist_handoffs?.technical?.recipient)
     },
+    executive_trigger: result.executive_coordination_trigger ?? null,
     opportunity: {
       verdict: summary.verdict,
       signal_strength: scoring?.signal_strength?.score ?? 0,

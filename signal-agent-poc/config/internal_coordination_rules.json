@@ -53,10 +53,36 @@
       "technical"
     ]
   },
-  "executive_trigger": {
-    "purpose": "When either owner should coordinate with an executive sponsor: an exec-sponsored program is in play, or the economic authority is DISTRIBUTED across a committee/board (so the investment path needs senior alignment). An economic buyer that is merely unconfirmed early in discovery does NOT trigger this — that would make the exec loop-in constant noise.",
-    "momentum_ids": ["exec_program"],
-    "meddpicc_conditions": ["distributed_economic_authority"]
+  "executive_gate": {
+    "purpose": "How internal sales-leader / executive coordination is produced. IMMEDIATE internal-executive steps come ONLY from an explicit evidence trigger (see explicit_triggers). DISTRIBUTED / committee authority is NOT such a trigger — it produces a CONDITIONAL funding-gate note (committee_funding), never an immediate task. Language is restrained: no 'peer-level air cover', and never claim leadership will 'unblock funding' or that funding is 'board-approved' unless the transcript says so.",
+    "internal_role_label": "Internal sales leader",
+    "committee_funding": {
+      "trigger_code": "COMMITTEE_FUNDING_GATE",
+      "timing": "at_funding_gate",
+      "requirement": "conditional",
+      "when": "only if it reaches committee funding review",
+      "reason": "Customer approval is committee-based (no single approver).",
+      "prepare": [
+        "a concise, committee-ready investment case",
+        "a decision on whether internal executive engagement would materially help at the funding gate"
+      ]
+    },
+    "explicit_triggers": {
+      "EXEC_MEETING_REQUESTED": {
+        "timing": "before_customer_meeting",
+        "requirement": "recommended",
+        "when": "the customer requested executive engagement",
+        "reason": "The customer asked for executive-to-executive engagement, so an internal sales leader should join or sponsor it.",
+        "prepare": ["the account context and the customer's ask", "the outcome the executive conversation should reach"]
+      },
+      "EXEC_ALIGNMENT_BLOCKED": {
+        "timing": "if_blocked",
+        "requirement": "recommended",
+        "when": "the decision is blocked at leadership level",
+        "reason": "The decision is stalled at leadership level, so an internal sales leader may help unblock it.",
+        "prepare": ["a short summary of what is blocked and why", "the specific leadership help needed"]
+      }
+    }
   },
   "prepare": {
     "technical": [
@@ -66,22 +92,15 @@
       "the top technical risks to de-risk before the session"
     ],
     "sales": [
-      "customer and executive alignment for the session",
+      "customer and stakeholder alignment for the session",
       "commercial framing and the business case",
-      "the budget and procurement path"
-    ],
-    "executive": [
-      "a one-page investment case for the approvers",
-      "exec-to-exec sponsorship to unblock funding"
+      "the buying/decision path"
     ]
   },
   "coordinate_reason": {
     "sales_to_technical": "The customer next step needs architecture and proof-of-value boundaries defined before it is credible.",
-    "technical_to_sales": "They own customer alignment and commercial progression, so the validation ladders into a real commercial motion.",
-    "to_executive_distributed": "No single economic buyer — funding is committee/board-approved, so a sales leader can unblock it with peer-level air cover.",
-    "to_executive_program": "It's part of an exec-sponsored program, so a sales leader keeps it aligned and funded as it advances."
+    "technical_to_sales": "They own customer alignment and commercial progression, so the validation ladders into a real commercial motion."
   },
-  "executive_when": "only when it reaches the funding decision",
   "customer_roles": {
     "champion": "owns the internal recommendation and coordinates the customer participants",
     "economic_buyer": "controls the budget for the decision",

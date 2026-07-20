@@ -4,6 +4,7 @@ import { getCatalog } from "@/lib/signal-agent/loadCatalog";
 import { ingestTranscript, selectRelevantChunks } from "@/lib/signal-agent/transcript";
 import { detectHardRejection } from "@/lib/signal-agent/rejectionGuard";
 import { detectSatisfiedIncumbent } from "@/lib/signal-agent/satisfactionGuard";
+import { detectExecutiveCoordinationTrigger } from "@/lib/signal-agent/executiveCoordinationGuard";
 import { findAccount, applyAccountOverride } from "@/lib/signal-agent/accountContext";
 import { embedTranscript } from "@/lib/signal-agent/semanticMatch";
 import { evaluateEntry, selectMultiLabelEvaluations } from "@/lib/signal-agent/scoring";
@@ -685,6 +686,18 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // (Owner: commercial, Technical partner: specialist) even when the immediate
   // next action is technical. Falls back to the NBA owner lane when no commercial
   // owner is configured. Never changes scores/routing/evidence identity.
+  // Explicit executive-coordination trigger (customer asked for exec engagement,
+  // or the decision is blocked at leadership) — the ONLY signal that produces an
+  // IMMEDIATE internal sales-leader step. Distributed authority alone never sets
+  // this. Read-only over customer sentences; never changes scores/routing.
+  try {
+    result.executive_coordination_trigger = detectExecutiveCoordinationTrigger(
+      transcript.sentences.filter((sentence) => sentence.isCustomer).map((sentence) => sentence.text)
+    );
+  } catch {
+    result.executive_coordination_trigger = null;
+  }
+
   try {
     const packet = buildIntelligencePacket(result);
     const perspective = packet.owners.sales ? "sales" : result.next_best_action?.owner_lane === "technical" ? "technical" : "sales";

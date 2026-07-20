@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "purpose": "Explicit, evidence-backed triggers that justify an IMMEDIATE internal sales-leader / executive-sponsor coordination step. Applied to CUSTOMER sentences only. Distributed authority, a committee, a board target, a missing economic buyer, or an executive merely attending are NOT triggers and must never appear here — those produce a conditional funding-gate note, not an immediate internal-executive task. Regex, case-insensitive.",
+    "version": "1.0.0"
+  },
+  "exec_meeting_requested": [
+    "\\bexecutive briefing\\b",
+    "\\bmeet with (?:your|our) (?:leadership|executive|exec team|executives|vp|svp|cxo|c-suite|leadership team)\\b",
+    "\\bexec(?:utive)?[- ]to[- ]exec(?:utive)?\\b",
+    "\\bpeer[- ]to[- ]peer (?:executive )?(?:meeting|engagement|conversation)\\b",
+    "\\bbring (?:in )?your (?:executive|leadership|vp|svp|senior leader)\\b",
+    "\\bboard[- ]level (?:meeting|conversation|discussion|briefing)\\b",
+    "\\b(?:our|the) (?:ceo|cio|ciso|cfo|coo) (?:wants|would like|asked|is asking) to (?:meet|speak|connect)\\b"
+  ],
+  "exec_alignment_blocked": [
+    "\\b(?:can'?t|cannot|unable to) (?:get|reach) (?:alignment|consensus|agreement) (?:at|from|with|across) (?:leadership|the top|executives?|the (?:committee|board))\\b",
+    "\\bstalled (?:at|with) (?:leadership|the (?:committee|board|top)|executives?)\\b",
+    "\\bstuck (?:at|with) (?:leadership|the (?:committee|board))\\b",
+    "\\bneeds? (?:executive|leadership|senior) (?:sponsorship|intervention) to (?:move|proceed|unblock|progress)\\b",
+    "\\bpolitical(?:ly)? (?:blocked|stuck|stalemate|deadlock)\\b",
+    "\\bescalate to (?:leadership|executives?|the c-suite)\\b"
+  ]
+}

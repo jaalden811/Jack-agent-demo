@@ -320,17 +320,20 @@ export function renderWebexMessage(rm: RoleMessage): string {
   }
   const laneLabel = rm.lane === "sales" ? "commercial" : rm.lane === "technical" ? "technical" : "leadership";
   const ia = rm.internal_action;
-  // Lead with INTERNAL coordination ("here is what you do"), then the customer
-  // step — the product's core "conversation → internal coordination → customer
-  // action" spine. Coordination lines name who to loop in and what to prepare.
-  const coordinationLines = (ia?.coordinate_with ?? []).map((p) => {
+  // Lead with the IMMEDIATE internal coordination ("here is what you do now"),
+  // then the customer step. Later/conditional steps (e.g. a committee funding
+  // gate) render LAST, clearly subordinate — never with do-now priority.
+  const isImmediate = (p: { requirement: string }) => p.requirement === "required" || p.requirement === "recommended";
+  const immediate = (ia?.coordinate_with ?? []).filter(isImmediate);
+  const later = (ia?.coordinate_with ?? []).filter((p) => !isImmediate(p));
+  const coordinationLines = immediate.map((p) => {
     const who = p.name ?? p.role;
     const prep = p.prepare.length > 0 ? ` Ask them to prepare: ${p.prepare.join("; ")}.` : "";
-    // A conditional partner (e.g. the exec sponsor) is flagged optional-until-
-    // needed so it never reads as a must-do-now like the technical loop-in.
-    const heading = p.condition ? `Loop in ${who} (${p.condition})` : `Loop in ${who}`;
-    return `**${heading}:** ${p.why}${prep}`;
+    return `**Loop in ${who}:** ${p.why}${prep}`;
   });
+  // A conditional step is a single, concise, visibly-subordinate "Later" line —
+  // no "prepare" dump, no do-now framing.
+  const laterLines = later.map((p) => `**Later — ${p.condition ?? "only if triggered"}:** ${p.why}`);
   const rawStep = ia ? ia.customer_engagement.next_step : rm.action;
   const customerStep = /[.!?]$/.test(rawStep) ? rawStep : `${rawStep}.`;
   // The customer champion is a commercial-lane engagement cue (who advocates
@@ -350,7 +353,8 @@ export function renderWebexMessage(rm: RoleMessage): string {
     `**Expected outcome:** ${rm.expected_outcome}`,
     rm.goal_alignment ? `**Goal fit:** ${rm.goal_alignment}` : null,
     rm.environment ? `**Environment:** ${rm.environment}` : null,
-    rm.watch_out ? `**Watch-out:** ${rm.watch_out}` : null
+    rm.watch_out ? `**Watch-out:** ${rm.watch_out}` : null,
+    ...laterLines
   ];
   return lines.filter((l): l is string => Boolean(l)).join("\n");
 }

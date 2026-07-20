@@ -173,9 +173,14 @@ function roleMessageEmailBullets(rm: ReturnType<typeof generateRoleMessage>): Ar
     ];
   }
   const ia = rm.internal_action;
-  const coordinationBullets = (ia?.coordinate_with ?? []).map((p) => ({
-    label: p.condition ? `Loop in ${p.name ?? p.role} (${p.condition})` : `Loop in ${p.name ?? p.role}`,
+  const isImmediate = (p: { requirement: string }) => p.requirement === "required" || p.requirement === "recommended";
+  const coordinationBullets = (ia?.coordinate_with ?? []).filter(isImmediate).map((p) => ({
+    label: `Loop in ${p.name ?? p.role}`,
     value: `${p.why}${p.prepare.length > 0 ? ` Prepare: ${p.prepare.join("; ")}.` : ""}`
+  }));
+  const laterBullets = (ia?.coordinate_with ?? []).filter((p) => !isImmediate(p)).map((p) => ({
+    label: `Later — ${p.condition ?? "only if triggered"}`,
+    value: p.why
   }));
   const customerStep = ia ? ia.customer_engagement.next_step : rm.action;
   const championBullet =
@@ -194,7 +199,8 @@ function roleMessageEmailBullets(rm: ReturnType<typeof generateRoleMessage>): Ar
     ...(rm.goal_impact ? [{ label: "Goal impact", value: rm.goal_impact }] : []),
     ...(rm.goal_alignment ? [{ label: "Goal fit", value: rm.goal_alignment }] : []),
     ...(rm.environment ? [{ label: "Environment", value: rm.environment }] : []),
-    ...(rm.watch_out ? [{ label: "Watch-out", value: rm.watch_out }] : [])
+    ...(rm.watch_out ? [{ label: "Watch-out", value: rm.watch_out }] : []),
+    ...laterBullets
   ];
 }
 

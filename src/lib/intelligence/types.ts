@@ -43,20 +43,50 @@ export type PacketEvidenceItem = {
  * invented and NEVER a customer participant. */
 export type InternalOwner = { name: string | null; role: string };
 
-/** One internal coordination step: who to loop in, why (tied to the customer
- * next step), and what they should prepare. `side` is always "internal" — the
- * customer champion/sponsor live under `customer_engagement`, never here. */
+/** WHEN an internal coordination step happens. Immediate/before-meeting steps are
+ * the near-term work; the rest are later/conditional and must render subordinate. */
+export type CoordinationTiming =
+  | "immediate"
+  | "before_customer_meeting"
+  | "after_validation"
+  | "at_funding_gate"
+  | "if_blocked"
+  | "monitor";
+
+/** HOW necessary a coordination step is. `required`/`recommended` are the "do now"
+ * steps; `conditional`/`context_only` are later/optional and never carry
+ * do-now priority. */
+export type CoordinationRequirement = "required" | "recommended" | "conditional" | "context_only";
+
+/** One INTERNAL coordination step: who to loop in, why (tied to the customer next
+ * step), what to prepare, and — deterministically — WHEN and HOW necessary it is.
+ * The `to` party is always internal; the customer champion/sponsor live under
+ * `customer_engagement`, never here. */
 export type CoordinationPartner = {
   name: string | null;
   role: string;
   lane: "sales" | "technical" | "executive";
   why: string;
   prepare: string[];
-  /** A short "when this applies" qualifier for a CONDITIONAL coordination step
-   * (e.g. executive alignment "only when it reaches the funding decision") — so
-   * a lower-priority loop-in reads as optional-until-needed, not a must-do-now.
-   * Null for the necessary near-term partners. */
+  /** Deterministic timing — Circuit may not change it. */
+  timing: CoordinationTiming;
+  /** Deterministic necessity — Circuit may not elevate it. */
+  requirement: CoordinationRequirement;
+  /** The explicit trigger code that produced this step (e.g. TECHNICAL_VALIDATION,
+   * COMMITTEE_FUNDING_GATE, EXEC_MEETING_REQUESTED). Null for a default step. */
+  trigger_code: string | null;
+  /** A short "when this applies" qualifier for a conditional/later step (e.g.
+   * "only if it reaches committee funding review"). Null for do-now steps. */
   condition?: string | null;
+};
+
+/** A CUSTOMER-side stakeholder to engage (kept strictly separate from internal
+ * coordination). A customer executive sponsor / committee chair belongs HERE —
+ * never as an internal `CoordinationPartner`. */
+export type CustomerStakeholder = {
+  name: string | null;
+  role: string;
+  engagement: string;
 };
 
 /**
@@ -74,10 +104,13 @@ export type InternalActionPlan = {
   your_move: string;
   /** Internal people/roles to coordinate with before the customer engagement. */
   coordinate_with: CoordinationPartner[];
-  /** The customer-facing outcome — kept explicitly SEPARATE from internal work. */
+  /** The customer-facing outcome — kept explicitly SEPARATE from internal work.
+   * Customer-side people (incl. any customer executive sponsor / committee chair)
+   * live here in `stakeholders`, never in `coordinate_with`. */
   customer_engagement: {
     next_step: string;
     champion: { name: string | null; role: string; why: string } | null;
+    stakeholders: CustomerStakeholder[];
   };
   /** ADVISORY-only additional coordination the AI layer (Circuit) surfaced from
    * the conversation that the deterministic sales/technical/executive triggers do
@@ -102,6 +135,11 @@ export type IntelligencePacket = {
   /** Internal lane owners resolved from the routing config (never customer
    * participants). Used to name coordination partners in the internal plan. */
   owners: { sales: InternalOwner | null; technical: InternalOwner | null };
+  /** An EXPLICIT, evidence-backed executive-coordination trigger (the customer
+   * asked for exec engagement, or the decision is blocked at leadership) — the
+   * ONLY thing that creates an immediate internal-leadership step. Distributed
+   * authority alone does NOT set this (it produces a conditional funding gate). */
+  executive_trigger: { code: string; description: string } | null;
   opportunity: {
     verdict: string;
     signal_strength: number;

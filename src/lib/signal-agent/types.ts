@@ -765,6 +765,11 @@ export type SecureNetworkingTriageResult = {
    * should prepare, and — kept separate — the customer-facing step. Drives the
    * "Next Internal Move" primary card. Never changes scores/routing/evidence. */
   internal_action_plan?: InternalActionPlan | null;
+  /** An explicit, evidence-backed executive-coordination trigger detected in the
+   * customer's own words (a requested exec meeting, or a leadership-level block)
+   * — the ONLY signal that produces an IMMEDIATE internal sales-leader step.
+   * Distributed authority alone never sets this. Additive; null when absent. */
+  executive_coordination_trigger?: { code: string; description: string } | null;
 };
 
 export type GenericDiagnostics = {

@@ -10,6 +10,7 @@ function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket 
   const base: IntelligencePacket = {
     identity: { run_id: "r1", account: "Acme Retail", account_label: "Acme Retail", account_prose: "Acme Retail", account_resolved: true, account_confidence: 0.9, participant_count: 4 },
     owners: { sales: { name: "Bella Robinson", role: "Sales / Commercial owner" }, technical: { name: "Jack Alden", role: "Technical / Specialist owner" } },
+    executive_trigger: null,
     opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability and incident correlation", primary_solution_motion: "Splunk ITSI", is_actionable: true, matched_category_ids: ["cloud_native_observability"] },
     customer_evidence: { pains: [], business_impacts: [{ statement: "hundreds of specialists unable to work when incidents hit", speaker: null, evidence_ids: [] }], objections: [], explicit_negations: ["not a SIEM replacement"], do_not_reask: [] },
     qualification: { meddpicc: { identify_pain: "CONFIRMED", metrics: "CONFIRMED" }, decision_criteria: [] },

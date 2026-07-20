@@ -406,6 +406,17 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+/* Later / conditional coordination is visibly subordinate — never do-now weight. */
+.internal-plan-later {
+  opacity: 0.82;
+  border-left: 2px solid var(--border-active);
+  padding-left: 12px;
+  margin-top: 6px;
+}
+.internal-plan-later .meta-label {
+  color: var(--text-muted, #9aa4b2);
+}
+
 .action-list,
 .handoff-list {
   margin: 6px 0 0;

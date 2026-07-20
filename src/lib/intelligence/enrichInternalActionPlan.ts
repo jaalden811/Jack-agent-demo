@@ -81,6 +81,13 @@ export async function enrichInternalActionPlan(plan: InternalActionPlan, packet:
         if (badText(c.why) || c.why.length > 240) issues.push(`coordinate_with.${c.lane}.why is empty/over budget/has a URL`);
         const prep = c.prepare.filter((p) => !badText(p) && p.length <= 160);
         if (prep.length === 0) issues.push(`coordinate_with.${c.lane}.prepare has no valid items`);
+        // Restrained-language boundary for the executive lane: Circuit may improve
+        // the rationale but must not claim leadership will "unblock funding" or use
+        // "air cover" / unsupported "board-approved" framing (the deterministic
+        // wording is intentionally conditional and evidence-safe).
+        if (c.lane === "executive" && /\bunblock(?:ing)? funding\b|\bair cover\b|\bboard-approved\b|\bwill unblock\b/i.test(c.why)) {
+          issues.push("executive why makes an unsupported 'unblock funding' / 'air cover' claim");
+        }
       }
       for (const s of o.suggested_coordination ?? []) {
         if (!allowedRoleKeys.has(s.role.trim().toLowerCase())) issues.push(`suggested role '${s.role}' is not in the allowed list`);

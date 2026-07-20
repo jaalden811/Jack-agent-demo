@@ -37,6 +37,7 @@ function makePacket(): IntelligencePacket {
   return {
     identity: { run_id: "r1", account: "Acme Retail", account_label: "Acme Retail", account_prose: "Acme Retail", account_resolved: true, account_confidence: 0.9, participant_count: 4 },
     owners: { sales: { name: "Bella Robinson", role: "Sales / Commercial owner" }, technical: { name: "Jack Alden", role: "Technical / Specialist owner" } },
+    executive_trigger: null,
     opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "observability", primary_solution_motion: "Splunk ITSI", is_actionable: true, matched_category_ids: [] },
     customer_evidence: { pains: [], business_impacts: [{ statement: "incident investigation takes three hours", speaker: null, evidence_ids: [] }], objections: [], explicit_negations: [], do_not_reask: [] },
     qualification: { meddpicc: { economic_buyer: "CONFIRMED" }, decision_criteria: [] },
@@ -102,6 +103,26 @@ describe("enrichInternalActionPlan", () => {
     const out = await enrichInternalActionPlan(det, makePacket());
     expect(out.source).toBe("deterministic");
     expect(out.coordinate_with).toEqual(det.coordinate_with);
+  });
+
+  it("cannot elevate a conditional funding-gate step to required, add a named internal owner, or change timing", async () => {
+    configure();
+    const distributed = { ...makePacket(), qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] } };
+    const det = buildInternalActionPlan(distributed, "sales")!;
+    expect(det.coordinate_with.find((c) => c.lane === "executive")!.requirement).toBe("conditional");
+    vi.mocked(circuitGenerate).mockResolvedValue(circuitOk({
+      coordinate_with: [
+        { lane: "technical", why: "Validate correlation feasibility.", prepare: ["Confirm integrations"] },
+        { lane: "executive", why: "Escalate to leadership immediately to unblock funding now.", prepare: ["brief the VP"] }
+      ]
+    }));
+    const out = await enrichInternalActionPlan(det, distributed);
+    const afterExec = out.coordinate_with.find((c) => c.lane === "executive")!;
+    // Timing/requirement/trigger stay deterministic; owner stays a role-only slot.
+    expect(afterExec.requirement).toBe("conditional");
+    expect(afterExec.timing).toBe("at_funding_gate");
+    expect(afterExec.trigger_code).toBe("COMMITTEE_FUNDING_GATE");
+    expect(afterExec.name).toBeNull();
   });
 
   it("drops a suggested role that is not in the allow-list", async () => {

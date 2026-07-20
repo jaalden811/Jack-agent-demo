@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { CoordinationPartner, IntelligencePacket, InternalActionPlan, InternalOwner, MessageLane } from "@/lib/intelligence/types";
+import type { CoordinationPartner, CoordinationRequirement, CoordinationTiming, CustomerStakeholder, IntelligencePacket, InternalActionPlan, InternalOwner, MessageLane } from "@/lib/intelligence/types";
 
 /**
  * buildInternalActionPlan(packet, perspectiveLane) — turns a routed opportunity
@@ -18,14 +18,18 @@ import type { CoordinationPartner, IntelligencePacket, InternalActionPlan, Inter
  * identity are untouched — this only composes coordination guidance.
  */
 
+type ExecutiveGateStep = { timing: CoordinationTiming; requirement: CoordinationRequirement; when: string; reason: string; prepare: string[]; trigger_code?: string };
 type CoordinationRules = {
   role_responsibilities: Record<string, string[]>;
   routed_reason: Record<string, string>;
   technical_trigger: { action_types: string[]; motion_keywords: string[] };
-  executive_trigger: { momentum_ids: string[]; meddpicc_conditions: string[] };
+  executive_gate: {
+    internal_role_label: string;
+    committee_funding: ExecutiveGateStep;
+    explicit_triggers: Record<string, ExecutiveGateStep>;
+  };
   prepare: Record<string, string[]>;
   coordinate_reason: Record<string, string>;
-  executive_when?: string;
   customer_roles: Record<string, string>;
 };
 
@@ -64,20 +68,60 @@ function needsTechnicalShaping(packet: IntelligencePacket, rules: CoordinationRu
   return rules.technical_trigger.motion_keywords.some((k) => haystack.includes(k.toLowerCase()));
 }
 
-/** Why executive coordination is warranted — the SPECIFIC trigger, so the plan
- * can explain it concretely ("no single economic buyer — committee-approved" vs
- * "exec-sponsored program") instead of a generic "needs senior alignment".
- * Returns null when no real exec/committee signal exists (an EB that is merely
- * unknown early in discovery does NOT count — that would make the exec loop-in
- * constant noise). */
-function executiveTrigger(packet: IntelligencePacket, rules: CoordinationRules): "distributed" | "program" | null {
+/** Builds the internal sales-leader / executive step, if any. An IMMEDIATE step
+ * is produced ONLY from an explicit, evidence-backed trigger (the customer asked
+ * for executive engagement, or the decision is blocked at leadership) —
+ * `packet.executive_trigger`. DISTRIBUTED / committee authority alone produces a
+ * CONDITIONAL funding-gate note (never an immediate task), and every other
+ * signal (missing EB, a board mention, an exec attending, high signal, a large
+ * account, an exec-sponsored program) produces NOTHING. The `to` party is always
+ * a ROLE-ONLY internal slot (never a named or invented leader, never a customer). */
+function buildExecutiveStep(packet: IntelligencePacket, rules: CoordinationRules): CoordinationPartner | null {
+  const gate = rules.executive_gate;
+  const roleLabel = gate.internal_role_label || "Internal sales leader";
+  const explicit = packet.executive_trigger;
+  if (explicit) {
+    const step = gate.explicit_triggers[explicit.code];
+    if (step) {
+      return {
+        name: null,
+        role: roleLabel,
+        lane: "executive",
+        why: step.reason,
+        prepare: step.prepare ?? [],
+        timing: step.timing,
+        requirement: step.requirement,
+        trigger_code: explicit.code,
+        condition: step.when ?? null
+      };
+    }
+  }
+  // No explicit trigger: distributed/committee authority → a CONDITIONAL gate.
   const eb = (packet.qualification.meddpicc.economic_buyer ?? "").toUpperCase();
-  // A genuine DISTRIBUTED / committee economic authority is the most concrete,
-  // explainable reason: the customer's own words say no single approver.
-  if (rules.executive_trigger.meddpicc_conditions.includes("distributed_economic_authority") && eb === "DISTRIBUTED") return "distributed";
-  const momentumIds = new Set(packet.deal_intelligence.momentum.map((m) => m.id));
-  if (rules.executive_trigger.momentum_ids.some((id) => momentumIds.has(id)) || packet.deal_intelligence.exec_program) return "program";
+  if (eb === "DISTRIBUTED") {
+    const step = gate.committee_funding;
+    return {
+      name: null,
+      role: roleLabel,
+      lane: "executive",
+      why: step.reason,
+      prepare: step.prepare ?? [],
+      timing: step.timing,
+      requirement: step.requirement,
+      trigger_code: step.trigger_code ?? "COMMITTEE_FUNDING_GATE",
+      condition: step.when ?? null
+    };
+  }
   return null;
+}
+
+/** Customer-side stakeholders to engage — kept strictly SEPARATE from internal
+ * coordination. A customer executive sponsor / committee chair appears HERE. */
+function customerStakeholders(packet: IntelligencePacket): CustomerStakeholder[] {
+  return packet.stakeholders
+    .filter((s) => (s.name ?? "").trim().length > 0)
+    .slice(0, 6)
+    .map((s) => ({ name: s.name, role: s.role_label, engagement: clean(s.play || "", 140) }));
 }
 
 /** Keeps only short, clean scenario/label phrases — drops raw customer-quote
@@ -130,7 +174,6 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
   const sales = ownerLabel(packet.owners.sales, "Sales / Commercial owner");
   const technical = ownerLabel(packet.owners.technical, "Technical / Specialist owner");
   const technicalNeeded = needsTechnicalShaping(packet, rules);
-  const execReason = executiveTrigger(packet, rules);
   const customerStep = packet.next_action.primary_action ?? packet.next_action.summary ?? "Confirm the next step and owner with the customer.";
   const champion = customerChampion(packet, rules);
 
@@ -143,42 +186,41 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
 
   if (lane === "sales") {
     // The commercial owner loops in the technical owner when the customer step
-    // needs architecture/validation shaping.
+    // needs architecture/validation shaping — the IMMEDIATE, required step.
     if (technicalNeeded) {
       coordinate_with.push({
         name: technical.name,
         role: technical.role,
         lane: "technical",
         why: rules.coordinate_reason.sales_to_technical,
-        prepare: technicalPrepare(packet, rules)
+        prepare: technicalPrepare(packet, rules),
+        timing: "before_customer_meeting",
+        requirement: "required",
+        trigger_code: "TECHNICAL_VALIDATION",
+        condition: null
       });
     }
   } else {
     // The technical owner ALWAYS syncs with the commercial owner so validation
-    // ladders into a real commercial motion.
+    // ladders into a real commercial motion — the IMMEDIATE, required step.
     coordinate_with.push({
       name: sales.name,
       role: sales.role,
       lane: "sales",
       why: rules.coordinate_reason.technical_to_sales,
-      prepare: rules.prepare.sales ?? []
+      prepare: rules.prepare.sales ?? [],
+      timing: "immediate",
+      requirement: "required",
+      trigger_code: "COMMERCIAL_PROGRESSION",
+      condition: null
     });
   }
 
-  if (execReason) {
-    // A SPECIFIC, evidence-grounded reason (committee/board authority vs an
-    // exec-sponsored program) + a CONDITIONAL "when" qualifier, so this reads as
-    // an optional-until-funding step, not a must-do-now like the technical loop-in.
-    const execWhy = execReason === "distributed" ? rules.coordinate_reason.to_executive_distributed : rules.coordinate_reason.to_executive_program;
-    coordinate_with.push({
-      name: null,
-      role: "Sales leader / exec sponsor",
-      lane: "executive",
-      why: execWhy ?? "A sales leader adds senior alignment on the funding decision.",
-      prepare: rules.prepare.executive ?? [],
-      condition: rules.executive_when ?? null
-    });
-  }
+  // Internal sales-leader / executive step — IMMEDIATE only on an explicit
+  // evidence trigger; a distributed committee produces a CONDITIONAL funding-gate
+  // note; everything else produces nothing.
+  const execStep = buildExecutiveStep(packet, rules);
+  if (execStep) coordinate_with.push(execStep);
 
   // The internal next move — coordination-first, explicitly NOT the customer
   // step. It names who to align with, so it always differs from customer_engagement.
@@ -202,7 +244,7 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
     routed_reason: rules.routed_reason[perspectiveLane] ?? rules.routed_reason[lane] ?? "You own this lane for the account.",
     your_move: clean(yourMove, 260),
     coordinate_with,
-    customer_engagement: { next_step: clean(customerStep, 220), champion },
+    customer_engagement: { next_step: clean(customerStep, 220), champion, stakeholders: customerStakeholders(packet) },
     source: "deterministic"
   };
 }

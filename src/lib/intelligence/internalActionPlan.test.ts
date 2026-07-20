@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { IntelligencePacket, MessageLane } from "@/lib/intelligence/types";
 import { buildInternalActionPlan } from "@/lib/intelligence/internalActionPlan";
+import { generateRoleMessage, renderWebexMessage } from "@/lib/intelligence/roleMessage";
 
 /**
  * Invariants for the INTERNAL action plan — the "conversation → internal
@@ -13,6 +14,7 @@ function makePacket(over: Partial<IntelligencePacket> = {}): IntelligencePacket 
   const base: IntelligencePacket = {
     identity: { run_id: "r1", account: "Acme Retail", account_label: "Acme Retail", account_prose: "Acme Retail", account_resolved: true, account_confidence: 0.9, participant_count: 4 },
     owners: { sales: { name: "Bella Robinson", role: "Sales / Commercial owner" }, technical: { name: "Jack Alden", role: "Technical / Specialist owner" } },
+    executive_trigger: null,
     opportunity: { verdict: "REVIEW", signal_strength: 72, signal_band: "HIGH", pursuit_decision: "PURSUE_WITH_DISCOVERY", pursuit_score: 72, pursuit_confidence: 0.8, deal_maturity: "SOLUTION_DISCOVERY", primary_opportunity: "cross-domain observability", primary_solution_motion: "Splunk ITSI", is_actionable: true, matched_category_ids: ["cloud_native_observability"] },
     customer_evidence: { pains: [], business_impacts: [], objections: [], explicit_negations: [], do_not_reask: [] },
     qualification: { meddpicc: { economic_buyer: "CONFIRMED" }, decision_criteria: [] },
@@ -75,25 +77,77 @@ describe("buildInternalActionPlan", () => {
     expect(sales!.prepare.join(" ").toLowerCase()).toMatch(/commercial|business case|budget|procurement|alignment/);
   });
 
-  it("adds a CONDITIONAL exec step (exec program) explaining WHY, not a generic 'needs senior alignment'", () => {
-    const p = makePacket({ deal_intelligence: { ...makePacket().deal_intelligence, exec_program: true } });
+  it("does NOT create an exec step for an exec-sponsored program alone (an exec sponsor existing is not a trigger)", () => {
+    const p = makePacket({ deal_intelligence: { ...makePacket().deal_intelligence, exec_program: true }, qualification: { meddpicc: { economic_buyer: "CONFIRMED" }, decision_criteria: [] } });
     const plan = buildInternalActionPlan(p, "sales")!;
-    const exec = plan.coordinate_with.find((c) => c.lane === "executive")!;
-    expect(exec).toBeDefined();
-    // Conditional (optional-until-needed), not a must-do-now.
-    expect(exec.condition && exec.condition.length > 0).toBeTruthy();
-    // Specific reason (the exec-sponsored program), never the old circular text.
-    expect(exec.why.toLowerCase()).toMatch(/program/);
-    expect(exec.why.toLowerCase()).not.toContain("investment path needs senior alignment");
+    expect(plan.coordinate_with.some((c) => c.lane === "executive")).toBe(false);
   });
 
-  it("adds a CONDITIONAL exec step (distributed authority) naming the concrete reason (no single EB / committee)", () => {
+  it("distributed/committee authority alone produces a CONDITIONAL funding-gate note, never an immediate step", () => {
     const p = makePacket({ qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] } });
     const plan = buildInternalActionPlan(p, "sales")!;
     const exec = plan.coordinate_with.find((c) => c.lane === "executive")!;
     expect(exec).toBeDefined();
-    expect(exec.condition && exec.condition.length > 0).toBeTruthy();
-    expect(exec.why.toLowerCase()).toMatch(/no single economic buyer|committee|board/);
+    expect(exec.requirement).toBe("conditional");
+    expect(exec.timing).toBe("at_funding_gate");
+    expect(exec.trigger_code).toBe("COMMITTEE_FUNDING_GATE");
+    // Restrained, evidence-safe language — no "air cover" / "unblock funding" claim.
+    expect(exec.why.toLowerCase()).toMatch(/committee|no single approver/);
+    expect(exec.why.toLowerCase()).not.toContain("air cover");
+    expect(exec.why.toLowerCase()).not.toContain("unblock funding");
+    // The immediate technical step is REQUIRED and outranks the conditional gate.
+    const tech = plan.coordinate_with.find((c) => c.lane === "technical")!;
+    expect(tech.requirement).toBe("required");
+  });
+
+  it("creates an IMMEDIATE (recommended) exec step ONLY on an explicit evidence trigger", () => {
+    const p = makePacket({
+      qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] },
+      executive_trigger: { code: "EXEC_MEETING_REQUESTED", description: "The customer requested exec engagement." }
+    });
+    const plan = buildInternalActionPlan(p, "sales")!;
+    const exec = plan.coordinate_with.find((c) => c.lane === "executive")!;
+    expect(exec).toBeDefined();
+    expect(exec.requirement).toBe("recommended");
+    expect(exec.timing).toBe("before_customer_meeting");
+    expect(exec.trigger_code).toBe("EXEC_MEETING_REQUESTED");
+  });
+
+  it("an EXEC_ALIGNMENT_BLOCKED trigger yields an if_blocked recommended step", () => {
+    const p = makePacket({ executive_trigger: { code: "EXEC_ALIGNMENT_BLOCKED", description: "Blocked at leadership." } });
+    const exec = buildInternalActionPlan(p, "sales")!.coordinate_with.find((c) => c.lane === "executive")!;
+    expect(exec.timing).toBe("if_blocked");
+    expect(exec.requirement).toBe("recommended");
+  });
+
+  it("renders immediate coordination and conditional gates in SEPARATE sections (later never do-now)", () => {
+    const p = makePacket({ qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] } });
+    const md = renderWebexMessage(generateRoleMessage(p, "sales"));
+    // Immediate technical loop-in appears as a "Loop in" line.
+    expect(md).toContain("**Loop in Jack Alden:**");
+    // The conditional committee gate renders as a subordinate "Later —" line, after the immediate work.
+    expect(md).toMatch(/\*\*Later — [^:]*:\*\*/);
+    expect(md.indexOf("Loop in Jack Alden")).toBeLessThan(md.indexOf("Later —"));
+    // It is never framed as a "Loop in" do-now step.
+    expect(md).not.toMatch(/Loop in Internal sales leader/);
+  });
+
+  it("a customer executive sponsor is surfaced under customer engagement, never as an internal coordination party", () => {
+    const p = makePacket({
+      qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] },
+      stakeholders: [
+        { name: "Dara", role_label: "Business champion", stance: "supportive", play: "Owns the recommendation.", evidence: null },
+        { name: "Eze", role_label: "Executive sponsor", stance: "neutral", play: "Chairs the committee.", evidence: null }
+      ]
+    });
+    const plan = buildInternalActionPlan(p, "sales")!;
+    // The customer exec is in the customer engagement plan...
+    expect(plan.customer_engagement.stakeholders.map((s) => s.name)).toContain("Eze");
+    // ...and NEVER an internal coordination party (all internal parties are owners/role slots).
+    for (const c of plan.coordinate_with) {
+      expect(c.name).not.toBe("Eze");
+      expect(c.name).not.toBe("Dara");
+    }
   });
 
   it("does NOT add executive coordination merely because the EB is unknown early in discovery", () => {

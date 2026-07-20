@@ -23,6 +23,24 @@ const FEEDBACK_ACTIONS: Array<{ response: ActionFeedbackResponse; label: string 
 
 const PRIORITY_TONE: Record<string, string> = { critical: "danger", high: "warning", medium: "info", low: "muted" };
 const READINESS_TONE: Record<string, string> = { ready: "success", ready_with_gaps: "warning", blocked: "danger" };
+// Coordination-timing badges: do-now steps are prominent; later/conditional steps
+// are visibly muted so they never carry do-now priority.
+const TIMING_BADGE: Record<string, string> = {
+  immediate: "Do now",
+  before_customer_meeting: "Before customer meeting",
+  after_validation: "After validation",
+  at_funding_gate: "Later — funding gate",
+  if_blocked: "Only if blocked",
+  monitor: "Monitor"
+};
+const TIMING_TONE: Record<string, string> = {
+  immediate: "info",
+  before_customer_meeting: "info",
+  after_validation: "muted",
+  at_funding_gate: "muted",
+  if_blocked: "muted",
+  monitor: "muted"
+};
 
 export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
   const action = result.next_best_action;
@@ -70,26 +88,67 @@ export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
       </div>
 
       {plan ? (
+        (() => {
+          const isImmediate = (p: (typeof plan.coordinate_with)[number]) => p.requirement === "required" || p.requirement === "recommended";
+          const immediate = plan.coordinate_with.filter(isImmediate);
+          const later = plan.coordinate_with.filter((p) => !isImmediate(p));
+          return (
         <div className="internal-plan">
           <div className="internal-plan-lead">
             <span className="chip chip-info">Owner: {plan.primary_owner.name ?? plan.primary_owner.role}</span>
-            {plan.coordinate_with.map((p, i) => (
+            {immediate.map((p, i) => (
               <span key={i} className="chip chip-muted">Coordinate: {p.name ?? p.role}</span>
             ))}
           </div>
           <h2 className="action-title">{plan.your_move}</h2>
           <p className="action-summary">{plan.routed_reason}</p>
 
-          {plan.coordinate_with.length > 0 && (
+          {immediate.length > 0 && (
             <div className="action-block">
-              <span className="meta-label">Coordinate with</span>
+              <span className="meta-label">Coordinate now</span>
               <ul className="action-list">
-                {plan.coordinate_with.map((p, i) => (
+                {immediate.map((p, i) => (
                   <li key={i}>
+                    <span className={`chip chip-${TIMING_TONE[p.timing] ?? "info"}`}>{TIMING_BADGE[p.timing] ?? "Do now"}</span>{" "}
                     <strong>{p.name ?? p.role}</strong>
-                    {p.name ? ` (${p.role})` : ""}
-                    {p.condition && <span className="chip chip-muted"> {p.condition}</span>} — {p.why}
+                    {p.name ? ` (${p.role})` : ""} — {p.why}
                     {p.prepare.length > 0 && <div className="muted">Prepare: {p.prepare.join("; ")}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="action-block">
+            <span className="meta-label">Customer next step</span>
+            <p className="action-summary">
+              {/[.!?]$/.test(plan.customer_engagement.next_step) ? plan.customer_engagement.next_step : `${plan.customer_engagement.next_step}.`}
+            </p>
+          </div>
+
+          {plan.customer_engagement.stakeholders.length > 0 && (
+            <div className="action-block">
+              <span className="meta-label">Customer engagement</span>
+              <ul className="action-list">
+                {plan.customer_engagement.stakeholders.map((s, i) => (
+                  <li key={i}>
+                    <span className="chip chip-muted">Customer</span> <strong>{s.name ?? s.role}</strong>
+                    {s.name ? ` — ${s.role}` : ""}{s.engagement ? `: ${s.engagement}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {later.length > 0 && (
+            <div className="action-block internal-plan-later">
+              <span className="meta-label">Later — only if triggered</span>
+              <ul className="action-list">
+                {later.map((p, i) => (
+                  <li key={i}>
+                    <span className={`chip chip-${TIMING_TONE[p.timing] ?? "muted"}`}>{TIMING_BADGE[p.timing] ?? "Later"}</span>{" "}
+                    <strong>{p.name ?? p.role}</strong> — {p.condition ? `${p.condition}. ` : ""}{p.why}
+                    <div className="muted">Why this appears: this is a future {p.timing === "if_blocked" ? "escalation" : "funding-gate"} action, not a prerequisite for the current step.</div>
                   </li>
                 ))}
               </ul>
@@ -108,20 +167,9 @@ export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
               </ul>
             </div>
           )}
-
-          <div className="action-block">
-            <span className="meta-label">Customer next step</span>
-            <p className="action-summary">
-              {/[.!?]$/.test(plan.customer_engagement.next_step) ? plan.customer_engagement.next_step : `${plan.customer_engagement.next_step}.`}
-              {plan.customer_engagement.champion && (
-                <>
-                  {" "}
-                  Engage {plan.customer_engagement.champion.name ?? plan.customer_engagement.champion.role} ({plan.customer_engagement.champion.role}), who {plan.customer_engagement.champion.why}.
-                </>
-              )}
-            </p>
-          </div>
         </div>
+          );
+        })()
       ) : (
         <>
           <h2 className="action-title">{action.title}</h2>
