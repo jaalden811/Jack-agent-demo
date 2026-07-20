@@ -78,7 +78,17 @@ export function extractDialogueAccountCandidates(dialogueText: string[]): Dialog
         for (const match of sentence.matchAll(pattern)) {
           // Strip trailing sentence punctuation the capture may include
           // ("Acme." → "Acme"); internal dots (St. Jude) are kept.
-          const raw = match[1]?.trim().replace(/[.,;:]+$/, "").trim();
+          // Also cut a trailing "<connector> <pronoun/aux>…" run the greedy
+          // name capture may absorb ("Acme Freight and I've got sign-off"
+          // → "Acme Freight"), while preserving real connective company
+          // names ("Water & Power", "Johnson and Johnson") whose next token is
+          // a proper noun, not a pronoun. Generic (pronoun-based), not company-
+          // specific.
+          const raw = match[1]
+            ?.trim()
+            .replace(/\s+(?:and|&)\s+(?:i|i['’]ve|i['’]m|i['’]ll|i['’]d|we|we['’]ve|we['’]re|we['’]ll|they|he|she|it|you|our|my|the)\b.*$/i, "")
+            .replace(/[.,;:]+$/, "")
+            .trim();
           if (!raw) continue;
           const validation = validateAccountCandidateName(raw);
           if (!validation.valid) continue;

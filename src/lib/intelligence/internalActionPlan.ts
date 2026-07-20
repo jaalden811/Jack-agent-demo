@@ -70,9 +70,12 @@ function needsExecutiveAlignment(packet: IntelligencePacket, rules: Coordination
   const momentumIds = new Set(packet.deal_intelligence.momentum.map((m) => m.id));
   if (rules.executive_trigger.momentum_ids.some((id) => momentumIds.has(id))) return true;
   if (packet.deal_intelligence.exec_program) return true;
-  if (rules.executive_trigger.meddpicc_conditions.includes("no_single_economic_buyer")) {
+  // Only a genuine DISTRIBUTED / committee economic authority warrants looping in
+  // an executive sponsor — NOT merely an EB that is unknown early in discovery
+  // (which is almost every deal and would make the exec loop-in constant noise).
+  if (rules.executive_trigger.meddpicc_conditions.includes("distributed_economic_authority")) {
     const eb = (packet.qualification.meddpicc.economic_buyer ?? "").toUpperCase();
-    if (eb && eb !== "CONFIRMED") return true;
+    if (eb === "DISTRIBUTED") return true;
   }
   return false;
 }

@@ -504,17 +504,19 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
   // is deliberately narrow — it requires all four hard MEDDPICC pillars incl. a
   // named economic buyer, which a monitor/support/trap conversation never has —
   // so it lifts only genuinely strong deals, and never on a hard rejection.
-  if (!hardRejection.rejected && result.executive_summary.verdict === "NOISE") {
+  if (!hardRejection.rejected && !satisfied.satisfied && result.executive_summary.verdict === "NOISE") {
     const m = result.meddpicc;
     const confirmed = (f?: { status?: string }) => f?.status === "CONFIRMED";
-    const present = (f?: { status?: string }) => f?.status === "CONFIRMED" || f?.status === "PARTIAL";
-    // Anchor on the three hardest, rarest pillars — a CONFIRMED (named) economic
-    // buyer, CONFIRMED pain, and CONFIRMED quantified metrics — which a support/
-    // monitor/trap conversation never has together. Decision criteria only need
-    // to be PRESENT (a support-led call often states rich criteria in one turn
-    // that the deterministic detector rates PARTIAL, not CONFIRMED); requiring
-    // them CONFIRMED too was dropping genuinely qualified, funded programs.
-    if (confirmed(m?.economic_buyer) && confirmed(m?.identify_pain) && confirmed(m?.metrics) && present(m?.decision_criteria)) {
+    // Anchor on the three hardest, rarest pillars — a real economic authority
+    // (a CONFIRMED named buyer OR a DISTRIBUTED committee/board program), plus
+    // CONFIRMED pain and CONFIRMED quantified metrics — which a support/monitor/
+    // trap conversation never has together. Decision criteria are NOT required:
+    // the deterministic detector often rates them MISSING even when the customer
+    // stated them implicitly, and holding a fully-authority-qualified, quantified
+    // deal at NOISE for want of enumerated criteria is a false negative. The
+    // hard-rejection and satisfied-incumbent guards above still veto.
+    const econAuthority = confirmed(m?.economic_buyer) || m?.economic_buyer?.status === "DISTRIBUTED";
+    if (econAuthority && confirmed(m?.identify_pain) && confirmed(m?.metrics)) {
       result.executive_summary.verdict = "REVIEW";
       if (["HOLD", "DO_NOT_PURSUE", "NURTURE"].includes(result.opportunity_scoring.decision)) {
         result.opportunity_scoring.decision = "PURSUE_WITH_DISCOVERY";

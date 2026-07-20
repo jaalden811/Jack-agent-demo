@@ -62,6 +62,11 @@ const METRIC_WITH_UNIT = new RegExp(
 );
 const TARGET_MARKER = /\b(target|goal|under|below|less than|or less|or fewer|within|down to|to under|reduce|cut|threshold)\b/i;
 const BASELINE_MARKER = /\b(was|is|currently|today|average|averaged|on average|mean|median|at the median|takes?|took|baseline|per incident|require|required)\b/i;
+// A target number stated without repeating the unit ("under 15", "down to 3").
+const BARE_TARGET = /\b(?:under|below|less than|down to|to under|to below|no more than|at most)\s+(\d[\d,]*(?:\.\d+)?)\b/gi;
+// A unit token immediately following a bare number (so it was already captured
+// with its unit by METRIC_WITH_UNIT and must not be re-counted as bare).
+const UNIT_AFTER = /^\s*(?:%|percent|minutes?|hours?|days?|weeks?|months?)/i;
 
 function canonicalMetricUnit(u: string): string {
   const l = u.toLowerCase();
@@ -84,10 +89,12 @@ function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
   // baseline (current/median/average) or a target (under/below/threshold).
   const byUnit = new Map<string, { baseline: number | null; target: number | null }>();
   for (const norm of normalized) {
+    const chunkUnits = new Set<string>();
     for (const m of norm.matchAll(METRIC_WITH_UNIT)) {
       const value = Number(m[1].replace(/,/g, ""));
       if (!Number.isFinite(value)) continue;
       const unit = canonicalMetricUnit(m[2]);
+      chunkUnits.add(unit);
       // Classify from BOTH sides — a baseline qualifier often trails the number
       // ("42 minutes at the median", "14 hours per plant last quarter on
       // average", "eight days or less"). The trailing context runs only to the
@@ -105,6 +112,23 @@ function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
         if (entry.baseline === null || value > entry.baseline) entry.baseline = value;
       }
       byUnit.set(unit, entry);
+    }
+    // Bare-target inference: a target stated WITHOUT repeating the unit ("from 40
+    // minutes to under 15", "cut it from ninety minutes to under fifteen") is
+    // common. When the chunk has exactly ONE metric unit, assign a bare target
+    // ("under N", "below N", "down to N") — not already followed by a unit — to
+    // that unit so the baseline→target pair is not lost.
+    if (chunkUnits.size === 1) {
+      const soleUnit = [...chunkUnits][0];
+      for (const bm of norm.matchAll(BARE_TARGET)) {
+        const after = norm.slice((bm.index ?? 0) + bm[0].length, (bm.index ?? 0) + bm[0].length + 12);
+        if (UNIT_AFTER.test(after)) continue; // already captured with its unit above
+        const value = Number(bm[1].replace(/,/g, ""));
+        if (!Number.isFinite(value)) continue;
+        const entry = byUnit.get(soleUnit) ?? { baseline: null, target: null };
+        if (entry.target === null || value < entry.target) entry.target = value;
+        byUnit.set(soleUnit, entry);
+      }
     }
   }
   // The most compelling improvement pair = the largest relative reduction.

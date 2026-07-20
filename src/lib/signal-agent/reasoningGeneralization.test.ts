@@ -889,3 +889,86 @@ describe("inline 'Name — Role: text' turn parsing (single-line descriptor+utte
   });
 });
 
+describe("RL pass — qualified-deal recall + coordination fidelity", () => {
+  it("confirms economic authority from first-person self-identification (own/approve/sign-off)", () => {
+    for (const claim of [
+      "I own this budget and I run security here.",
+      "I'm the approver up to two million dollars.",
+      "I've got sign-off to move forward if this works."
+    ]) {
+      const g = inferAuthorityGraph({ stakeholderTurns: [{ name: "Speaker", text: claim }], allCustomerText: [claim] });
+      expect(g.economic_authority.status, `claim: ${claim}`).toBe("confirmed");
+    }
+    // A NEGATED authority statement must NOT confirm an economic buyer.
+    const neg = "I do not own the budget and cannot approve any purchase.";
+    expect(inferAuthorityGraph({ stakeholderTurns: [{ name: "Speaker", text: neg }], allCustomerText: [neg] }).economic_authority.status).not.toBe("confirmed");
+  });
+
+  it("does not absorb a trailing '<connector> <pronoun>' clause into the account name", () => {
+    const cands = extractDialogueAccountCandidates(["I lead engineering at Orion Freight and I've got sign-off to move forward if this works."]);
+    const names = cands.map((c) => c.name);
+    expect(names).toContain("Orion Freight");
+    expect(names.some((n) => /and i/i.test(n))).toBe(false);
+    // A genuine connective company name is preserved (next token is a proper noun).
+    const co = extractDialogueAccountCandidates(["We run reliability for Ridge Water and Power across the region."]);
+    expect(co.some((c) => /Ridge Water (and|&) Power/i.test(c.name))).toBe(true);
+  });
+
+  it("resolves the account from standalone 'Name — Org, Role' descriptor lines shared by customer speakers", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Lena — Vendor, Account Executive",
+      "Lena: I cover the account for our team.",
+      "Grant — Orion Utilities, Chief Information Officer",
+      "Grant: I'm leading this initiative and I'd like a validation workshop on two scenarios.",
+      "Rae — Orion Utilities, Network Architect",
+      "Rae: I'd validate integration and confirm the data sources."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    expect(r.account_resolution?.name).toMatch(/Orion Utilities/i);
+  });
+
+  it("distills a same-unit baseline→target metric when the target omits the unit ('40 minutes … under 15')", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Marco — Vendor, Account Executive",
+      "Marco: I cover the account.",
+      "Dev — Orion Health, CISO",
+      "Dev: I own this budget. Our mean time to contain a threat is 40 minutes and we need it under 15. We're actively comparing options and want a side-by-side evaluation."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    expect(r.deal_intelligence?.headline_metric ?? "").toMatch(/40.*15/);
+  });
+
+  it("rescues a fully-authority-qualified deal (EB + pain + metrics) from NOISE even when decision criteria are not enumerated", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Marco — Vendor, Account Executive",
+      "Marco: I cover the account.",
+      "Dev — Orion Health, CISO",
+      "Dev: I own this budget. Our mean time to contain a threat is 40 minutes and we need it under 15. We're actively comparing options and want a side-by-side evaluation of the platform."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    expect(r.meddpicc.economic_buyer.status).toBe("CONFIRMED");
+    expect(r.executive_summary.verdict).not.toBe("NOISE");
+    expect(r.internal_action_plan).not.toBeNull();
+  });
+
+  it("does NOT rescue a satisfied incumbent with no buying motion (stays NOISE, no internal plan)", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Owen — Vendor, Account Executive",
+      "Owen: Quarterly check-in.",
+      "Beth — Meadow Systems, IT Director",
+      "Beth: Everything is running well. Our detection times already meet our targets and we have no open initiatives, no budget request, and we're not evaluating anything new."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    expect(r.executive_summary.verdict).toBe("NOISE");
+    expect(r.internal_action_plan ?? null).toBeNull();
+  });
+});
+

@@ -450,13 +450,20 @@ function classifyDescriptor(
   // a vendor-side participant.
   if (/\bcustomer\b/i.test(descriptor)) {
     const title = descriptor.replace(/customer,?\s*/i, "").trim() || null;
-    return { title, organization: null, classification: "customer" };
+    // A customer descriptor often names the account ("Customer, Acme Water,
+    // CIO") — capture it as a customer-account identity signal.
+    return { title, organization: orgFromDescriptor(descriptor), classification: "customer" };
   }
   if (/^\s*(vendor|partner)\b/i.test(descriptor)) {
     const title = descriptor.replace(/^\s*(vendor|partner),?\s*/i, "").trim() || null;
+    // A vendor's org is never the customer account — leave it unset.
     return { title, organization: null, classification: "vendor" };
   }
-  return { title: descriptor.trim() || null, organization: null, classification: defaultWhenAmbiguous };
+  // Generic "Name — <Org>, <Role>" descriptor with no side tag: extract the org
+  // (a strong customer-account signal when shared across customer-side speakers)
+  // rather than dropping it. Never invents an org — orgFromDescriptor returns
+  // null for a role-only descriptor.
+  return { title: descriptor.trim() || null, organization: orgFromDescriptor(descriptor), classification: defaultWhenAmbiguous };
 }
 
 /** The subset of chunks treated as "candidate pain language" for matching

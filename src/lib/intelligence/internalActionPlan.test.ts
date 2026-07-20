@@ -83,10 +83,21 @@ describe("buildInternalActionPlan", () => {
     expect(exec!.prepare.join(" ").toLowerCase()).toMatch(/strategic|investment|sponsor/);
   });
 
-  it("adds executive coordination when there is no confirmed single economic buyer", () => {
+  it("adds executive coordination when the economic authority is DISTRIBUTED (committee/board)", () => {
     const p = makePacket({ qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] } });
     const plan = buildInternalActionPlan(p, "sales")!;
     expect(plan.coordinate_with.some((c) => c.lane === "executive")).toBe(true);
+  });
+
+  it("does NOT add executive coordination merely because the EB is unknown early in discovery", () => {
+    // EB MISSING + no exec program + no distributed authority → an exec loop-in
+    // would be constant noise; only a real exec/committee signal warrants it.
+    const p = makePacket({
+      qualification: { meddpicc: { economic_buyer: "MISSING" }, decision_criteria: [] },
+      deal_intelligence: { ...makePacket().deal_intelligence, exec_program: false, momentum: [] }
+    });
+    const plan = buildInternalActionPlan(p, "sales")!;
+    expect(plan.coordinate_with.some((c) => c.lane === "executive")).toBe(false);
   });
 
   it("never routes a customer participant as an internal owner or coordination partner", () => {

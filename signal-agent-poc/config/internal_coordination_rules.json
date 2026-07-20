@@ -54,9 +54,9 @@
     ]
   },
   "executive_trigger": {
-    "purpose": "When either owner should coordinate with an executive sponsor: an exec-sponsored program is in play, or there is no single economic buyer, so the investment path needs senior alignment.",
+    "purpose": "When either owner should coordinate with an executive sponsor: an exec-sponsored program is in play, or the economic authority is DISTRIBUTED across a committee/board (so the investment path needs senior alignment). An economic buyer that is merely unconfirmed early in discovery does NOT trigger this — that would make the exec loop-in constant noise.",
     "momentum_ids": ["exec_program"],
-    "meddpicc_conditions": ["no_single_economic_buyer"]
+    "meddpicc_conditions": ["distributed_economic_authority"]
   },
   "prepare": {
     "technical": [
