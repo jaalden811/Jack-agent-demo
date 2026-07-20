@@ -174,7 +174,7 @@ function roleMessageEmailBullets(rm: ReturnType<typeof generateRoleMessage>): Ar
   }
   const ia = rm.internal_action;
   const coordinationBullets = (ia?.coordinate_with ?? []).map((p) => ({
-    label: `Loop in ${p.name ?? p.role}`,
+    label: p.condition ? `Loop in ${p.name ?? p.role} (${p.condition})` : `Loop in ${p.name ?? p.role}`,
     value: `${p.why}${p.prepare.length > 0 ? ` Prepare: ${p.prepare.join("; ")}.` : ""}`
   }));
   const customerStep = ia ? ia.customer_engagement.next_step : rm.action;

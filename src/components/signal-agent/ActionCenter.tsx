@@ -87,7 +87,8 @@ export function ActionCenter({ result }: { result: WebexAutomationRunResult }) {
                 {plan.coordinate_with.map((p, i) => (
                   <li key={i}>
                     <strong>{p.name ?? p.role}</strong>
-                    {p.name ? ` (${p.role})` : ""} — {p.why}
+                    {p.name ? ` (${p.role})` : ""}
+                    {p.condition && <span className="chip chip-muted"> {p.condition}</span>} — {p.why}
                     {p.prepare.length > 0 && <div className="muted">Prepare: {p.prepare.join("; ")}</div>}
                   </li>
                 ))}

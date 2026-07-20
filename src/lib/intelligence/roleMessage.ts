@@ -326,7 +326,10 @@ export function renderWebexMessage(rm: RoleMessage): string {
   const coordinationLines = (ia?.coordinate_with ?? []).map((p) => {
     const who = p.name ?? p.role;
     const prep = p.prepare.length > 0 ? ` Ask them to prepare: ${p.prepare.join("; ")}.` : "";
-    return `**Loop in ${who}:** ${p.why}${prep}`;
+    // A conditional partner (e.g. the exec sponsor) is flagged optional-until-
+    // needed so it never reads as a must-do-now like the technical loop-in.
+    const heading = p.condition ? `Loop in ${who} (${p.condition})` : `Loop in ${who}`;
+    return `**${heading}:** ${p.why}${prep}`;
   });
   const rawStep = ia ? ia.customer_engagement.next_step : rm.action;
   const customerStep = /[.!?]$/.test(rawStep) ? rawStep : `${rawStep}.`;

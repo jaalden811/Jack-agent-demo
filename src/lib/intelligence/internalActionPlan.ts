@@ -25,6 +25,7 @@ type CoordinationRules = {
   executive_trigger: { momentum_ids: string[]; meddpicc_conditions: string[] };
   prepare: Record<string, string[]>;
   coordinate_reason: Record<string, string>;
+  executive_when?: string;
   customer_roles: Record<string, string>;
 };
 
@@ -63,21 +64,20 @@ function needsTechnicalShaping(packet: IntelligencePacket, rules: CoordinationRu
   return rules.technical_trigger.motion_keywords.some((k) => haystack.includes(k.toLowerCase()));
 }
 
-/** Is executive coordination warranted? Either an exec-sponsored program is in
- * play, or no single economic buyer has been confirmed (investment path needs
- * senior alignment). */
-function needsExecutiveAlignment(packet: IntelligencePacket, rules: CoordinationRules): boolean {
+/** Why executive coordination is warranted — the SPECIFIC trigger, so the plan
+ * can explain it concretely ("no single economic buyer — committee-approved" vs
+ * "exec-sponsored program") instead of a generic "needs senior alignment".
+ * Returns null when no real exec/committee signal exists (an EB that is merely
+ * unknown early in discovery does NOT count — that would make the exec loop-in
+ * constant noise). */
+function executiveTrigger(packet: IntelligencePacket, rules: CoordinationRules): "distributed" | "program" | null {
+  const eb = (packet.qualification.meddpicc.economic_buyer ?? "").toUpperCase();
+  // A genuine DISTRIBUTED / committee economic authority is the most concrete,
+  // explainable reason: the customer's own words say no single approver.
+  if (rules.executive_trigger.meddpicc_conditions.includes("distributed_economic_authority") && eb === "DISTRIBUTED") return "distributed";
   const momentumIds = new Set(packet.deal_intelligence.momentum.map((m) => m.id));
-  if (rules.executive_trigger.momentum_ids.some((id) => momentumIds.has(id))) return true;
-  if (packet.deal_intelligence.exec_program) return true;
-  // Only a genuine DISTRIBUTED / committee economic authority warrants looping in
-  // an executive sponsor — NOT merely an EB that is unknown early in discovery
-  // (which is almost every deal and would make the exec loop-in constant noise).
-  if (rules.executive_trigger.meddpicc_conditions.includes("distributed_economic_authority")) {
-    const eb = (packet.qualification.meddpicc.economic_buyer ?? "").toUpperCase();
-    if (eb === "DISTRIBUTED") return true;
-  }
-  return false;
+  if (rules.executive_trigger.momentum_ids.some((id) => momentumIds.has(id)) || packet.deal_intelligence.exec_program) return "program";
+  return null;
 }
 
 /** Keeps only short, clean scenario/label phrases — drops raw customer-quote
@@ -130,7 +130,7 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
   const sales = ownerLabel(packet.owners.sales, "Sales / Commercial owner");
   const technical = ownerLabel(packet.owners.technical, "Technical / Specialist owner");
   const technicalNeeded = needsTechnicalShaping(packet, rules);
-  const execNeeded = needsExecutiveAlignment(packet, rules);
+  const execReason = executiveTrigger(packet, rules);
   const customerStep = packet.next_action.primary_action ?? packet.next_action.summary ?? "Confirm the next step and owner with the customer.";
   const champion = customerChampion(packet, rules);
 
@@ -165,13 +165,18 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
     });
   }
 
-  if (execNeeded) {
+  if (execReason) {
+    // A SPECIFIC, evidence-grounded reason (committee/board authority vs an
+    // exec-sponsored program) + a CONDITIONAL "when" qualifier, so this reads as
+    // an optional-until-funding step, not a must-do-now like the technical loop-in.
+    const execWhy = execReason === "distributed" ? rules.coordinate_reason.to_executive_distributed : rules.coordinate_reason.to_executive_program;
     coordinate_with.push({
       name: null,
-      role: "Executive sponsor / sales leader",
+      role: "Sales leader / exec sponsor",
       lane: "executive",
-      why: rules.coordinate_reason.to_executive,
-      prepare: rules.prepare.executive ?? []
+      why: execWhy ?? "A sales leader adds senior alignment on the funding decision.",
+      prepare: rules.prepare.executive ?? [],
+      condition: rules.executive_when ?? null
     });
   }
 
@@ -181,9 +186,11 @@ export function buildInternalActionPlan(packet: IntelligencePacket, perspectiveL
   if (lane === "sales") {
     if (technicalNeeded) {
       const who = technical.name ?? "the technical specialist";
-      yourMove = `Before the customer session, align with ${who} on the validation approach${execNeeded ? " and confirm executive alignment on the investment path" : ""}, then own the commercial framing.`;
+      // The exec step (when present) is its own clearly-conditional loop-in line,
+      // so it is NOT repeated here — this keeps the primary move concise.
+      yourMove = `Before the customer session, align with ${who} on the validation approach, then own the commercial framing.`;
     } else {
-      yourMove = `Own the commercial motion${execNeeded ? " and confirm executive alignment on the investment path" : ""}: build the business case and confirm the buying/decision path before advancing.`;
+      yourMove = "Own the commercial motion: build the business case and confirm the buying/decision path before advancing.";
     }
   } else {
     const who = sales.name ?? "the commercial owner";

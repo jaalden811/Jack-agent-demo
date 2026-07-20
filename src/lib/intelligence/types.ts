@@ -52,6 +52,11 @@ export type CoordinationPartner = {
   lane: "sales" | "technical" | "executive";
   why: string;
   prepare: string[];
+  /** A short "when this applies" qualifier for a CONDITIONAL coordination step
+   * (e.g. executive alignment "only when it reaches the funding decision") — so
+   * a lower-priority loop-in reads as optional-until-needed, not a must-do-now.
+   * Null for the necessary near-term partners. */
+  condition?: string | null;
 };
 
 /**

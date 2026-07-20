@@ -75,18 +75,25 @@ describe("buildInternalActionPlan", () => {
     expect(sales!.prepare.join(" ").toLowerCase()).toMatch(/commercial|business case|budget|procurement|alignment/);
   });
 
-  it("adds an executive coordination step with strategic tasks when an exec program is in play", () => {
+  it("adds a CONDITIONAL exec step (exec program) explaining WHY, not a generic 'needs senior alignment'", () => {
     const p = makePacket({ deal_intelligence: { ...makePacket().deal_intelligence, exec_program: true } });
     const plan = buildInternalActionPlan(p, "sales")!;
-    const exec = plan.coordinate_with.find((c) => c.lane === "executive");
+    const exec = plan.coordinate_with.find((c) => c.lane === "executive")!;
     expect(exec).toBeDefined();
-    expect(exec!.prepare.join(" ").toLowerCase()).toMatch(/strategic|investment|sponsor/);
+    // Conditional (optional-until-needed), not a must-do-now.
+    expect(exec.condition && exec.condition.length > 0).toBeTruthy();
+    // Specific reason (the exec-sponsored program), never the old circular text.
+    expect(exec.why.toLowerCase()).toMatch(/program/);
+    expect(exec.why.toLowerCase()).not.toContain("investment path needs senior alignment");
   });
 
-  it("adds executive coordination when the economic authority is DISTRIBUTED (committee/board)", () => {
+  it("adds a CONDITIONAL exec step (distributed authority) naming the concrete reason (no single EB / committee)", () => {
     const p = makePacket({ qualification: { meddpicc: { economic_buyer: "DISTRIBUTED" }, decision_criteria: [] } });
     const plan = buildInternalActionPlan(p, "sales")!;
-    expect(plan.coordinate_with.some((c) => c.lane === "executive")).toBe(true);
+    const exec = plan.coordinate_with.find((c) => c.lane === "executive")!;
+    expect(exec).toBeDefined();
+    expect(exec.condition && exec.condition.length > 0).toBeTruthy();
+    expect(exec.why.toLowerCase()).toMatch(/no single economic buyer|committee|board/);
   });
 
   it("does NOT add executive coordination merely because the EB is unknown early in discovery", () => {

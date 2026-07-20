@@ -71,15 +71,17 @@
       "the budget and procurement path"
     ],
     "executive": [
-      "strategic alignment on the investment path",
-      "sponsor-level air cover for the decision"
+      "a one-page investment case for the approvers",
+      "exec-to-exec sponsorship to unblock funding"
     ]
   },
   "coordinate_reason": {
     "sales_to_technical": "The customer next step needs architecture and proof-of-value boundaries defined before it is credible.",
     "technical_to_sales": "They own customer alignment and commercial progression, so the validation ladders into a real commercial motion.",
-    "to_executive": "The investment path needs senior alignment before the commercial motion can close."
+    "to_executive_distributed": "No single economic buyer — funding is committee/board-approved, so a sales leader can unblock it with peer-level air cover.",
+    "to_executive_program": "It's part of an exec-sponsored program, so a sales leader keeps it aligned and funded as it advances."
   },
+  "executive_when": "only when it reaches the funding decision",
   "customer_roles": {
     "champion": "owns the internal recommendation and coordinates the customer participants",
     "economic_buyer": "controls the budget for the decision",
