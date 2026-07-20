@@ -425,8 +425,12 @@ export function buildDealIntelligence(params: {
   const power_map = buildStakeholderPlaybook(chunks, params.result.stakeholder_analysis?.named_stakeholders ?? [], cfg);
 
   // The customer who drives the accepted next step is the champion — a stronger,
-  // more general signal than keyword cues (which can misfire on an exec sponsor
-  // or a security owner). Promote that person to business_champion/supportive.
+  // more general signal than keyword cues. BUT the champion is the internal
+  // seller who OWNS THE RECOMMENDATION and advocates, NOT the executive sponsor
+  // who chairs the committee / holds budget authority. So never promote a person
+  // whose behavior is executive-sponsor governance (committee chair, board,
+  // "put it on the agenda") — that is sponsorship, not championing. The cue-based
+  // champion (the person who owns the recommendation / coordinates) stands.
   const nextStepText = (params.result.generic_diagnostics?.signals.next_steps ?? [])[0]?.text;
   if (nextStepText) {
     const driverChunk = chunks.find((c) => c.speaker && c.text && (c.text.includes(nextStepText.slice(0, 40)) || nextStepText.includes(c.text.slice(0, 40))));
@@ -434,7 +438,9 @@ export function buildDealIntelligence(params: {
     const championRole = cfg.stakeholder_roles.find((r) => r.id === "business_champion");
     if (driver && championRole) {
       const entry = power_map.find((p) => firstName(p.name) === driver);
-      if (entry) {
+      // Do not overwrite an executive sponsor with the champion label — their
+      // governance next step ("place it on the committee agenda") is sponsorship.
+      if (entry && entry.role_id !== "executive_sponsor") {
         entry.role_id = "business_champion";
         entry.role_label = championRole.label;
         entry.play = championRole.play;

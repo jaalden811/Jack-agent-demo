@@ -699,6 +699,53 @@ describe("objection typing does not confuse latent interest with disqualificatio
   });
 });
 
+describe("champion vs executive sponsor + enumerated decision criteria (MEDDPICC)", async () => {
+  const { extractEnumeratedDecisionCriteria } = await import("@/lib/qualification/decisionCriteria");
+
+  it("counts enumerated requirement criteria but not enumerated facts/metrics", () => {
+    const found = extractEnumeratedDecisionCriteria([
+      "One, reduce median time to a defensible assessment to under thirty minutes.",
+      "Two, integrate with the existing ServiceNow and identity environment.",
+      "Three, preserve role-based access so teams do not all see the same data.",
+      "First, our average time from alert to assessment is ninety-six minutes.",
+      "Second, our holiday freeze begins in November."
+    ]);
+    expect(found.length).toBe(3); // three real criteria; the metric + the date are excluded
+  });
+
+  it("marks Decision Criteria CONFIRMED and asks the REAL gap when the customer enumerates several criteria", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Thanks for the security review.",
+      "Cyra — customer: I lead security operations. Investigation across our SIEM takes too long; median time to a defensible risk assessment is 96 minutes against a target of 30.",
+      "Cyra — customer: I have six written criteria. One, reduce median time to a defensible assessment to under thirty minutes. Two, integrate with ServiceNow and the existing identity environment. Three, preserve role-based access. Four, provide a credible operating model. Five, produce a cost model. Six, show evidence quality and missing-data indicators.",
+      "Cyra — customer: I will recommend a limited proof of value if the workshop confirms the scope; I will coordinate the participants for next Thursday."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    expect(r.meddpicc.decision_criteria.status).toBe("CONFIRMED");
+    expect(r.meddpicc.decision_criteria.next_question.toLowerCase()).not.toContain("additional decision criteria");
+    expect(r.meddpicc.decision_criteria.next_question.toLowerCase()).toMatch(/weight|scoring|pass\/fail|owns/);
+  });
+
+  it("classifies the committee chair as executive sponsor and the recommendation owner as the champion", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Rep — Vendor, Account Executive: Thanks for the security review.",
+      "Nadia — customer: I lead security operations. Median time to a defensible risk assessment is 96 minutes; the target is under 30. I will recommend that we begin a limited proof of value, and I will coordinate the participants.",
+      "Vince — customer: I chair the investment committee. The board has asked us to reduce risk. I will place that recommendation on the committee agenda; I am not the sole economic buyer.",
+      "Rep — Vendor, Account Executive: What is the next step?",
+      "Nadia — customer: We want the technical design workshop next Thursday; I will coordinate our participants."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript });
+    const roleOf = (first: string) => (r.deal_intelligence?.power_map ?? []).find((p) => p.name.split(/\s+/)[0] === first)?.role_label ?? "";
+    expect(roleOf("Nadia")).toMatch(/champion/i);
+    expect(roleOf("Vince")).toMatch(/executive sponsor/i);
+    expect(roleOf("Vince")).not.toMatch(/champion/i);
+  });
+});
+
 describe("goal-to-message taxonomy + account full-name + evidence-substance classification", async () => {
   const { resolveGoalFrames } = await import("@/lib/personalization/goalMessageStrategy");
 

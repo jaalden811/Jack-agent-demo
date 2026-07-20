@@ -1,6 +1,7 @@
 import { getCircuitConfig, isCircuitConfigured } from "@/lib/circuit/config";
 import { resolveAccountIdentity } from "@/lib/qualification/accountResolution";
 import { buildDeterministicMeddpicc, mergePublicEvidenceIntoMeddpicc } from "@/lib/qualification/meddpiccMerge";
+import { extractEnumeratedDecisionCriteria } from "@/lib/qualification/decisionCriteria";
 import { buildDefaultPublicEnrichment } from "@/lib/qualification/defaults";
 import { gateSearchEnrichment, runSerpApiEnrichment } from "@/lib/connectors/serpapi/runEnrichment";
 import { runSerpApiSignalSearch, buildTranscriptOpportunitySignals, buildGateInputs, detectExplicitNotPursuingStatement } from "@/lib/opportunity-fit/runOpportunityFit";
@@ -160,6 +161,9 @@ export async function runQualificationPipeline(params: {
           renewalEvents: params.renewalEvents,
           purchaseLanguage: params.purchaseLanguage,
           primaryMatchedText: params.matches[0]?.matched_text,
+          explicitDecisionCriteria: extractEnumeratedDecisionCriteria(
+            params.transcript.sentences.filter((s) => s.isCustomer).map((s) => s.text)
+          ),
           competitorMentions: extraction.result?.commercial_signals.competitor_mentions
         });
   const meddpicc = classifiedPublicResults.length > 0 ? mergePublicEvidenceIntoMeddpicc(baseMeddpicc, classifiedPublicResults) : baseMeddpicc;

@@ -65,6 +65,10 @@ export function buildDeterministicMeddpicc(params: {
    * product-specific) to populate Decision Criteria without requiring
    * OpenAI. */
   primaryMatchedText?: string[];
+  /** Explicitly ENUMERATED decision criteria stated by the customer ("One,
+   * reduce ...; Two, integrate ..."), independent of which taxonomy category is
+   * primary. When the customer lists several, Decision Criteria is CONFIRMED. */
+  explicitDecisionCriteria?: string[];
   competitorMentions?: string[];
 }): Meddpicc {
   const meddpicc = buildDefaultMeddpicc();
@@ -122,19 +126,34 @@ export function buildDeterministicMeddpicc(params: {
   // and product-agnostic (never invents a requirement that wasn't matched
   // against real transcript text).
   const criteriaSnippets = (params.primaryMatchedText ?? []).filter((text) => text.length > 0);
-  if (criteriaSnippets.length >= 3) {
+  // Prefer explicitly ENUMERATED criteria (a customer listing "One ... Two ...")
+  // over the primary match's snippets — the customer answered "what criteria?"
+  // directly, so this is CONFIRMED regardless of which category is primary.
+  const enumerated = (params.explicitDecisionCriteria ?? []).filter((t) => t.length > 0);
+  if (enumerated.length >= 3) {
+    meddpicc.decision_criteria = {
+      status: "CONFIRMED",
+      summary: `The customer stated ${enumerated.length} explicit decision criteria: ${enumerated.slice(0, 3).join(" ")}`,
+      confidence: 0.85,
+      evidence_ids: [],
+      // The criteria are known — the real gaps are how they are weighted/scored,
+      // who owns the decision, and the pass/fail threshold (NOT "what criteria exist").
+      gaps: ["Relative weighting, scoring method, decision owner, and pass/fail thresholds for the stated criteria are not yet confirmed."],
+      next_question: "Which of the stated criteria carry the most weight, who owns the scoring, and what is the pass/fail threshold for each?"
+    };
+  } else if (criteriaSnippets.length >= 3) {
     meddpicc.decision_criteria = {
       status: "CONFIRMED",
       summary: `Multiple explicit technical/decision requirements were stated: ${criteriaSnippets.slice(0, 3).join(" ")}`,
       confidence: 0.75,
       evidence_ids: [],
       gaps: ["Requirements have not yet been weighted or ranked by the buying committee."],
-      next_question: "Which of these stated requirements are must-have versus nice-to-have for the final decision?"
+      next_question: "Which of these stated requirements are must-have versus nice-to-have, and what is the pass/fail threshold for each?"
     };
-  } else if (criteriaSnippets.length > 0) {
+  } else if (criteriaSnippets.length > 0 || enumerated.length > 0) {
     meddpicc.decision_criteria = {
       status: "PARTIAL",
-      summary: `Some technical/decision requirements were stated: ${criteriaSnippets[0]}`,
+      summary: `Some technical/decision requirements were stated: ${enumerated[0] ?? criteriaSnippets[0]}`,
       confidence: 0.5,
       evidence_ids: [],
       gaps: ["The full set of decision criteria has not been confirmed."],
