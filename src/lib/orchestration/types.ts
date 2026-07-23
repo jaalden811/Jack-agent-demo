@@ -192,8 +192,26 @@ export type ProposedOutcomeEvent = {
   limitations: string[];
 };
 
+/** A PERSISTED, append-only outcome event (observed fact — never AI-caused). */
+export type OutcomeEvent = {
+  id: string;
+  action_case_id: string | null;
+  run_id: string;
+  type: OutcomeEventType;
+  source: OutcomeSource;
+  observedAt: string;
+  recordedAt: string;
+  baselineValue: string | number | null;
+  observedValue: string | number | null;
+  attributionConfidence: number;
+  attributionLanguage: string;
+  note: string | null;
+  evidenceIds: string[];
+};
+
 export type OutcomeLedger = {
   existing_event_count: number;
+  existing_events: OutcomeEvent[];
   proposed_events: ProposedOutcomeEvent[];
   outcome_summary: string | null;
   next_measurements: string[];

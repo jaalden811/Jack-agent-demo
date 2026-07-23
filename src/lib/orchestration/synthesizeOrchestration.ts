@@ -2,6 +2,7 @@ import { z } from "zod";
 import { groundedSynthesis } from "@/lib/circuit/synthesis";
 import { loadOrchestrationPrompt } from "@/lib/circuit/prompts/promptLoader";
 import { buildActionCase } from "@/lib/orchestration/buildActionCase";
+import { readOutcomeEvents } from "@/lib/orchestration/outcomeStore";
 import type { ActionCase } from "@/lib/orchestration/types";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
 
@@ -27,7 +28,15 @@ function unsafe(s: string | null | undefined): boolean {
 }
 
 export async function synthesizeOrchestration(result: SecureNetworkingTriageResult): Promise<ActionCase> {
-  const base = buildActionCase(result);
+  // Fold the append-only outcome history into the case (existing_event_count +
+  // summary) so the ledger reflects observed facts, not just proposals.
+  let existingOutcomeEvents: Awaited<ReturnType<typeof readOutcomeEvents>> = [];
+  try {
+    existingOutcomeEvents = await readOutcomeEvents({ run_id: result.run_id, action_case_id: result.opportunity_thread?.thread_id ?? null });
+  } catch {
+    existingOutcomeEvents = [];
+  }
+  const base = buildActionCase(result, { existingOutcomeEvents });
   // Nothing worth refining for a non-actionable, empty case.
   if (base.action_graph.steps.length === 0) return base;
 

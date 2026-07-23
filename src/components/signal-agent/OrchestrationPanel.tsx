@@ -1,5 +1,6 @@
 import type { WebexAutomationRunResult } from "@/lib/webex/types";
 import type { ActionStep } from "@/lib/orchestration/types";
+import { OutcomeLedgerControl } from "@/components/signal-agent/OutcomeLedgerControl";
 
 /**
  * ActionCase panel (signal-to-action-orchestration-v1) — renders the governed
@@ -137,14 +138,14 @@ export function OrchestrationPanel({ result }: { result: WebexAutomationRunResul
 
       {/* Outcome ledger — append-only; causation never claimed. */}
       <details className="section-group">
-        <summary>Outcome tracking (causation not established)</summary>
-        {ac.outcome_ledger.outcome_summary && <p className="muted">{ac.outcome_ledger.outcome_summary}</p>}
-        <span className="meta-label">Measure next</span>
-        <ul className="action-list">
-          {ac.outcome_ledger.next_measurements.map((m, i) => (
-            <li key={i} className="muted">{m}</li>
-          ))}
-        </ul>
+        <summary>Outcome tracking (causation not established){ac.outcome_ledger.existing_event_count > 0 ? ` · ${ac.outcome_ledger.existing_event_count} observed` : ""}</summary>
+        <OutcomeLedgerControl
+          runId={ac.run_id}
+          actionCaseId={ac.action_case.opportunity_thread_id}
+          existingEvents={ac.outcome_ledger.existing_events}
+          nextMeasurements={ac.outcome_ledger.next_measurements}
+          outcomeSummary={ac.outcome_ledger.outcome_summary}
+        />
       </details>
     </section>
   );

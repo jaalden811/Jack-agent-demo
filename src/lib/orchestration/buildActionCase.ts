@@ -13,6 +13,7 @@ import type {
   CustomerEngagementPlan,
   GovernedDecision,
   OrchestrationStatus,
+  OutcomeEvent,
   OutcomeLedger,
   OwnerResolution,
   ResolvedParty,
@@ -326,12 +327,15 @@ function buildRolePackets(result: SecureNetworkingTriageResult, owner: OwnerReso
   };
 }
 
-function buildOutcomeLedger(result: SecureNetworkingTriageResult, actionCaseId: string | null): OutcomeLedger {
+function buildOutcomeLedger(result: SecureNetworkingTriageResult, actionCaseId: string | null, existingEvents: OutcomeEvent[]): OutcomeLedger {
   const proposed: OutcomeLedger["proposed_events"] = [];
   const status = result.feedback?.action_status;
   const now = result.timestamp ?? new Date().toISOString();
-  // Only propose events the input actually reports — never because AI acted.
-  if (status === "accepted" || status === "in_progress" || status === "completed") {
+  // An observed event already on record must not be re-proposed.
+  const recordedTypes = new Set(existingEvents.map((e) => e.type));
+  // Only propose events the input actually reports — never because AI acted — and
+  // never a type that is already on the append-only ledger.
+  if ((status === "accepted" || status === "in_progress" || status === "completed") && !recordedTypes.has("owner_accepted")) {
     proposed.push({
       id: null,
       actionCaseId,
@@ -346,7 +350,7 @@ function buildOutcomeLedger(result: SecureNetworkingTriageResult, actionCaseId: 
       limitations: ["Owner acceptance is recorded from user feedback; downstream customer outcomes are not yet observed."]
     });
   }
-  if (status === "completed") {
+  if (status === "completed" && !recordedTypes.has("step_completed")) {
     proposed.push({
       id: null,
       actionCaseId,
@@ -361,16 +365,24 @@ function buildOutcomeLedger(result: SecureNetworkingTriageResult, actionCaseId: 
       limitations: ["Step completion is user-reported; causation to any revenue outcome is not established."]
     });
   }
+  // Summarize observed history WITHOUT claiming causation.
+  const observedTypes = existingEvents.map((e) => e.type.replace(/_/g, " "));
+  const outcome_summary = existingEvents.length > 0
+    ? `${existingEvents.length} observed event(s) on record (${Array.from(new Set(observedTypes)).slice(0, 4).join(", ")}); temporally associated with the ActionCase — causation is not established.`
+    : status && status !== "recommended"
+      ? `The owner has marked this action ${status.replace(/_/g, " ")}. No customer-facing outcome has been observed yet.`
+      : null;
   return {
-    existing_event_count: 0,
+    existing_event_count: existingEvents.length,
+    existing_events: existingEvents,
     proposed_events: proposed,
-    outcome_summary: status && status !== "recommended" ? `The owner has marked this action ${status.replace(/_/g, " ")}. No customer-facing outcome has been observed yet.` : null,
+    outcome_summary,
     next_measurements: NEXT_MEASUREMENTS,
     causation_not_established: true
   };
 }
 
-export function buildActionCase(result: SecureNetworkingTriageResult): ActionCase {
+export function buildActionCase(result: SecureNetworkingTriageResult, opts: { existingOutcomeEvents?: OutcomeEvent[] } = {}): ActionCase {
   const account = getCanonicalAccount(result);
   const plan = result.internal_action_plan ?? null;
   const dp = result.decision_packet;
@@ -413,7 +425,7 @@ export function buildActionCase(result: SecureNetworkingTriageResult): ActionCas
   const action_graph = buildActionGraph(result, owner_resolution, threadId);
   const customer_engagement_plan = buildCustomerEngagement(result);
   const role_packets = buildRolePackets(result, owner_resolution);
-  const outcome_ledger = buildOutcomeLedger(result, threadId);
+  const outcome_ledger = buildOutcomeLedger(result, threadId, opts.existingOutcomeEvents ?? []);
 
   // MEDDPICC gaps become the bounded discovery evidence for NEED_MORE_INFORMATION.
   const meddpiccGaps = Object.values(result.meddpicc ?? {})

@@ -406,6 +406,21 @@ button:disabled {
   margin-bottom: 10px;
 }
 
+.outcome-record {
+  margin: 10px 0;
+}
+.outcome-record-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.outcome-record-row select,
+.outcome-record-row input {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
 /* Later / conditional coordination is visibly subordinate — never do-now weight. */
 .internal-plan-later {
   opacity: 0.82;

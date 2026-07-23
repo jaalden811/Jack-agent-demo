@@ -117,8 +117,37 @@ describe("buildActionCase — orchestration assembler", () => {
     const ac = buildActionCase(r);
     // No feedback in a fresh run → no proposed owner_accepted/step_completed events.
     expect(ac.outcome_ledger.proposed_events.length).toBe(0);
+    expect(ac.outcome_ledger.existing_event_count).toBe(0);
     expect(ac.outcome_ledger.next_measurements.length).toBeGreaterThan(0);
     expect(ac.quality.outcome_attribution_safe).toBe(true);
+    expect(ac.outcome_ledger.causation_not_established).toBe(true);
+  });
+
+  it("folds existing (observed) outcome events into the ledger count + summary, and does not re-propose a recorded type", async () => {
+    const r = await run(QUALIFIED);
+    const existing = [
+      {
+        id: "evt-1",
+        action_case_id: r.opportunity_thread?.thread_id ?? null,
+        run_id: r.run_id,
+        type: "owner_accepted" as const,
+        source: "user" as const,
+        observedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+        baselineValue: null,
+        observedValue: null,
+        attributionConfidence: 0.9,
+        attributionLanguage: "observed after action",
+        note: null,
+        evidenceIds: []
+      }
+    ];
+    const ac = buildActionCase(r, { existingOutcomeEvents: existing });
+    expect(ac.outcome_ledger.existing_event_count).toBe(1);
+    expect(ac.outcome_ledger.existing_events[0].id).toBe("evt-1");
+    expect(ac.outcome_ledger.outcome_summary ?? "").toMatch(/causation is not established/i);
+    // A type already on record is not re-proposed.
+    expect(ac.outcome_ledger.proposed_events.some((e) => e.type === "owner_accepted")).toBe(false);
   });
 
   it("synthesizeOrchestration falls back to the deterministic assembler when Circuit is unconfigured", async () => {
