@@ -41,7 +41,16 @@ function toThirdPerson(quote: string): string {
     .replace(/\bwe\b/gi, "they")
     .replace(/\bour\b/gi, "its")
     .replace(/\bours\b/gi, "theirs")
-    .replace(/\bus\b/gi, "them");
+    .replace(/\bus\b/gi, "them")
+    // First-person SINGULAR too — the system voice must never say "I"/"my".
+    .replace(/\bi'm\b/gi, "they are")
+    .replace(/\bi've\b/gi, "they have")
+    .replace(/\bi'll\b/gi, "they will")
+    .replace(/\bi'd\b/gi, "they would")
+    .replace(/\bmy\b/gi, "their")
+    .replace(/\bmine\b/gi, "theirs")
+    .replace(/\bi\b/g, "they")
+    .replace(/\bme\b/gi, "them");
   return t.charAt(0).toLowerCase() + t.slice(1);
 }
 /** Strips conversational lead-ins from a raw success-criteria/outcome quote. */
@@ -141,10 +150,14 @@ function whyThisMatters(packet: IntelligencePacket, lane: MessageLane): string {
     parts.push("It attaches to an exec-sponsored program with senior attention.");
   }
   // Only add a separate stakes line when the headline fell back to the generic
-  // category (otherwise the problem sentence already IS the concrete stake).
+  // category (otherwise the problem sentence already IS the concrete stake) — and
+  // only from a REAL problem/impact statement (never a budget/authority line),
+  // attributed in third person so the system never speaks as the customer.
   if (!real) {
-    const stakes = firstMeaningful(stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? ""), packet.customer_evidence.business_impacts[0]?.statement);
-    if (stakes) parts.push(sentence(`Business stakes: ${clean(stakes, 160).replace(/[.]+$/, "")}`));
+    const vh = stripValuePrefix(packet.deal_intelligence.value_hypothesis ?? "");
+    const realImpact = packet.customer_evidence.business_impacts.map((b) => b.statement).find((s) => s && PROBLEM_HINT_RE.test(s) && !NON_PROBLEM_RE.test(s));
+    const stakes = firstMeaningful(vh && PROBLEM_HINT_RE.test(vh) && !NON_PROBLEM_RE.test(vh) ? vh : null, realImpact);
+    if (stakes) parts.push(sentence(`Business stakes: ${toThirdPerson(clean(stakes, 160).replace(/[.]+$/, ""))}`));
   }
   return clean(parts.join(" "), 400);
 }

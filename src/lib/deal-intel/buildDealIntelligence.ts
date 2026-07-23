@@ -76,12 +76,66 @@ function formatMetricNumber(n: number): string {
   return Number.isInteger(n) ? String(n) : String(n);
 }
 
+// Time-unit → minutes factor, so a CROSS-UNIT reduction ("from three hours to
+// under thirty minutes") can be compared and rendered honestly.
+const TIME_FACTOR: Record<string, number> = { minute: 1, hour: 60, day: 1440, week: 10080, month: 43200 };
+// An explicit stated reduction clause: "from A <unit> (down) to (under) B <unit?>".
+// The strongest, least-ambiguous metric signal — a single clause that states
+// both the baseline and the target, so it is preferred over the per-unit heuristic
+// (which can mis-classify "target is to move FROM three hours" as a target).
+const REDUCTION_CLAUSE = /\bfrom\s+(\d[\d.,]*)\s*(minutes?|hours?|days?|weeks?|months?|%|percent)\s+(?:down\s+)?to\s+(?:under|below|about|nearly|roughly|around|approximately|less than|just over|only)?\s*(\d[\d.,]*)\s*(minutes?|hours?|days?|weeks?|months?|%|percent)?/gi;
+
+/** Explicit "from A to (under) B" REDUCTION clauses — cross-unit aware. Returns
+ * the largest relative reduction, rendered honestly (same-unit as "A → under B
+ * unit"; cross-unit as "A unitA → under B unitB"). Ignores increase clauses
+ * (the problem statement, e.g. "from 45 minutes to nearly 3 hours"). */
+function distillReductionClause(normalized: string[]): { text: string; rel: number } | null {
+  let best: { text: string; rel: number } | null = null;
+  for (const norm of normalized) {
+    for (const m of norm.matchAll(REDUCTION_CLAUSE)) {
+      const a = Number(m[1].replace(/,/g, ""));
+      const b = Number(m[3].replace(/,/g, ""));
+      if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+      const unitA = canonicalMetricUnit(m[2]);
+      const unitB = m[4] ? canonicalMetricUnit(m[4]) : unitA;
+      let normA: number;
+      let normB: number;
+      if (unitA === "percent" || unitB === "percent") {
+        if (unitA !== unitB) continue; // can't compare % to a duration
+        normA = a;
+        normB = b;
+      } else {
+        const fa = TIME_FACTOR[unitA];
+        const fb = TIME_FACTOR[unitB];
+        if (!fa || !fb) continue;
+        normA = a * fa;
+        normB = b * fb;
+      }
+      if (!(normA > normB) || normA <= 0) continue; // reductions only
+      const rel = 1 - normB / normA;
+      const text =
+        unitA === "percent"
+          ? `${formatMetricNumber(a)}% → under ${formatMetricNumber(b)}%`
+          : unitA === unitB
+            ? `${formatMetricNumber(a)} → under ${formatMetricNumber(b)} ${unitA}s`
+            : `${formatMetricNumber(a)} ${unitA}s → under ${formatMetricNumber(b)} ${unitB}s`;
+      if (!best || rel > best.rel) best = { text, rel };
+    }
+  }
+  return best;
+}
+
 /** Distills the single most compelling quantified metric from the customer's
- * own sentences, in DIGITS (spelled numbers normalized). Prefers a
- * baseline→target duration pair ("from 96 to under 30 minutes"); otherwise the
- * largest business-relevant count. Returns null when nothing quantified. */
+ * own sentences, in DIGITS (spelled numbers normalized). Prefers an explicit
+ * "from A to under B" reduction clause (cross-unit aware), then a per-unit
+ * baseline→target pair; otherwise the largest business-relevant count. Returns
+ * null when nothing quantified. */
 function distillHeadlineMetric(chunks: TranscriptChunk[]): string | null {
   const normalized = chunks.map((c) => normalizeSpelledNumbers(c.text));
+  // Preferred: an explicitly stated reduction clause ("from 3 hours to under 30
+  // minutes") — unambiguous baseline→target, even across units.
+  const clause = distillReductionClause(normalized);
+  if (clause) return clause.text;
   // Track a baseline (largest) and target (smallest) PER UNIT, so a
   // "42 → under 10 minutes" duration pair and a "9.6% → under 3%" rate pair
   // are each recognized instead of being cross-contaminated into one broken
@@ -437,8 +491,12 @@ export function buildDealIntelligence(params: {
   // not use this as the business case", "not a customer commitment") — those are
   // process notes, never the value hypothesis.
   const META_RE = /\b(record that|do not use|don'?t use|note that|for the record|to be precise|be careful|not a customer commitment|seller[- ]proposed|do not treat|should not|not the business case|as a hypothesis)\b/i;
+  // A pure budget/authority/funding statement ("budget is approved", "I'm the
+  // approver up to $2M", "I own the budget") is a MEDDPICC economic-buyer signal,
+  // NOT the customer's value hypothesis — never frame it as "value in their words".
+  const NON_VALUE_RE = /\b(i'?m the approver|the approver up to|budget is approved|approved at the (?:program|department) level|i (?:own|control) (?:the|this|my|our)(?:\s+[\w-]+){0,2}\s+budget|budget owner|economic (?:buyer|owner))\b/i;
   const impactCandidates = [...qualitativeImpactSentences(params.transcript), ...(params.result.commercial_signals?.quantified_impact ?? [])];
-  const impact = impactCandidates.find((s) => s && !META_RE.test(s)) ?? null;
+  const impact = impactCandidates.find((s) => s && !META_RE.test(s) && !NON_VALUE_RE.test(s)) ?? null;
   const value_hypothesis = impact ? `Frame value in their words: "${shortText(impact, 220)}"` : null;
 
   // ── Honest, compelling headline ───────────────────────────────────────────

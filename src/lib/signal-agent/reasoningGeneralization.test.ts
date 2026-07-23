@@ -893,6 +893,8 @@ describe("RL pass — qualified-deal recall + coordination fidelity", () => {
   it("confirms economic authority from first-person self-identification (own/approve/sign-off)", () => {
     for (const claim of [
       "I own this budget and I run security here.",
+      "I own the security budget for this fiscal year.",
+      "I control the program budget for this initiative.",
       "I'm the approver up to two million dollars.",
       "I've got sign-off to move forward if this works."
     ]) {
@@ -927,6 +929,39 @@ describe("RL pass — qualified-deal recall + coordination fidelity", () => {
     ].join("\n");
     const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
     expect(r.account_resolution?.name).toMatch(/Orion Utilities/i);
+  });
+
+  it("distills a CROSS-UNIT reduction clause ('from three hours to under thirty minutes'), ignoring the increase clause", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Reyes (Cisco Account Executive):",
+      "I cover the account.",
+      "Sara (VP Security, Orion Grid):",
+      "I own the security budget. Our average investigation time has increased from about 45 minutes to nearly 3 hours, and our board target is to move from three hours to under thirty minutes. We're actively evaluating and want a technical validation workshop."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    // The real metric is the stated reduction (3h -> under 30m), never the
+    // spurious same-unit '4 -> under 3 hours' or the increase clause.
+    expect(r.deal_intelligence?.headline_metric ?? "").toMatch(/3 hours? → under 30 minutes/i);
+    expect(r.deal_intelligence?.headline_metric ?? "").not.toMatch(/under 3 hours/i);
+  });
+
+  it("never frames a budget/authority statement as the customer problem, and never leaks first person", async () => {
+    clearCatalogCache();
+    clearAccountsCache();
+    const transcript = [
+      "Priya (Cisco Account Executive):",
+      "Good to reconnect.",
+      "Wendy (VP Procurement, Cedar Freight):",
+      "We want to expand to all five business units next year. Budget is approved at the program level and I'm the approver up to two million dollars. We just need commercial terms and a quote."
+    ].join("\n");
+    const r = await runSignalAgent({ customTranscript: transcript, options: { enrichPublicSignals: false } });
+    const salesMsg = r.orchestration?.role_packets.commercial?.message_text ?? "";
+    // The system voice never says "I'm the approver" and never frames the budget
+    // approval line as the business problem/value.
+    expect(salesMsg).not.toMatch(/I'?m the approver/i);
+    expect(salesMsg).not.toMatch(/budget is approved/i);
   });
 
   it("distills a same-unit baseline→target metric when the target omits the unit ('40 minutes … under 15')", async () => {
