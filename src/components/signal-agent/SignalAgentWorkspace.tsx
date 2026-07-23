@@ -17,6 +17,7 @@ import { DealIntelligenceCard } from "@/components/signal-agent/DealIntelligence
 import { RunAssistantPanel } from "@/components/signal-agent/RunAssistantPanel";
 import { FirstRunMenu } from "@/components/signal-agent/FirstRunMenu";
 import { ActionCenter } from "@/components/signal-agent/ActionCenter";
+import { OrchestrationPanel } from "@/components/signal-agent/OrchestrationPanel";
 import { DeliveryResultCard } from "@/components/signal-agent/DeliveryResultCard";
 import { ResultTabs } from "@/components/signal-agent/ResultTabs";
 import { SignalToActionJourney } from "@/components/signal-agent/SignalToActionJourney";
@@ -238,6 +239,7 @@ export function SignalAgentWorkspace() {
               <PersonalizedOpportunityCard result={result} />
               <DealIntelligenceCard result={result} />
               <ActionCenter result={result} />
+              <OrchestrationPanel result={result} />
               <DeliveryResultCard result={result} onResultUpdate={setResult} />
 
               <details className="section-group">

@@ -1,6 +1,8 @@
 import { verifyRunToken } from "@/lib/signal-agent/shareLink";
 import { readRunResult } from "@/lib/signal-agent/resultStore";
 import type { SecureNetworkingTriageResult } from "@/lib/signal-agent/types";
+import type { WebexAutomationRunResult } from "@/lib/webex/types";
+import { OrchestrationPanel } from "@/components/signal-agent/OrchestrationPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +114,13 @@ export default async function SignalAgentResultPage({
               <p>{result.executive_summary.recommended_next_action}</p>
             </div>
           </div>
+        )}
+
+        {result?.orchestration && (
+          <>
+            <h2>ActionCase</h2>
+            <OrchestrationPanel result={result as unknown as WebexAutomationRunResult} />
+          </>
         )}
 
         {result?.account_resolution && (
