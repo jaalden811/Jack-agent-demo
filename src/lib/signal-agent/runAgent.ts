@@ -29,6 +29,7 @@ import { buildDecisionPacket } from "@/lib/decision-packet/buildDecisionPacket";
 import { buildIntelligencePacket } from "@/lib/intelligence/intelligencePacket";
 import { buildInternalActionPlan } from "@/lib/intelligence/internalActionPlan";
 import { enrichInternalActionPlan } from "@/lib/intelligence/enrichInternalActionPlan";
+import { synthesizeOrchestration } from "@/lib/orchestration/synthesizeOrchestration";
 import { synthesizeDecisionPacketNarrative } from "@/lib/decision-packet/narrative";
 import { buildDealIntelligence } from "@/lib/deal-intel/buildDealIntelligence";
 import { resolveActiveSellerProfile, resolveProfileForLaneRecipient } from "@/lib/personalization/profileStore";
@@ -710,6 +711,17 @@ export async function runSignalAgent(request: RunRequest): Promise<SecureNetwork
     result.internal_action_plan = plan ? await enrichInternalActionPlan(plan, packet) : null;
   } catch {
     result.internal_action_plan = null;
+  }
+
+  // Additive ActionCase orchestration (signal-to-action-orchestration-v1): the
+  // governed, dependency-aware internal action plan. Assembled DETERMINISTICALLY
+  // from this result (owners/steps/decision/evidence authoritative) — Circuit may
+  // only refine safe prose. Runs AFTER the internal action plan + thread +
+  // feedback so it can consume them. Never changes scores/routing/evidence.
+  try {
+    result.orchestration = await synthesizeOrchestration(result);
+  } catch {
+    result.orchestration = null;
   }
 
   // Canonical search trace (Section 9) — the single source of truth for what

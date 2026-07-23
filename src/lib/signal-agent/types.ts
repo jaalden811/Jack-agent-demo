@@ -13,6 +13,7 @@ import type { ParticipationMatrix } from "@/lib/meeting-participation/participat
 import type { DecisionPacket } from "@/lib/decision-packet/types";
 import type { DealIntelligence } from "@/lib/deal-intel/types";
 import type { InternalActionPlan } from "@/lib/intelligence/types";
+import type { ActionCase } from "@/lib/orchestration/types";
 
 /** Safe per-stage Circuit trace (no token/App Key/transcript/headers). */
 export type CircuitStageTraceSummary = {
@@ -770,6 +771,11 @@ export type SecureNetworkingTriageResult = {
    * — the ONLY signal that produces an IMMEDIATE internal sales-leader step.
    * Distributed authority alone never sets this. Additive; null when absent. */
   executive_coordination_trigger?: { code: string; description: string } | null;
+  /** Additive signal-to-action-orchestration-v1 ActionCase: the governed,
+   * dependency-aware internal action plan assembled deterministically from this
+   * result (owners/steps/decision/evidence stay authoritative), with optional
+   * Circuit prose refinement. Never changes scores/routing/evidence identity. */
+  orchestration?: ActionCase | null;
 };
 
 export type GenericDiagnostics = {

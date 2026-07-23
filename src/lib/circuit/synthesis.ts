@@ -24,6 +24,9 @@ export async function groundedSynthesis<T>(params: {
   validate?: (output: T) => string[];
   /** Deterministic value used whenever Circuit is unavailable/invalid. */
   fallback: () => T;
+  /** Optional system-prompt override (e.g. the orchestration master prompt).
+   * Defaults to the A–D master prompt. */
+  system?: string;
   timeoutMs?: number;
 }): Promise<GroundedSynthesisResult<T>> {
   const cfg = getCircuitConfig();
@@ -33,7 +36,7 @@ export async function groundedSynthesis<T>(params: {
 
   let system: string;
   try {
-    system = loadCircuitMasterPrompt().text;
+    system = params.system ?? loadCircuitMasterPrompt().text;
   } catch {
     return { output: params.fallback(), used: false, safe_error_code: "MASTER_PROMPT_UNAVAILABLE" };
   }

@@ -29,3 +29,23 @@ export function loadCircuitMasterPrompt(): { version: string; text: string } {
 export function getMasterPromptVersion(): string {
   return getCircuitConfig().promptVersion;
 }
+
+// ─── Orchestration engine prompt (signal-to-action-orchestration-v1) ─────────
+const ORCHESTRATION_PROMPT_RELATIVE_PATH = "signal-agent-poc/prompts/circuit_signal_to_action_orchestration.md";
+const ORCHESTRATION_PROMPT_VERSION = "signal-to-action-orchestration-v1";
+let orchestrationCached: { version: string; text: string } | null = null;
+
+export function clearOrchestrationPromptCache(): void {
+  orchestrationCached = null;
+}
+
+/** Loads the ActionCase orchestration master prompt. Its version is pinned to
+ * the contract version (signal-to-action-orchestration-v1) — independent of the
+ * A–D master prompt version — so a Circuit orchestration call always reports the
+ * exact contract it targets. */
+export function loadOrchestrationPrompt(): { version: string; text: string } {
+  if (orchestrationCached) return orchestrationCached;
+  const text = readFileSync(path.join(process.cwd(), ORCHESTRATION_PROMPT_RELATIVE_PATH), "utf8");
+  orchestrationCached = { version: ORCHESTRATION_PROMPT_VERSION, text };
+  return orchestrationCached;
+}
